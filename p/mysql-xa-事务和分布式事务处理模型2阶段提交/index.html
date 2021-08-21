@@ -3,12 +3,12 @@
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="关于 MySQL XA 事务和 2PC（两阶段提交）分布式事务处理模型（Distributed Transaction Processing, DTP Model）的学习笔记。
 事务 分布式事务XA 介绍 MySQL内建分布式事务支持（XA），参考文档列出如下
  [MySQL Manual - XA](MySQL :: MySQL 8.0 Reference Manual :: MySQL Glossary) [MySQL Manual - XA Transaction](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8 XA Transactions) [MySQL Manual - XA Transaction Statements](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.1 XA Transaction SQL Statements) [MySQL Manual - XA Transaction State](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.2 XA Transaction States)  XA 事务在 InnoDB 引擎中可用。MySQL XA 事务实现基于 X/Open CAE 文档 《Distributed Transaction Processing: The XA Specification》。这份文档由 Open Group 发布，可以在 http://www."><title>MySQL XA 事务和分布式事务处理模型：2阶段提交</title>
-<link rel=canonical href=https://uniqptr.gitee.io/p/mysql-xa-%E4%BA%8B%E5%8A%A1%E5%92%8C%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E6%A8%A1%E5%9E%8B2%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4/>
-<link rel=stylesheet href=/scss/style.min.css><meta property="og:title" content="MySQL XA 事务和分布式事务处理模型：2阶段提交">
+<link rel=canonical href=https://nnnewb.github.io/blog/p/mysql-xa-%E4%BA%8B%E5%8A%A1%E5%92%8C%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E6%A8%A1%E5%9E%8B2%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4/>
+<link rel=stylesheet href=/blog/scss/style.min.css><meta property="og:title" content="MySQL XA 事务和分布式事务处理模型：2阶段提交">
 <meta property="og:description" content="关于 MySQL XA 事务和 2PC（两阶段提交）分布式事务处理模型（Distributed Transaction Processing, DTP Model）的学习笔记。
 事务 分布式事务XA 介绍 MySQL内建分布式事务支持（XA），参考文档列出如下
  [MySQL Manual - XA](MySQL :: MySQL 8.0 Reference Manual :: MySQL Glossary) [MySQL Manual - XA Transaction](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8 XA Transactions) [MySQL Manual - XA Transaction Statements](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.1 XA Transaction SQL Statements) [MySQL Manual - XA Transaction State](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.2 XA Transaction States)  XA 事务在 InnoDB 引擎中可用。MySQL XA 事务实现基于 X/Open CAE 文档 《Distributed Transaction Processing: The XA Specification》。这份文档由 Open Group 发布，可以在 http://www.">
-<meta property="og:url" content="https://uniqptr.gitee.io/p/mysql-xa-%E4%BA%8B%E5%8A%A1%E5%92%8C%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E6%A8%A1%E5%9E%8B2%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4/">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/mysql-xa-%E4%BA%8B%E5%8A%A1%E5%92%8C%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E6%A8%A1%E5%9E%8B2%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="mysql"><meta property="article:published_time" content="2021-07-09T09:29:22+00:00"><meta property="article:modified_time" content="2021-07-09T09:29:22+00:00">
 <meta name=twitter:title content="MySQL XA 事务和分布式事务处理模型：2阶段提交">
@@ -21,7 +21,7 @@
 <div class="container main-container flex
 extended">
 <div id=article-toolbar>
-<a href=https://uniqptr.gitee.io/ class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
+<a href=https://nnnewb.github.io/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
 <span>返回</span>
 </a>
 </div>
@@ -30,12 +30,12 @@ extended">
 <header class=article-header>
 <div class=article-details>
 <header class=article-category>
-<a href=/categories/mysql/>
+<a href=/blog/categories/mysql/>
 mysql
 </a>
 </header>
 <h2 class=article-title>
-<a href=/p/mysql-xa-%E4%BA%8B%E5%8A%A1%E5%92%8C%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E6%A8%A1%E5%9E%8B2%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4/>MySQL XA 事务和分布式事务处理模型：2阶段提交</a>
+<a href=/blog/p/mysql-xa-%E4%BA%8B%E5%8A%A1%E5%92%8C%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E6%A8%A1%E5%9E%8B2%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4/>MySQL XA 事务和分布式事务处理模型：2阶段提交</a>
 </h2>
 <footer class=article-time>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
@@ -65,7 +65,7 @@ mysql
 <p>&mldr;</p>
 <p>XA 事务是全局事务关联的一组事务性动作，要么全部成功，要么全部回滚。本质上，这是让 ACID 属性“提升了一层”，让多个ACID事务可以作为一个全局操作的一部分执行，使得这个全局操作也具备ACID属性。（对于非分布式事务，应用如果对读敏感，则<code>SERIALIZABLE</code>更推荐。<code>REPEATABLE READ</code> 在分布式事务中并不是很有效。）</p>
 <h4 id=事务模型>事务模型</h4>
-<p><img src=/%e4%ba%8b%e5%8a%a1%e6%a8%a1%e5%9e%8b.webp alt=img></p>
+<p><img src=/blog/%e4%ba%8b%e5%8a%a1%e6%a8%a1%e5%9e%8b.webp alt=img></p>
 <p>其中：</p>
 <ul>
 <li>**AP：**用户程序</li>
@@ -193,7 +193,7 @@ when global transaction is in the ACTIVE state
 </section>
 <footer class=article-footer>
 <section class=article-tags>
-<a href=/tags/mysql/>mysql</a>
+<a href=/blog/tags/mysql/>mysql</a>
 </section>
 <section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
 <span>Licensed under CC BY-NC-SA 4.0</span>
@@ -205,28 +205,28 @@ when global transaction is in the ACTIVE state
 <div class=related-contents>
 <div class="flex article-list--tile">
 <article>
-<a href=/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-4/>
+<a href=/blog/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-4/>
 <div class=article-details>
 <h2 class=article-title>MySQL 24小时入门笔记 - 4</h2>
 </div>
 </a>
 </article>
 <article>
-<a href=/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-3/>
+<a href=/blog/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-3/>
 <div class=article-details>
 <h2 class=article-title>MySQL 24小时入门笔记 - 3</h2>
 </div>
 </a>
 </article>
 <article>
-<a href=/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-2/>
+<a href=/blog/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-2/>
 <div class=article-details>
 <h2 class=article-title>MySQL 24小时入门笔记 - 2</h2>
 </div>
 </a>
 </article>
 <article>
-<a href=/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-1/>
+<a href=/blog/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-1/>
 <div class=article-details>
 <h2 class=article-title>MySQL 24小时入门笔记 - 1</h2>
 </div>
@@ -309,7 +309,7 @@ Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=
 </section>
 </aside>
 </div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/blog/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>
