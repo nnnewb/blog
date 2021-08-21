@@ -6,7 +6,7 @@ tags:
   - c++
   - python
   - 酷Q
-date: 2020-2-7 21:59:00
+date: 2020-02-07 21:59:00
 ---
 
 先不说废话，项目地址：https://github.com/nnnewb/CQPy 。欢迎给个 Star 什么的。

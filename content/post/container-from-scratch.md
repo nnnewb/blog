@@ -1,13 +1,16 @@
 ---
 title: 从零实现一个容器
-date: 2021-5-31 16:16:52
-tags: ["golang","docker"]
-categories: ["golang"]
+tags:
+  - "golang"
+  - "docker"
+categories:
+  - "golang"
+date: 2021-05-31 16:16:52
 ---
 
 ## 前言
 
-自从看了`cocker`项目的ppt之后就有点念念不忘的意思了，实现一个docker或docker的类似物看起来并不是做不到的事情。
+自从看了`cocker`项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。
 
 于是就动手试一试。
 
@@ -40,9 +43,9 @@ categories: ["golang"]
 
 这个 Linux 用户应该还是比较熟悉的，如 Arch Linux 这样的发行版在安装时就有用到。
 
-使用 `man 2 chroot` 查看这个api的文档。
+使用 `man 2 chroot` 查看这个 api 的文档。
 
-> chroot()  changes  the root directory of the calling process to that specified in path.  This directory will be used for pathnames beginning with /.  The root directory is inherited by all children of the calling process.
+> chroot() changes the root directory of the calling process to that specified in path. This directory will be used for pathnames beginning with /. The root directory is inherited by all children of the calling process.
 >
 > Only a privileged process (Linux: one with the CAP_SYS_CHROOT capability in its user namespace) may call chroot().
 
@@ -64,9 +67,7 @@ categories: ["golang"]
 >     const void *data);
 > ```
 >
->
->
-> mount()  attaches the filesystem specified by source (which is often a pathname referring to a device, but can also be the pathname of a directory or file, or a dummy string) to the location (a directory or file) specified by the pathname in target.
+> mount() attaches the filesystem specified by source (which is often a pathname referring to a device, but can also be the pathname of a directory or file, or a dummy string) to the location (a directory or file) specified by the pathname in target.
 
 `mount` 会挂载(attaches) `source` 参数指定的文件系统（通常是设备路径，也可以是文件夹、文件的路径或虚拟字符串（如`proc`））到 `target` 指定的位置（目录或文件）。同样需要特权来执行。
 
@@ -89,7 +90,7 @@ categories: ["golang"]
 > /* For the prototype of the raw system call, see NOTES */
 > ```
 >
->  clone() creates a new process, in a manner similar to fork(2).
+> clone() creates a new process, in a manner similar to fork(2).
 
 总体类似于`fork()`，但可以指定一个入口函数，函数结束则子进程退出，也可以共享内存空间，所以行为也可以类似线程。看怎么用。
 
@@ -393,7 +394,7 @@ root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container#
 2. `unshare` 启动新的 `/bin/bash` 进程后，`/proc` 挂载点还没有真正隔离，此时可以手动使用 `mount -t proc proc /proc` 命令挂载当前命名空间的 `procfs`。
 3. mount namespace 中挂载事件传播，可以查看文档 `man 7 mount_namespaces`。
 
-debian系的 Linux 发行版在 util-linux 包里提供了一个 `unshare` 程序，比上面的 demo 更强大，甚至可以用一行命令实现一个基本的*容器*。
+debian 系的 Linux 发行版在 util-linux 包里提供了一个 `unshare` 程序，比上面的 demo 更强大，甚至可以用一行命令实现一个基本的*容器*。
 
 ```bash
 # 我在 workspace 目录里装了 busybox，所以能直接跑起来 chroot 和 /bin/ash
@@ -533,5 +534,4 @@ DESKTOP-HEKKTQ9 :: ~/repos/container »
 - `mount`
 - ...
 
-本篇还不涉及网络，仅在文件系统和PID、用户等层级做了隔离。网络隔离可以参考 `man 7 network_namespaces` ，不过谷歌搜了一大圈也还没找到怎么创建虚拟网卡，暂且先放着了。
-
+本篇还不涉及网络，仅在文件系统和 PID、用户等层级做了隔离。网络隔离可以参考 `man 7 network_namespaces` ，不过谷歌搜了一大圈也还没找到怎么创建虚拟网卡，暂且先放着了。

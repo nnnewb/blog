@@ -1,7 +1,8 @@
 ---
-date: 2019-2-21 17:53:00
+date: 2019-02-21 17:53:00
 title: 利用 descriptor 实现自己的 property
-tags: [python]
+tags:
+  - python
 categories:
   - python
 ---
