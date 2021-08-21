@@ -1,0 +1,467 @@
+<!doctype html><html lang=zh-cn>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Intro ons 是一个开放源代码的视觉小说引擎，以简单实用出名。本博用 golang 来解密 ons 引擎的.dat和.nt2脚本，主要实践目标是异步解密输出。
+算法 .dat的加密非常简单，一次异或。密码是0x84。
+可以用 go 非常简单粗暴地写出以下代码。
+for i := 0; i &amp;lt; len(buf); i++ { buf[i] ^= 0x84 } .nt2的加密同样简单，一次异或，密码是0x85 &amp;amp; 0x97。
+可以用 go 非常粗暴地写出以下代码。
+for i := 0; i &amp;lt; len(buf); i++ { buf[i] = (buf[i] ^ (0x85 &amp;amp; 0x97)) - 1 } 异步读文件 go 方式比较多，ioutil或者bufio或者os都有文件模块。这里采用bufio套os.Open的方式读文件。
+func readFile(p string, outChannel chan []byte) { // 只读方式打开文件 	file, err := os.OpenFile(p, os.O_RDONLY, 0644) if err !"><title>go语言实战之解密ons脚本</title>
+<link rel=canonical href=https://uniqptr.gitee.io/p/go%E8%AF%AD%E8%A8%80%E5%AE%9E%E6%88%98%E4%B9%8B%E8%A7%A3%E5%AF%86ons%E8%84%9A%E6%9C%AC/>
+<link rel=stylesheet href=/scss/style.min.css><meta property="og:title" content="go语言实战之解密ons脚本">
+<meta property="og:description" content="Intro ons 是一个开放源代码的视觉小说引擎，以简单实用出名。本博用 golang 来解密 ons 引擎的.dat和.nt2脚本，主要实践目标是异步解密输出。
+算法 .dat的加密非常简单，一次异或。密码是0x84。
+可以用 go 非常简单粗暴地写出以下代码。
+for i := 0; i &amp;lt; len(buf); i++ { buf[i] ^= 0x84 } .nt2的加密同样简单，一次异或，密码是0x85 &amp;amp; 0x97。
+可以用 go 非常粗暴地写出以下代码。
+for i := 0; i &amp;lt; len(buf); i++ { buf[i] = (buf[i] ^ (0x85 &amp;amp; 0x97)) - 1 } 异步读文件 go 方式比较多，ioutil或者bufio或者os都有文件模块。这里采用bufio套os.Open的方式读文件。
+func readFile(p string, outChannel chan []byte) { // 只读方式打开文件 	file, err := os.OpenFile(p, os.O_RDONLY, 0644) if err !">
+<meta property="og:url" content="https://uniqptr.gitee.io/p/go%E8%AF%AD%E8%A8%80%E5%AE%9E%E6%88%98%E4%B9%8B%E8%A7%A3%E5%AF%86ons%E8%84%9A%E6%9C%AC/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="ons"><meta property="article:published_time" content="2018-12-16T23:44:00+00:00"><meta property="article:modified_time" content="2018-12-16T23:44:00+00:00">
+<meta name=twitter:title content="go语言实战之解密ons脚本">
+<meta name=twitter:description content="Intro ons 是一个开放源代码的视觉小说引擎，以简单实用出名。本博用 golang 来解密 ons 引擎的.dat和.nt2脚本，主要实践目标是异步解密输出。
+算法 .dat的加密非常简单，一次异或。密码是0x84。
+可以用 go 非常简单粗暴地写出以下代码。
+for i := 0; i &amp;lt; len(buf); i++ { buf[i] ^= 0x84 } .nt2的加密同样简单，一次异或，密码是0x85 &amp;amp; 0x97。
+可以用 go 非常粗暴地写出以下代码。
+for i := 0; i &amp;lt; len(buf); i++ { buf[i] = (buf[i] ^ (0x85 &amp;amp; 0x97)) - 1 } 异步读文件 go 方式比较多，ioutil或者bufio或者os都有文件模块。这里采用bufio套os.Open的方式读文件。
+func readFile(p string, outChannel chan []byte) { // 只读方式打开文件 	file, err := os.OpenFile(p, os.O_RDONLY, 0644) if err !">
+</head>
+<body class="article-page has-toc">
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"auto")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex
+extended">
+<div id=article-toolbar>
+<a href=https://uniqptr.gitee.io/ class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
+<span>返回</span>
+</a>
+</div>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/categories/golang/>
+golang
+</a>
+</header>
+<h2 class=article-title>
+<a href=/p/go%E8%AF%AD%E8%A8%80%E5%AE%9E%E6%88%98%E4%B9%8B%E8%A7%A3%E5%AF%86ons%E8%84%9A%E6%9C%AC/>go语言实战之解密ons脚本</a>
+</h2>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>Dec 16, 2018</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 4 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=intro>Intro</h2>
+<p>ons 是一个开放源代码的视觉小说引擎，以简单实用出名。本博用 golang 来解密 ons 引擎的<code>.dat</code>和<code>.nt2</code>脚本，主要实践目标是异步解密输出。</p>
+<h2 id=算法>算法</h2>
+<p><code>.dat</code>的加密非常简单，一次异或。密码是<code>0x84</code>。</p>
+<p>可以用 go 非常简单粗暴地写出以下代码。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nb>len</span><span class=p>(</span><span class=nx>buf</span><span class=p>);</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+    <span class=nx>buf</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>^=</span> <span class=mh>0x84</span>
+<span class=p>}</span>
+</code></pre></div><p><code>.nt2</code>的加密同样简单，一次异或，密码是<code>0x85 & 0x97</code>。</p>
+<p>可以用 go 非常粗暴地写出以下代码。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nb>len</span><span class=p>(</span><span class=nx>buf</span><span class=p>);</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+    <span class=nx>buf</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>=</span> <span class=p>(</span><span class=nx>buf</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>^</span> <span class=p>(</span><span class=mh>0x85</span> <span class=o>&amp;</span> <span class=mh>0x97</span><span class=p>))</span> <span class=o>-</span> <span class=mi>1</span>
+<span class=p>}</span>
+</code></pre></div><h2 id=异步读文件>异步读文件</h2>
+<p>go 方式比较多，<code>ioutil</code>或者<code>bufio</code>或者<code>os</code>都有文件模块。这里采用<code>bufio</code>套<code>os.Open</code>的方式读文件。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>readFile</span><span class=p>(</span><span class=nx>p</span> <span class=kt>string</span><span class=p>,</span> <span class=nx>outChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>)</span> <span class=p>{</span>
+    <span class=c1>// 只读方式打开文件
+</span><span class=c1></span>	<span class=nx>file</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>os</span><span class=p>.</span><span class=nf>OpenFile</span><span class=p>(</span><span class=nx>p</span><span class=p>,</span> <span class=nx>os</span><span class=p>.</span><span class=nx>O_RDONLY</span><span class=p>,</span> <span class=mo>0644</span><span class=p>)</span>
+	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+		<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+	<span class=p>}</span>
+
+    <span class=c1>// 包装一层 bufio
+</span><span class=c1></span>    <span class=nx>reader</span> <span class=o>:=</span> <span class=nx>bufio</span><span class=p>.</span><span class=nf>NewReader</span><span class=p>(</span><span class=nx>file</span><span class=p>)</span>
+    <span class=c1>// 准备一个保存读取结果的buf
+</span><span class=c1></span>	<span class=kd>var</span> <span class=nx>buf</span> <span class=p>=</span> <span class=nb>new</span><span class=p>([</span><span class=mi>1024000</span><span class=p>]</span><span class=kt>byte</span><span class=p>)</span>
+
+	<span class=k>for</span> <span class=p>{</span>
+        <span class=c1>// 循环读
+</span><span class=c1></span>		<span class=nx>n</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>reader</span><span class=p>.</span><span class=nf>Read</span><span class=p>(</span><span class=nx>buf</span><span class=p>[:])</span>
+
+        <span class=c1>// 没有内容了就退出循环
+</span><span class=c1></span>		<span class=k>if</span> <span class=nx>n</span> <span class=o>==</span> <span class=mi>0</span> <span class=p>{</span>
+			<span class=k>break</span>
+		<span class=p>}</span>
+
+		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+        <span class=p>}</span>
+
+        <span class=c1>// 把读到的结果用 channel 传递给下一道处理工序
+</span><span class=c1></span>		<span class=nx>outChannel</span> <span class=o>&lt;-</span> <span class=nx>buf</span><span class=p>[:</span><span class=nx>n</span><span class=p>]</span>
+	<span class=p>}</span>
+
+	<span class=k>defer</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+		<span class=nb>close</span><span class=p>(</span><span class=nx>outChannel</span><span class=p>)</span>
+		<span class=nx>err</span> <span class=o>:=</span> <span class=nx>file</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span>
+		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+		<span class=p>}</span>
+	<span class=p>}()</span>
+<span class=p>}</span>
+</code></pre></div><h2 id=异步写文件>异步写文件</h2>
+<p>写文件的方式和读文件的方式差不多，由那几个包提供。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>writeFile</span><span class=p>(</span><span class=nx>p</span> <span class=kt>string</span><span class=p>,</span> <span class=nx>outChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>,</span> <span class=nx>done</span> <span class=kd>chan</span> <span class=kt>bool</span><span class=p>)</span> <span class=p>{</span>
+    <span class=c1>// 只读方式打开文件，已存在文件则清空内容，未存在文件则创建，文件权限 rw-r--r--
+</span><span class=c1></span>	<span class=nx>file</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>os</span><span class=p>.</span><span class=nf>OpenFile</span><span class=p>(</span><span class=nx>p</span><span class=p>,</span> <span class=nx>os</span><span class=p>.</span><span class=nx>O_WRONLY</span><span class=p>|</span><span class=nx>os</span><span class=p>.</span><span class=nx>O_TRUNC</span><span class=p>|</span><span class=nx>os</span><span class=p>.</span><span class=nx>O_CREATE</span><span class=p>,</span> <span class=mo>0644</span><span class=p>)</span>
+	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+		<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+	<span class=p>}</span>
+
+	<span class=nx>writer</span> <span class=o>:=</span> <span class=nx>bufio</span><span class=p>.</span><span class=nf>NewWriter</span><span class=p>(</span><span class=nx>file</span><span class=p>)</span>
+
+	<span class=k>for</span> <span class=p>{</span>
+        <span class=c1>// 从上一道工序取得解密后的数据
+</span><span class=c1></span>        <span class=nx>buf</span><span class=p>,</span> <span class=nx>more</span> <span class=o>:=</span> <span class=o>&lt;-</span><span class=nx>outChannel</span>
+        <span class=c1>// 如果所有数据全部取得，则结束写入
+</span><span class=c1></span>		<span class=k>if</span> <span class=p>!</span><span class=nx>more</span> <span class=p>{</span>
+			<span class=k>break</span>
+		<span class=p>}</span>
+
+        <span class=c1>// 写入
+</span><span class=c1></span>		<span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>writer</span><span class=p>.</span><span class=nf>Write</span><span class=p>(</span><span class=nx>buf</span><span class=p>)</span>
+		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+		<span class=p>}</span>
+	<span class=p>}</span>
+
+	<span class=k>defer</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+		<span class=nx>err</span> <span class=o>:=</span> <span class=nx>writer</span><span class=p>.</span><span class=nf>Flush</span><span class=p>()</span>
+		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+		<span class=p>}</span>
+
+		<span class=nx>err</span> <span class=p>=</span> <span class=nx>file</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span>
+		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+		<span class=p>}</span>
+
+		<span class=nx>done</span> <span class=o>&lt;-</span> <span class=kc>true</span>
+	<span class=p>}()</span>
+<span class=p>}</span>
+</code></pre></div><h2 id=异步解密>异步解密</h2>
+<p>解密过程就像是水管上的过滤器，水流进来处理好，流出去。内容乏善可陈，就直接丢代码好了。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>decodeDat</span><span class=p>(</span><span class=nx>inChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>,</span> <span class=nx>outChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>)</span> <span class=p>{</span>
+	<span class=k>for</span> <span class=p>{</span>
+		<span class=nx>buf</span><span class=p>,</span> <span class=nx>more</span> <span class=o>:=</span> <span class=o>&lt;-</span><span class=nx>inChannel</span>
+		<span class=k>if</span> <span class=p>!</span><span class=nx>more</span> <span class=p>{</span>
+			<span class=k>break</span>
+		<span class=p>}</span>
+
+		<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nb>len</span><span class=p>(</span><span class=nx>buf</span><span class=p>);</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+			<span class=nx>buf</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>^=</span> <span class=mh>0x84</span>
+		<span class=p>}</span>
+		<span class=nx>outChannel</span> <span class=o>&lt;-</span> <span class=nx>buf</span>
+	<span class=p>}</span>
+
+	<span class=k>defer</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+		<span class=nb>close</span><span class=p>(</span><span class=nx>outChannel</span><span class=p>)</span>
+	<span class=p>}()</span>
+<span class=p>}</span>
+
+<span class=kd>func</span> <span class=nf>decodeNt2</span><span class=p>(</span><span class=nx>inChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>,</span> <span class=nx>outChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>)</span> <span class=p>{</span>
+	<span class=k>for</span> <span class=p>{</span>
+		<span class=nx>buf</span><span class=p>,</span> <span class=nx>more</span> <span class=o>:=</span> <span class=o>&lt;-</span><span class=nx>inChannel</span>
+		<span class=k>if</span> <span class=p>!</span><span class=nx>more</span> <span class=p>{</span>
+			<span class=k>break</span>
+		<span class=p>}</span>
+
+		<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nb>len</span><span class=p>(</span><span class=nx>buf</span><span class=p>);</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+			<span class=nx>buf</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>=</span> <span class=p>(</span><span class=nx>buf</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>^</span> <span class=p>(</span><span class=mh>0x85</span> <span class=o>&amp;</span> <span class=mh>0x97</span><span class=p>))</span> <span class=o>-</span> <span class=mi>1</span>
+		<span class=p>}</span>
+		<span class=nx>outChannel</span> <span class=o>&lt;-</span> <span class=nx>buf</span>
+	<span class=p>}</span>
+
+	<span class=k>defer</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+		<span class=nb>close</span><span class=p>(</span><span class=nx>outChannel</span><span class=p>)</span>
+	<span class=p>}()</span>
+<span class=p>}</span>
+</code></pre></div><h2 id=调度>调度</h2>
+<p>严肃地说，我认为这种调度模式是显然不对的。正确的调度方式应该是这样。</p>
+<pre><code class=language-mermaid data-lang=mermaid>graph TB;
+	A[cli] --&gt; |启动|B[read worker];
+	A --&gt; |启动| C[write worker];
+	A --&gt; |启动| D[decode worker];
+	A --&gt; |启动| E[scheduler];
+	E --&gt; |发出读指令| B;
+	B --&gt; |发送来源标识符+内容| D;
+	D --&gt; |发送来源标识符+处理后的内容| C;
+</code></pre><p>对于有多个 worker 的情况，也需要调度器协调才行，不过直觉上来说硬盘读写性能会是先一步的瓶颈。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>main</span><span class=p>()</span> <span class=p>{</span>
+	<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>1</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nb>len</span><span class=p>(</span><span class=nx>os</span><span class=p>.</span><span class=nx>Args</span><span class=p>);</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+		<span class=nx>decodeChannel</span><span class=p>,</span> <span class=nx>outChannel</span><span class=p>,</span> <span class=nx>done</span> <span class=o>:=</span> <span class=nb>make</span><span class=p>(</span><span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>),</span> <span class=nb>make</span><span class=p>(</span><span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>),</span> <span class=nb>make</span><span class=p>(</span><span class=kd>chan</span> <span class=kt>bool</span><span class=p>)</span>
+		<span class=nx>p</span> <span class=o>:=</span> <span class=nx>os</span><span class=p>.</span><span class=nx>Args</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span>
+		<span class=k>go</span> <span class=nf>readFile</span><span class=p>(</span><span class=nx>p</span><span class=p>,</span> <span class=nx>decodeChannel</span><span class=p>)</span>
+
+		<span class=k>switch</span> <span class=nx>path</span><span class=p>.</span><span class=nf>Ext</span><span class=p>(</span><span class=nx>p</span><span class=p>)</span> <span class=p>{</span>
+		<span class=k>case</span> <span class=s>&#34;.dat&#34;</span><span class=p>:</span>
+			<span class=k>go</span> <span class=nf>decodeDat</span><span class=p>(</span><span class=nx>decodeChannel</span><span class=p>,</span> <span class=nx>outChannel</span><span class=p>)</span>
+		<span class=k>case</span> <span class=s>&#34;.nt2&#34;</span><span class=p>:</span>
+			<span class=k>go</span> <span class=nf>decodeNt2</span><span class=p>(</span><span class=nx>decodeChannel</span><span class=p>,</span> <span class=nx>outChannel</span><span class=p>)</span>
+		<span class=k>default</span><span class=p>:</span>
+			<span class=nx>log</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=nx>path</span><span class=p>.</span><span class=nf>Ext</span><span class=p>(</span><span class=nx>p</span><span class=p>))</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=s>&#34;Input file should be .dat or .nt2 encrypted script!&#34;</span><span class=p>)</span>
+		<span class=p>}</span>
+
+		<span class=k>go</span> <span class=nf>writeFile</span><span class=p>(</span><span class=nx>path</span><span class=p>.</span><span class=nf>Base</span><span class=p>(</span><span class=nx>p</span><span class=p>)</span><span class=o>+</span><span class=s>&#34;.txt&#34;</span><span class=p>,</span> <span class=nx>outChannel</span><span class=p>,</span> <span class=nx>done</span><span class=p>)</span>
+		<span class=o>&lt;-</span><span class=nx>done</span>
+	<span class=p>}</span>
+<span class=p>}</span>
+</code></pre></div><p>完整代码：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kn>package</span> <span class=nx>main</span>
+
+<span class=kn>import</span> <span class=p>(</span>
+	<span class=s>&#34;bufio&#34;</span>
+	<span class=s>&#34;log&#34;</span>
+	<span class=s>&#34;os&#34;</span>
+	<span class=s>&#34;path&#34;</span>
+<span class=p>)</span>
+
+<span class=kd>func</span> <span class=nf>main</span><span class=p>()</span> <span class=p>{</span>
+	<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>1</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nb>len</span><span class=p>(</span><span class=nx>os</span><span class=p>.</span><span class=nx>Args</span><span class=p>);</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+		<span class=nx>decodeChannel</span><span class=p>,</span> <span class=nx>outChannel</span><span class=p>,</span> <span class=nx>done</span> <span class=o>:=</span> <span class=nb>make</span><span class=p>(</span><span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>),</span> <span class=nb>make</span><span class=p>(</span><span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>),</span> <span class=nb>make</span><span class=p>(</span><span class=kd>chan</span> <span class=kt>bool</span><span class=p>)</span>
+		<span class=nx>p</span> <span class=o>:=</span> <span class=nx>os</span><span class=p>.</span><span class=nx>Args</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span>
+		<span class=k>go</span> <span class=nf>readFile</span><span class=p>(</span><span class=nx>p</span><span class=p>,</span> <span class=nx>decodeChannel</span><span class=p>)</span>
+
+		<span class=k>switch</span> <span class=nx>path</span><span class=p>.</span><span class=nf>Ext</span><span class=p>(</span><span class=nx>p</span><span class=p>)</span> <span class=p>{</span>
+		<span class=k>case</span> <span class=s>&#34;.dat&#34;</span><span class=p>:</span>
+			<span class=k>go</span> <span class=nf>decodeDat</span><span class=p>(</span><span class=nx>decodeChannel</span><span class=p>,</span> <span class=nx>outChannel</span><span class=p>)</span>
+		<span class=k>case</span> <span class=s>&#34;.nt2&#34;</span><span class=p>:</span>
+			<span class=k>go</span> <span class=nf>decodeNt2</span><span class=p>(</span><span class=nx>decodeChannel</span><span class=p>,</span> <span class=nx>outChannel</span><span class=p>)</span>
+		<span class=k>default</span><span class=p>:</span>
+			<span class=nx>log</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=nx>path</span><span class=p>.</span><span class=nf>Ext</span><span class=p>(</span><span class=nx>p</span><span class=p>))</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=s>&#34;Input file should be .dat or .nt2 encrypted script!&#34;</span><span class=p>)</span>
+		<span class=p>}</span>
+
+		<span class=k>go</span> <span class=nf>writeFile</span><span class=p>(</span><span class=nx>path</span><span class=p>.</span><span class=nf>Base</span><span class=p>(</span><span class=nx>p</span><span class=p>)</span><span class=o>+</span><span class=s>&#34;.txt&#34;</span><span class=p>,</span> <span class=nx>outChannel</span><span class=p>,</span> <span class=nx>done</span><span class=p>)</span>
+		<span class=o>&lt;-</span><span class=nx>done</span>
+	<span class=p>}</span>
+<span class=p>}</span>
+
+<span class=kd>func</span> <span class=nf>readFile</span><span class=p>(</span><span class=nx>p</span> <span class=kt>string</span><span class=p>,</span> <span class=nx>outChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>)</span> <span class=p>{</span>
+	<span class=nx>file</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>os</span><span class=p>.</span><span class=nf>OpenFile</span><span class=p>(</span><span class=nx>p</span><span class=p>,</span> <span class=nx>os</span><span class=p>.</span><span class=nx>O_RDONLY</span><span class=p>,</span> <span class=mo>0644</span><span class=p>)</span>
+	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+		<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+	<span class=p>}</span>
+
+	<span class=nx>reader</span> <span class=o>:=</span> <span class=nx>bufio</span><span class=p>.</span><span class=nf>NewReader</span><span class=p>(</span><span class=nx>file</span><span class=p>)</span>
+	<span class=kd>var</span> <span class=nx>buf</span> <span class=p>=</span> <span class=nb>new</span><span class=p>([</span><span class=mi>1024000</span><span class=p>]</span><span class=kt>byte</span><span class=p>)</span>
+
+	<span class=k>for</span> <span class=p>{</span>
+		<span class=nx>n</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>reader</span><span class=p>.</span><span class=nf>Read</span><span class=p>(</span><span class=nx>buf</span><span class=p>[:])</span>
+
+		<span class=k>if</span> <span class=nx>n</span> <span class=o>==</span> <span class=mi>0</span> <span class=p>{</span>
+			<span class=k>break</span>
+		<span class=p>}</span>
+
+		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+		<span class=p>}</span>
+		<span class=nx>outChannel</span> <span class=o>&lt;-</span> <span class=nx>buf</span><span class=p>[:</span><span class=nx>n</span><span class=p>]</span>
+	<span class=p>}</span>
+
+	<span class=k>defer</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+		<span class=nb>close</span><span class=p>(</span><span class=nx>outChannel</span><span class=p>)</span>
+		<span class=nx>err</span> <span class=o>:=</span> <span class=nx>file</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span>
+		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+		<span class=p>}</span>
+	<span class=p>}()</span>
+<span class=p>}</span>
+
+<span class=kd>func</span> <span class=nf>writeFile</span><span class=p>(</span><span class=nx>p</span> <span class=kt>string</span><span class=p>,</span> <span class=nx>outChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>,</span> <span class=nx>done</span> <span class=kd>chan</span> <span class=kt>bool</span><span class=p>)</span> <span class=p>{</span>
+	<span class=nx>file</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>os</span><span class=p>.</span><span class=nf>OpenFile</span><span class=p>(</span><span class=nx>p</span><span class=p>,</span> <span class=nx>os</span><span class=p>.</span><span class=nx>O_WRONLY</span><span class=p>|</span><span class=nx>os</span><span class=p>.</span><span class=nx>O_TRUNC</span><span class=p>|</span><span class=nx>os</span><span class=p>.</span><span class=nx>O_CREATE</span><span class=p>,</span> <span class=mo>0644</span><span class=p>)</span>
+	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+		<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+	<span class=p>}</span>
+
+	<span class=nx>writer</span> <span class=o>:=</span> <span class=nx>bufio</span><span class=p>.</span><span class=nf>NewWriter</span><span class=p>(</span><span class=nx>file</span><span class=p>)</span>
+
+	<span class=k>for</span> <span class=p>{</span>
+		<span class=nx>buf</span><span class=p>,</span> <span class=nx>more</span> <span class=o>:=</span> <span class=o>&lt;-</span><span class=nx>outChannel</span>
+		<span class=k>if</span> <span class=p>!</span><span class=nx>more</span> <span class=p>{</span>
+			<span class=k>break</span>
+		<span class=p>}</span>
+
+		<span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>writer</span><span class=p>.</span><span class=nf>Write</span><span class=p>(</span><span class=nx>buf</span><span class=p>)</span>
+		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+		<span class=p>}</span>
+	<span class=p>}</span>
+
+	<span class=k>defer</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+		<span class=nx>err</span> <span class=o>:=</span> <span class=nx>writer</span><span class=p>.</span><span class=nf>Flush</span><span class=p>()</span>
+		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+		<span class=p>}</span>
+
+		<span class=nx>err</span> <span class=p>=</span> <span class=nx>file</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span>
+		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+			<span class=nb>panic</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+		<span class=p>}</span>
+
+		<span class=nx>done</span> <span class=o>&lt;-</span> <span class=kc>true</span>
+	<span class=p>}()</span>
+<span class=p>}</span>
+
+<span class=kd>func</span> <span class=nf>decodeDat</span><span class=p>(</span><span class=nx>inChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>,</span> <span class=nx>outChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>)</span> <span class=p>{</span>
+	<span class=k>for</span> <span class=p>{</span>
+		<span class=nx>buf</span><span class=p>,</span> <span class=nx>more</span> <span class=o>:=</span> <span class=o>&lt;-</span><span class=nx>inChannel</span>
+		<span class=k>if</span> <span class=p>!</span><span class=nx>more</span> <span class=p>{</span>
+			<span class=k>break</span>
+		<span class=p>}</span>
+
+		<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nb>len</span><span class=p>(</span><span class=nx>buf</span><span class=p>);</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+			<span class=nx>buf</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>^=</span> <span class=mh>0x84</span>
+		<span class=p>}</span>
+		<span class=nx>outChannel</span> <span class=o>&lt;-</span> <span class=nx>buf</span>
+	<span class=p>}</span>
+
+	<span class=k>defer</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+		<span class=nb>close</span><span class=p>(</span><span class=nx>outChannel</span><span class=p>)</span>
+	<span class=p>}()</span>
+<span class=p>}</span>
+
+<span class=kd>func</span> <span class=nf>decodeNt2</span><span class=p>(</span><span class=nx>inChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>,</span> <span class=nx>outChannel</span> <span class=kd>chan</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>)</span> <span class=p>{</span>
+	<span class=k>for</span> <span class=p>{</span>
+		<span class=nx>buf</span><span class=p>,</span> <span class=nx>more</span> <span class=o>:=</span> <span class=o>&lt;-</span><span class=nx>inChannel</span>
+		<span class=k>if</span> <span class=p>!</span><span class=nx>more</span> <span class=p>{</span>
+			<span class=k>break</span>
+		<span class=p>}</span>
+
+		<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nb>len</span><span class=p>(</span><span class=nx>buf</span><span class=p>);</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+			<span class=nx>buf</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>=</span> <span class=p>(</span><span class=nx>buf</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>^</span> <span class=p>(</span><span class=mh>0x85</span> <span class=o>&amp;</span> <span class=mh>0x97</span><span class=p>))</span> <span class=o>-</span> <span class=mi>1</span>
+		<span class=p>}</span>
+		<span class=nx>outChannel</span> <span class=o>&lt;-</span> <span class=nx>buf</span>
+	<span class=p>}</span>
+
+	<span class=k>defer</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+		<span class=nb>close</span><span class=p>(</span><span class=nx>outChannel</span><span class=p>)</span>
+	<span class=p>}()</span>
+<span class=p>}</span>
+</code></pre></div>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/tags/golang/>golang</a>
+<a href=/tags/ons/>ons</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/p/%E9%9D%A2%E8%AF%95%E9%A2%98%E4%B9%8B-goroutine-%E8%BF%90%E8%A1%8C%E9%A1%BA%E5%BA%8F/>
+<div class=article-details>
+<h2 class=article-title>面试题之 goroutine 运行顺序</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/p/go-%E7%9A%84-defer-%E8%AF%AD%E5%8F%A5/>
+<div class=article-details>
+<h2 class=article-title>go 的 defer 语句</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/>
+<div class=article-details>
+<h2 class=article-title>从零实现一个容器</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 weakptr's 笔记
+</section>
+<section class=powerby>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.1.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#intro>Intro</a></li>
+<li><a href=#算法>算法</a></li>
+<li><a href=#异步读文件>异步读文件</a></li>
+<li><a href=#异步写文件>异步写文件</a></li>
+<li><a href=#异步解密>异步解密</a></li>
+<li><a href=#调度>调度</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>

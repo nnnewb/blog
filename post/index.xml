@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on weakptr's 笔记</title><link>https://uniqptr.gitee.io/post/</link><description>Recent content in Posts on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 04 Aug 2021 10:37:24 +0000</lastBuildDate><atom:link href="https://uniqptr.gitee.io/post/index.xml" rel="self" type="application/rss+xml"/><item><title>面试题之 goroutine 运行顺序</title><link>https://uniqptr.gitee.io/p/%E9%9D%A2%E8%AF%95%E9%A2%98%E4%B9%8B-goroutine-%E8%BF%90%E8%A1%8C%E9%A1%BA%E5%BA%8F/</link><pubDate>Wed, 04 Aug 2021 10:37:24 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E9%9D%A2%E8%AF%95%E9%A2%98%E4%B9%8B-goroutine-%E8%BF%90%E8%A1%8C%E9%A1%BA%E5%BA%8F/</guid><description>不是我做的沙雕面试题，在 segmentfault 上看到的。
+原题 package main import ( &amp;#34;fmt&amp;#34; &amp;#34;runtime&amp;#34; &amp;#34;sync&amp;#34; ) func main() { runtime.GOMAXPROCS(1) wg := sync.WaitGroup{} wg.Add(10) for i := 0; i &amp;lt; 5; i++ { go func() { fmt.Println(&amp;#34;A:&amp;#34;, i) wg.Done() }() } for i := 0; i &amp;lt; 5; i++ { go func(num int) { fmt.Println(&amp;#34;B:&amp;#34;, num) wg.Done() }(i) } wg.Wait() } 问：代码输出结果是什么？
+胡乱分析 第一眼进去看到 runtime.GOMAXPROCS(1) ，初步怀疑是又在考什么 GMP 面试题了。
+但凡说到 Go 面试好像就一定要考一下 goroutine 调度和 GMP 模型，招进来又只让你写 curd 。搞得面试跟考试背书一样。</description></item><item><title>用 tree-sitter 写一个代码高亮</title><link>https://uniqptr.gitee.io/p/%E7%94%A8-tree-sitter-%E5%86%99%E4%B8%80%E4%B8%AA%E4%BB%A3%E7%A0%81%E9%AB%98%E4%BA%AE/</link><pubDate>Tue, 03 Aug 2021 15:52:21 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E7%94%A8-tree-sitter-%E5%86%99%E4%B8%80%E4%B8%AA%E4%BB%A3%E7%A0%81%E9%AB%98%E4%BA%AE/</guid><description>这次用 tree-sitter 写一个简单的代码高亮。
+前言 我寻思代码高亮是什么应该没啥可解释的，也有叫“语法高亮”，总之都是一个意思。就是给编辑器里的代码涂上颜色，便于阅读。
+一般来说，简单的代码高亮只需要正则表达式就能搞定（比如说关键字高亮，Camel Case 标识符高亮等），不过正则表达式来实现高亮还是有很大的局限性。
+举例来说，当我把函数当参数传给另一个函数的时候——
+function f() {} function higher(fn) { return () =&amp;gt; fn() != 0; } higher(f); 在 higher(f) 这一行中的 f 不会以函数名的颜色标出。这就引出了一种新基于语义的代码高亮，让编辑器真正“认识”你的代码，并提供更聪明的提示。
+开始 还是在 vscode 折腾。
+先创建一个 vscode 插件项目，用 yo code 完成。
+然后编辑 package.json ，添加你的语言和插件的激活事件。
+{ &amp;#34;activationEvents&amp;#34;: [&amp;#34;onLanguage:proto&amp;#34;], &amp;#34;contributes&amp;#34;: { &amp;#34;languages&amp;#34;: [ { &amp;#34;id&amp;#34;: &amp;#34;proto&amp;#34;, &amp;#34;extensions&amp;#34;: [&amp;#34;.proto&amp;#34;] } ] } } 然后修改 src/extension.ts，去掉默认创建的 hello world 代码，留一个 console.log，然后 F5 启动，打开一个 .proto 文件，检查插件是否已经激活。
+// The module &amp;#39;vscode&amp;#39; contains the VS Code extensibility API // Import the module and reference it with the alias vscode in your code below import * as vscode from &amp;#34;vscode&amp;#34;; // this method is called when your extension is activated // your extension is activated the very first time the command is executed export function activate(context: vscode.</description></item><item><title>玩玩 tree-sitter</title><link>https://uniqptr.gitee.io/p/%E7%8E%A9%E7%8E%A9-tree-sitter/</link><pubDate>Thu, 29 Jul 2021 10:14:36 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E7%8E%A9%E7%8E%A9-tree-sitter/</guid><description>什么是tree-sitter呢？
+tree-sitter 是一个 parser-generator，也是一个增量解析库（incremental parsing library）。它可以为源文件构建完整的语法树，并在源文件被编辑时高效地更新。
+快速开始 tree-sitter 本身是一个 parser generator ，使用 javascript 来作为描述语法规则的语言（不像其他，如 yacc 一类的工具，以类似 EBNF 的 DSL 来描述语法规则）。
+我们写 tree-sitter 语法规则本质上是类似于写一个 tree-sitter 的语法支持包，可以参考下 tree-sitter/tree-sitter-go: Go grammar for tree-sitter (github.com) 的项目结构。
+废话不多说，先写个简单的 demo 跑起来。
+mkdir tree-sitter-hello &amp;amp;&amp;amp; cd tree-sitter-hello npm init npm i --save nan npm i --save-dev tree-sitter-cli 初始化好项目目录，在 package.json 里写个简单的命令，方便之后用。
+{ &amp;#34;scripts&amp;#34;:{ &amp;#34;test&amp;#34;: &amp;#34;tree-sitter generate &amp;amp;&amp;amp; tree-sitter parse test.txt&amp;#34; } } 现在开始干正事儿，创建一个 grammar.js
+module.exports = grammar({ name: &amp;#39;hello&amp;#39;, rules: { source_file: $ =&amp;gt; repeat($.</description></item><item><title>csr 方式创建 kubernetes 用户出了点差错</title><link>https://uniqptr.gitee.io/p/csr-%E6%96%B9%E5%BC%8F%E5%88%9B%E5%BB%BA-kubernetes-%E7%94%A8%E6%88%B7%E5%87%BA%E4%BA%86%E7%82%B9%E5%B7%AE%E9%94%99/</link><pubDate>Mon, 19 Jul 2021 09:52:38 +0000</pubDate><guid>https://uniqptr.gitee.io/p/csr-%E6%96%B9%E5%BC%8F%E5%88%9B%E5%BB%BA-kubernetes-%E7%94%A8%E6%88%B7%E5%87%BA%E4%BA%86%E7%82%B9%E5%B7%AE%E9%94%99/</guid><description>越是在 kubernetes 的浑水里摸索，越是发现这就是个不顺手的锤子。
+网上很多人喜欢把东西用不惯叫做懒，蠢，要是多反驳几句，那就还得搭上个“坏”的帽子。感觉吧，就这帮人看来，大神放个屁也值得学习，从里面“悟”出什么道理。
+这帮人就跟传教士一样，但凡说个不字，就是在亵渎他们的“大神”。可谓人类迷惑行为。
+好吧。技术别饭圈化行吗？
+你说尤大强吗？Richard Stallman 是不是值得尊敬？Google 是不是最好的技术公司？Android 天下无敌？
+然后全摆上神坛，挂上赛博天神的牌匾，插上网线一天 25 小时膜拜？
+这帮人哪天搞个崇拜互联网和计算机的教派，把冯·诺依曼奉为先知我都不奇怪。
+拜托，你们真的好怪欸。
+完整脚本 #!/bin/bash -e # # 创建用户 gitlab 并授予权限 # # reference: # https://kubernetes.io/zh/docs/reference/access-authn-authz/certificate-signing-requests/#normal-user # if `gitlab` does not exists, # create csr and approve if ! kubectl get csr gitlab &amp;gt;/dev/null; then # create credential if [ ! -f gitlab.csr ]; then openssl genrsa -out gitlab.key 2048 openssl req -new -key gitlab.key -out gitlab.csr fi csr=$(cat gitlab.</description></item><item><title>升级公司的 GitLab</title><link>https://uniqptr.gitee.io/p/%E5%8D%87%E7%BA%A7%E5%85%AC%E5%8F%B8%E7%9A%84-gitlab/</link><pubDate>Thu, 15 Jul 2021 16:02:41 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E5%8D%87%E7%BA%A7%E5%85%AC%E5%8F%B8%E7%9A%84-gitlab/</guid><description>公司目前跑的 gitlab 是很久以前部署的，当前版本 8.4.2 。升级目标是 13.12.Z 。部署方式是 docker 。
+宿主机配置不高，系统 Ubuntu 15.04 。眼下这个时间，这个Ubuntu版本，基本宣告没法用了。直接在线升级容易把引导搞挂，到时候还得亲自去实体机上折腾引导，麻烦。暂时不管宿主机。
+情况概述 因为 GitLab 版本实在太低了，以至于连一个能集成的 CI/CD 工具都找不到。即使 jenkins 都只能很勉强地动起来，偏偏 jenkins 还不能满足需要（也可能是我太菜，反正公司没人玩得转 jenkins）。
+但开发需要 CI/CD 来解决持续构建和部署的问题，不得不考虑升级了。
+1. 备份 什么都别说了，开干前最重要的事情就是备份，免得把自己玩死。
+最常用的备份手段自然是 tar 。不过 gitlab 数据目录实在太大了，要是直接运行 tar -czpf gitlab.tar.gz ./gitlab 不知道跑多久，也不知道有没有卡死。
+于是上技术手段：用 pv 显示个进度条。
+pv 项目的首页在 ivarch.com。因为服务器还在跑ubuntu 15.10，现在连个能用的源都没啦。只好下载了源码，在 wsl 里编译好推上去。
+最终命令如下。
+sudo tar cf - ./gitlab -P | pv -s $(sudo du -sb ./gitlab | awk &amp;#39;{print $1}&amp;#39;) | gzip &amp;gt; gitlab.</description></item><item><title>MySQL XA 事务和分布式事务处理模型：2阶段提交</title><link>https://uniqptr.gitee.io/p/mysql-xa-%E4%BA%8B%E5%8A%A1%E5%92%8C%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E6%A8%A1%E5%9E%8B2%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4/</link><pubDate>Fri, 09 Jul 2021 09:29:22 +0000</pubDate><guid>https://uniqptr.gitee.io/p/mysql-xa-%E4%BA%8B%E5%8A%A1%E5%92%8C%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E6%A8%A1%E5%9E%8B2%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4/</guid><description>关于 MySQL XA 事务和 2PC（两阶段提交）分布式事务处理模型（Distributed Transaction Processing, DTP Model）的学习笔记。
+事务 分布式事务XA 介绍 MySQL内建分布式事务支持（XA），参考文档列出如下
+[MySQL Manual - XA](MySQL :: MySQL 8.0 Reference Manual :: MySQL Glossary) [MySQL Manual - XA Transaction](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8 XA Transactions) [MySQL Manual - XA Transaction Statements](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.1 XA Transaction SQL Statements) [MySQL Manual - XA Transaction State](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.2 XA Transaction States) XA 事务在 InnoDB 引擎中可用。MySQL XA 事务实现基于 X/Open CAE 文档 《Distributed Transaction Processing: The XA Specification》。这份文档由 Open Group 发布，可以在 http://www.</description></item><item><title>不常用的 Git 命令</title><link>https://uniqptr.gitee.io/p/%E4%B8%8D%E5%B8%B8%E7%94%A8%E7%9A%84-git-%E5%91%BD%E4%BB%A4/</link><pubDate>Fri, 09 Jul 2021 09:25:16 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E4%B8%8D%E5%B8%B8%E7%94%A8%E7%9A%84-git-%E5%91%BD%E4%BB%A4/</guid><description>大概是不太常用的一些 Git 命令。
+找回数据 两种办法：
+git reflog show git reset --hard HEAD@{1} # 从上一步找到希望回退的位置 或者
+git fsck --lost-found cd .git/lost-found/ # 用 git show hash 查看悬空对象的内容 # 用 git merge hash 或者 git rebase hash 来恢复到当前分支里 合并分支时创建合并commit git config branch.master.mergeoptions &amp;#34;--no-ff&amp;#34; 删除远程分支 git push --delete origin branch 删除已经合并的分支 参考
+删除已合并的本地分支 git branch --merged \ | grep -E &amp;#34;^\\s+(patch|feat|refactor|test|misc)&amp;#34; \ | xargs -I{} git branch -d {} 删除已合并的远程分支 git branch -r --merged \ | grep -E &amp;#34;^\\s+origin/(patch|feat|refactor|test|misc)&amp;#34; \ | sed &amp;#39;s/origin\///&amp;#39; \ | xargs -I{} echo git push --delete origin {}</description></item><item><title>2021-04-25 无事发生</title><link>https://uniqptr.gitee.io/p/2021-04-25-%E6%97%A0%E4%BA%8B%E5%8F%91%E7%94%9F/</link><pubDate>Sun, 25 Apr 2021 10:40:30 +0000</pubDate><guid>https://uniqptr.gitee.io/p/2021-04-25-%E6%97%A0%E4%BA%8B%E5%8F%91%E7%94%9F/</guid><description>4月25日好像也不是什么节日，对我个人来说也没有什么特殊意义。仅仅是普通的一天——如果不算五一调休导致今天明明是周日但还要上班这一点的话。
+想想也挺不可思议的，不知不觉已经到2021年这个在不少科学幻想中的“未来”时代了，光算工作年限，我也干了有四五年的程序了吧。
+从最开始抱着“不写代码还能干啥”到“写代码也挺不错的”，再到现在，“还能写几年代码呢”。
+反思一下这几年，几乎没干出什么成绩，工作一年一换，工作几年下来，也没几个认识、熟悉到可以称之为“朋友”的人。倒不是我孤僻（这么说的人一般都确实孤僻吧），主要是确实没什么主观能动性。
+如今这家公司写写 go，折腾折腾 kubernetes，也算清闲，反倒开始忧心起将来了。
+现在的工作，说好，也就那样。说不好，这个大环境下，但凡没失业，我觉得都算不上不好吧。
+又是疫情，又是新冷战，又是各种各样的奇葩事。当笑话看，看久了也笑不出来了。
+我这人爱看小说，以前也是动画漫画来者不拒，特效大片就饭，总之蛮快乐的。过去还写过同人小说，可惜没得家里支持，最后也就是40万字左右就切了。
+不过起码这段经历算是给我找第一份码农工作加了点助力（大概）。自从开始写代码拿工资，好像写小说这回事就和我没什么关系了的样子。
+不过我还是一直想写的，几乎每次换工作，心里想的都是空闲的时间多了，就会用来做点有意义的事情。比如学学钢琴啊（买了电钢琴吃灰中），比如写写小说啊（也就开了个头），比如学点新技术啊（有倒是有，新工作新技术栈），总之就是自我提升下。
+结果当然是没有的。
+好像从前读书的时候捧着本 C Primer Plus/C++ Primer 看的激情已经完全从身体里消失了一样。不管是什么事情，虽然总是想到，啊，这个想要，那个想要。但一到行动，就完全没了动力。“做了也没用”，“学了也是浪费时间”这种想法就从脑子里冒出来了。
+不能说和家庭完全没关系——但把责任都推给父母、老师，大概也不合适。
+我是相信环境会改变人的，当然人也能发挥主观能动性，改造环境。像是叶子随波逐流进了下水道，不能说是水有错，也不能怪叶子没有奋力闪躲，秋风更是无辜。于是环视四周，最后悲哀地发现只能感叹一句命运无常。
+诸如未来可以改变之类的鸡汤喝了又喝，脑子也有了抗性，不切实际的期待也越来越少，然后发现即使是切实可行的期待也开始落向不切实际的一侧。
+那便不想未来了吧。俗话说，“把握当下”。于是便来上班，对着屏幕，无事可做，等待 call of work。
+那便是这样了吧。
+2021年4月25日，无事发生。</description></item><item><title>pattern-match-in-python310</title><link>https://uniqptr.gitee.io/p/pattern-match-in-python310/</link><pubDate>Fri, 19 Mar 2021 10:19:06 +0000</pubDate><guid>https://uniqptr.gitee.io/p/pattern-match-in-python310/</guid><description>说明 简单机翻润色一下 PEP-636
+概要 这个PEP是PEP 634引入的模式匹配教程。
+PEP 622提出了模式匹配的语法，社区和指导委员会对此进行了详细讨论。一个常见的问题是解释(和学习)这个特性是否容易。这个PEP关注的是提供开发人员可以用来学习Python中的模式匹配的文档类型。
+PEP 636 被认为是PEP 634(模式匹配的技术规范)和PEP 635(模式匹配的添加动机和理由与设计考虑)的支持材料。
+对于想要快速回顾而不是教程的读者，请参阅附录a。
+教程 作为本教程的一个例子，你将编写一个文本冒险游戏。这是一种互动小说形式，用户输入文本命令与虚构世界进行互动，并接收关于所发生事情的文本描述。命令将是简化形式的自然语言，如get sword，attack dragon，go north，enter shop或but cheese。
+匹配序列 你的主循环将需要从用户那里获取输入，并将它分割成单词，例如一个像这样的字符串列表:
+command = input(&amp;#34;What are you doing next? &amp;#34;) # analyze the result of command.split() 下一步是解读这些单词。我们的大多数命令都有两个词:一个动作和一个对象。所以你可能会忍不住这样做:
+[action, obj] = command.split() ... # interpret action, obj 这行代码的问题在于它遗漏了一些东西：如果用户输入的单词多于或少于2个单词怎么办?为了防止这个问题，您可以检查单词列表的长度，或者捕获上面的语句将引发的ValueError。
+或者，你可以使用match语句来代替:
+match command.split(): case [action, obj]: ... # interpret action, obj match语句计算**“subject”**(match关键字后面的值)，并根据模式(case旁边的代码)检查它。一个模式可以做两件不同的事情:
+验证 subject 具有一定的结构。在您的示例中，[action, obj]模式匹配任何恰好包含两个元素的序列。这叫做 maching。 它将模式中的一些名称绑定到 subject 的组件元素。在本例中，如果列表有两个元素，它将绑定action = subject[0]和obj = subject[1]。 如果匹配，则case块内的语句将与绑定的变量一起执行。如果没有匹配，则什么也不发生，然后执行match之后的语句。</description></item><item><title>go 的 defer 语句</title><link>https://uniqptr.gitee.io/p/go-%E7%9A%84-defer-%E8%AF%AD%E5%8F%A5/</link><pubDate>Tue, 05 Jan 2021 10:01:48 +0000</pubDate><guid>https://uniqptr.gitee.io/p/go-%E7%9A%84-defer-%E8%AF%AD%E5%8F%A5/</guid><description>昨天对项目做了个小重构，主要是对以前手写的 stmt.Close 没处理返回值的问题、还有各种该记录日志的地方没记日志等等，做了下处理。
+老实说这事儿做着做着还有种奇妙的快感，类似于看高压水枪清污视频的感觉。哈哈，也亏领导不管事，代码也不 Review ，测试=摆设。
+这不一上班就发现好多问题，幸好只推送到内网。
+笑中带泪.gif
+0x01 问题描述 问题倒是挺简单的，看下面的代码。
+stmt := db.Prepare(query) defer SilentLogError(stmt.Close(), &amp;#34;stmt close failed&amp;#34;) row := stmt.QueryRow(params...) defer row.Close() if err = row.Scan(vars...); err != nil { return nil, err } return vars, nil 那么，请问上面的代码有什么问题呢？
+标题都说了 defer 了，那问题肯定是出在 defer 这一行上。
+0x02 defer 的求值 简单的结论就是: defer f() 的参数在 defer 这一行求值
+具体到上面的例子，defer f(i()) 这样的形式，可以先分成三个部分。
+defer 本身的执行时机 i() 的求值时机 f() 的求值时机 把这三部分排一下序:
+i() defer defer 把参数求值后包装成一个新函数延迟执行</description></item><item><title>在 slackware 上安装 neovim</title><link>https://uniqptr.gitee.io/p/%E5%9C%A8-slackware-%E4%B8%8A%E5%AE%89%E8%A3%85-neovim/</link><pubDate>Mon, 04 Jan 2021 15:00:20 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E5%9C%A8-slackware-%E4%B8%8A%E5%AE%89%E8%A3%85-neovim/</guid><description>最近在虚拟机里折腾 slackware ，发现 slackware 14.2 的 vim 版本还停留在 7.4 ，于是考虑还是装个 neovim 算了。毕竟升级 vim8 还得自己写 SlackBuild，万一和原本的 vim 7.4 冲突就更头疼了。
+0x01 确定依赖 到处翻 slackbuild 之间依赖关系的时候发现 sbopkg 提供了一个解决依赖的脚本，sqg。
+于是简单点，拿 sqg -p neovim 生成 neovim 的安装队列 neovim.sqf 文件。
+sqg 和 sbopkg 一起提供了，所以不用另外安装。
+0x02 安装 一条命令：sudo sbopkg -i neovim.sqf
+然后等完成吧。
+0x03 可选依赖 上述步骤完成后还只是装好基本的 neovim ，但 python2/python3/ruby/nodejs 支持都是没有的。
+打开 nvim，输入命令 :checkhealth 后会显示缺少支持，同时也提供了解决办法：pip install pynvim。
+然后就是另一个坑：pip 也不在默认的 python2 包里。于是为了解决这个问题，还得先装上 pip : sudo sbopkg -i python-pip
+然后执行 sudo pip install pynvim，此时 python2 支持已经装好。</description></item><item><title>slackware 和虚拟机基本配置</title><link>https://uniqptr.gitee.io/p/slackware-%E5%92%8C%E8%99%9A%E6%8B%9F%E6%9C%BA%E5%9F%BA%E6%9C%AC%E9%85%8D%E7%BD%AE/</link><pubDate>Wed, 30 Dec 2020 11:11:56 +0000</pubDate><guid>https://uniqptr.gitee.io/p/slackware-%E5%92%8C%E8%99%9A%E6%8B%9F%E6%9C%BA%E5%9F%BA%E6%9C%AC%E9%85%8D%E7%BD%AE/</guid><description>slackware 是一个非常有极客味的 Linux 发行版，因为官方维护的包不多，基本靠 slackbuilds 续命。
+slackware 的一个特色是包管理系统不处理依赖关系，这一点劝退不少人。
+实际上，虽然我不是很赞同 这个观点 ，不过并不妨碍 slackware 成为可玩性相对高的 Linux 发行版之一（另外几个可玩性不错的发行版包括 Arch Linux 和 Gentoo）。
+这篇博文实际上就是安利下 slackware 并且简要介绍下怎么在虚拟机里搭建个基本环境来体验游玩。
+0x01 安装 安装的参考文档太多了，个人认为主要的难点在分区和引导。毕竟不像其他更流行的发行版的 GUI 安装引导，对 fdisk 和 parted 这些工具不熟悉、对操作系统引导启动的一些基本概念、原理不了解的人很容易犯下错误而不自知。
+这里提供一篇之前在贴吧写的 安装教程 ，不做赘述了。
+0x02 桌面 对习惯了装完就有桌面的用户来说，安装完 slackware 之后遇到的第一个问题就是怎么进入桌面——甚至会问怎么登陆。
+这里就挂一张 gif 好了。
+{% asset_img 01.gif %}
+假设没手贱在安装的时候把 x/kde/xfce 之类的软件包组给去掉的话，就不会有什么问题。
+如果需要自动进入桌面，需要手动修改 /etc/inittab 文件，把默认的 runlevel 修改为 4 。
+具体怎么改，看 gif 。
+{% asset_img 02.gif %}
+0x03 slackpkg 包管理 如果用过 ubuntu ，那么下一个问题可能就是 &amp;ldquo;怎么没有 apt-get 命令？&amp;rdquo; 或者 &amp;ldquo;slackware 用什么命令安装软件？&amp;rdquo;</description></item><item><title>一个安卓应用的逆向分析</title><link>https://uniqptr.gitee.io/p/%E4%B8%80%E4%B8%AA%E5%AE%89%E5%8D%93%E5%BA%94%E7%94%A8%E7%9A%84%E9%80%86%E5%90%91%E5%88%86%E6%9E%90/</link><pubDate>Tue, 29 Dec 2020 14:04:02 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E4%B8%80%E4%B8%AA%E5%AE%89%E5%8D%93%E5%BA%94%E7%94%A8%E7%9A%84%E9%80%86%E5%90%91%E5%88%86%E6%9E%90/</guid><description>说起来也不算什么新鲜的东西，现成的工具拼拼凑凑就搞定了，单纯算是点亮了新的技能。
+待破解应用的名字不透露了，避免引火烧身。
+需要准备的工具包括
+mumu 模拟器(或者别的什么有 root 权限、能装 xposed 的模拟器) FDex2 脱壳 jadx 反编译 dex 源码 apktools 拆解 apk mitmproxy 中间人拦截网络请求 0x01 目标和方向选择 首要的目标是破解这个软件的 api 加密。
+使用 mitmproxy 抓到 https 流量，发现请求体全部是 base64 ，解码发现乱码。基本断定是加密了。
+mitmproxy 怎么抓 https 流量不多说了，基本流程就是装证书，然后配置代理。能看到有流量进 mitmproxy 就算成功了。
+直接参考 mitmproxy 的文档快一点。
+{% asset_img 01.png encrypted %}
+搜了一圈没有什么现成的对这个 App 的破解的文章，于是决定自己动手。
+0x02 解包和脱壳 先确认下电脑上装了 JDK 或者 JRE ，没有的话就装好。
+推荐一个 vscode 的插件，apklab。会帮你装好 jadx 和 apktools / signer 这些工具。
+接下来直接用 apklab 打开需要破解的 apk 文件。</description></item><item><title>Flask源码阅读笔记：WSGI</title><link>https://uniqptr.gitee.io/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/</link><pubDate>Sun, 17 Mar 2019 00:00:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/</guid><description>0. Intro Flask 是一个基于 WSGI 协议的上层应用框架，据我了解应该是和 Tornado、Django 流行程度相近，当然 Django 老大哥始终占据了最多的份额。Flask 是一个轻量级的 Micro Framework，源码值得一读。
+1. 回顾 WSGI 开始之前，需要先回顾以下 WSGI 协议。
+WSGI 是一个针对 Python 的协议，故说到的 App、Server、函数、参数等描述都是指 Python 对应的概念或实现。
+1.1 PEP-0333 到 PEP-3333 PEP-0333 是初版的 WSGI 协议提案，PEP-3333 是 1.0.1 版本的 WSGI 提案，差别不大，主要是对 py3 和 py2 不兼容的部分作了更新说明（str和unicode方面的问题，python2 的 str 在 python3 是 bytes，故 python3 编写的 wsgi app 必须返回 bytes）。
+WSGI 协议规范了 Python Web 应用的两个层级：服务器层（Server）和应用层（Application），两者通过 WSGI 协议进行通信。
+其中 Server 负责处理请求，将请求转换成符合 WSGI 要求的模式（environ参数）。 Application 完成处理后再通知 Server 返回 Response（start_response参数）。</description></item><item><title>Django 的各种关系字段详解</title><link>https://uniqptr.gitee.io/p/django-%E7%9A%84%E5%90%84%E7%A7%8D%E5%85%B3%E7%B3%BB%E5%AD%97%E6%AE%B5%E8%AF%A6%E8%A7%A3/</link><pubDate>Wed, 06 Mar 2019 21:11:35 +0000</pubDate><guid>https://uniqptr.gitee.io/p/django-%E7%9A%84%E5%90%84%E7%A7%8D%E5%85%B3%E7%B3%BB%E5%AD%97%E6%AE%B5%E8%AF%A6%E8%A7%A3/</guid><description>参考资料如下
+Django 文档 - Model field reference SQLAlchemy 中的级联删除 1. ForeignKey ForeignKey用于多对一关系，直接对应到数据库外键的概念。使用ForeignKey需要指定引用的目标表，会自动关联到目标表的主键（一般是id字段）。
+例子如下。
+from django.db import models class Child(models.Model): parent = models.ForeignKey(&amp;#39;Parent&amp;#39;, on_delete=models.CASCADE, ) # ... class Parent(models.Model): # ... pass 对比之 sqlalchemy，一行parent=models.ForeignKey(...)包含了 sqlalchemy 中的ForeignKey和relationship两部分内容。
+1.1 参数：on_delete on_delete意为当ForeignKey引用的对象被删除时进行的操作。
+有几个可以考虑的选项。
+1.1.1 models.CASCADE CASCADE意为级联，on_delete设置为CASCADE时意为执行级联删除。依据文档，Django 会模仿 SQL 的ON DELETE CASCADE，对包含了ForeignKey的对象执行删除。
+需要注意的是不会调用被级联删除对象上的model.delete()，但是会发送pre_delete和post_delete信号。
+1.1.1.2 models.PROTECT PROTECT意为保护，on_delete设置为PROTECT意味着要阻止删除操作发生。删除关联的对象时，ForeignKey的on_delete设置为PROTECT会触发ProtectedError。
+1.1.1.3 models.SET_NULL 如其名所述，如果这个ForeignKey是 nullable 的，则关联的对象删除时将外键设置为 null。
+1.1.1.4 models.SET_DEFAULT 如其名所述，如果这个ForeignKey设置了DEFAULT，则关联的对象删除时设置这个外键为DEFAULT值。
+1.1.1.5 models.SET 在关联的对象删除时，设置为一个指定的值。这个参数可以接受一个可以赋值给这个 ForeignKey 的对象或者一个可调用对象。
+官方例子如下。</description></item><item><title>轻量级 django 阅读笔记：最小的 django 应用</title><link>https://uniqptr.gitee.io/p/%E8%BD%BB%E9%87%8F%E7%BA%A7-django-%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0%E6%9C%80%E5%B0%8F%E7%9A%84-django-%E5%BA%94%E7%94%A8/</link><pubDate>Sun, 03 Mar 2019 12:26:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E8%BD%BB%E9%87%8F%E7%BA%A7-django-%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0%E6%9C%80%E5%B0%8F%E7%9A%84-django-%E5%BA%94%E7%94%A8/</guid><description>Intro 找不到工作十分难受，在家看书，恰巧翻到这本《轻量级 Django》，看起来还蛮有意思的，做个读书笔记。
+1. 最小的 Django App Django 是个重量级框架，所谓最小指的是写最少的代码，理解一个 Django App 的最小组成元素。
+作为开场，先创建一个 app.py 文件，作为整个 Django App 存储的地方。
+1.1 django.conf.settings 书中使用 django.core.management.execute_from_command_line 作为启动 Django app 的手段。
+execute_from_command_line，就是通过 django startproject的方式创建的manage.py内的主要内容，这种方式启动必须要配置settings才行。
+在一个常规方式创建的 Django App 中，settings.py是一个独立的 python 模块，Django通过DJANGO_SETTINGS_MODULE这个环境变量来确定配置信息存储位置。
+但是换一种方式，django.conf.settings.configure()可以手动完成配置。
+看代码。
+from django.conf import settings settings.configure(DEBUG=True, ROOT_URLCONF=__name__, ) 每一个 keyword argument 都和 settings.py这个模块内的名字相同，去除所有不必要的元素之后，剩下的就是DEBUG和ROOT_URLCONF了。
+阅读源码可知configure只能被调用一次。
+# 摘自 django.conf.settings.configure 源码 # Django 版本号: # VERSION = (2, 1, 7, &amp;#39;final&amp;#39;, 0) def configure(self, default_settings=global_settings, **options): &amp;#34;&amp;#34;&amp;#34; Called to manually configure the settings.</description></item><item><title>sqlalchemy 各种表关系</title><link>https://uniqptr.gitee.io/p/sqlalchemy-%E5%90%84%E7%A7%8D%E8%A1%A8%E5%85%B3%E7%B3%BB/</link><pubDate>Fri, 01 Mar 2019 15:52:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/sqlalchemy-%E5%90%84%E7%A7%8D%E8%A1%A8%E5%85%B3%E7%B3%BB/</guid><description>注意事项 ForeignKey db.ForeginKey的参数是&amp;lt;表名&amp;gt;.&amp;lt;键名&amp;gt;，而不是&amp;lt;类名&amp;gt;.&amp;lt;字段名&amp;gt;，务必注意这个区别。
+back_populates 和 backref 在多对多关系中使用的区别 back_populates是更推荐的写法。
+多对多关系中使用backref并指定了secondary的话，另一张表关联的relationship字段会使用相同的secondary。
+back_populates则需要在两张表的relationship中都写上相同的secondary中间表。
+可调用的 secondary secondary参数可以是一个可调用对象，做一些 trick 的时候应该有用。姑且记下。
+一对多关系 class Parent(Base): __tablename__ = &amp;#39;parent&amp;#39; id = Column(Integer, primary_key=True) child = relationship(&amp;#34;Child&amp;#34;, back_populates=&amp;#34;parent&amp;#34;) class Child(Base): __tablename__ = &amp;#39;child&amp;#39; id = Column(Integer, primary_key=True) parent_id = Column(Integer, ForeignKey(&amp;#39;parent.id&amp;#39;)) parent = relationship(&amp;#34;Parent&amp;#34;, back_populates=&amp;#34;child&amp;#34;) parent包含多个child的一对多关系。child里写ForeignKey为parent的主键，child里写relationship，parent里同样写relationship，back_populates填充上，完事。
+一对一关系 class Parent(Base): __tablename__ = &amp;#39;parent&amp;#39; id = Column(Integer, primary_key=True) child = relationship(&amp;#34;Child&amp;#34;, uselist=False, back_populates=&amp;#34;parent&amp;#34;) class Child(Base): __tablename__ = &amp;#39;child&amp;#39; id = Column(Integer, primary_key=True) parent_id = Column(Integer, ForeignKey(&amp;#39;parent.</description></item><item><title>python3元类深入解读</title><link>https://uniqptr.gitee.io/p/python3%E5%85%83%E7%B1%BB%E6%B7%B1%E5%85%A5%E8%A7%A3%E8%AF%BB/</link><pubDate>Thu, 20 Dec 2018 19:46:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/python3%E5%85%83%E7%B1%BB%E6%B7%B1%E5%85%A5%E8%A7%A3%E8%AF%BB/</guid><description>0. intro 元类是 python 里被说烂了的一个东西，然而日常用到的地方实在不多，每次想到都得查一下谷歌，想想干脆在博客留个笔记好了。
+元类的主要用途是定制类的产生过程，以便于根据类声明包含的信息来创建出不同的类。
+1. type 提到元类不得不说一下 python 的类型系统。
+python 的 class 也被视作一个对象，定制一个 class 的构造过程其实就和平时在 class 定义里写__init__没啥区别。
+python3 里类的类型是type，type又继承自object，object的父类是自己，构成一个奇怪的闭环。其中，type本身是一个特殊的类，他是自己的实例。
+graph TB; type --&amp;gt; |inherite|object; type --&amp;gt; |instance-of| type; object --&amp;gt; |instance-of|type; other-cls --&amp;gt; |instance-of| type; other-cls --&amp;gt; |inherite| object; other-cls-instance --&amp;gt; |instance-of|other-cls; type有两种调用方式，一种是最常用的接受一个对象参数，返回该对象的类型，另一种是不怎么常用的，直接创建一个新的类型。
+# usage with one argument type(object) # 返回对象的类型，这里返回的是 `type` # usage with three arguments type(name, bases, attr) # 返回新创建的类型 2. meta class 元类语法如下
+class MyClass(basecls1, basecls2, metaclass=MetaClass, named1=arg, named2=arg): .</description></item><item><title>python 实现 redis 分布式锁</title><link>https://uniqptr.gitee.io/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/</link><pubDate>Mon, 17 Dec 2018 14:57:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/</guid><description>Intro 分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。
+在单机并发的情况下，我们可以用 mutex，可以用 os 的文件锁，全局锁，多台服务器的并发就需要另一个持有并保护锁的角色了。
+概述如何使用 redis 实现一个分布式锁。
+为何是 Lua redis 保证了 lua 解释器执行脚本的事务性，即执行结果要么不可见，要么已完成。
+参考这篇文档。
+简单锁 简单锁指的是简单互斥锁，一旦锁定，则其他锁定请求都必须等待。
+加锁 直觉的想法是通过 redis 的键来保持锁，故准备一个用于锁定互斥的名字（比如说 mutex-1）然后指定为键。
+直接使用 set 是显然不正确的，如果临界区内程序崩溃或意外断网将导致死锁，所以 setnx 和 expire 是必选项。
+加锁需要判断锁的键为空，才能加锁，这两步必须保证原子性，要么都执行，要么一个都不执行。幸好 redis 提供了这方面保证，只要使用 lua 脚本的话。
+-- 加锁 if redis.call(&amp;#34;get&amp;#34;, KEYS[1]) == nil then if redis.call(&amp;#34;setnx&amp;#34;, KEYS[1], ARGV[1]) == 1 then redis.call(&amp;#34;expire&amp;#34;, KEYS[1], ARGV[2]) return 1 else return end end 上面的 lua 代码用 python 再封装一层，就是这样
+def lock(key, expire): redis.eval( &amp;#39;&amp;#39;&amp;#39; -- 加锁 if redis.</description></item><item><title>unity3d 键盘控制移动</title><link>https://uniqptr.gitee.io/p/unity3d-%E9%94%AE%E7%9B%98%E6%8E%A7%E5%88%B6%E7%A7%BB%E5%8A%A8/</link><pubDate>Mon, 17 Dec 2018 02:29:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/unity3d-%E9%94%AE%E7%9B%98%E6%8E%A7%E5%88%B6%E7%A7%BB%E5%8A%A8/</guid><description>void HandleKeyboardAction() { var horizontal = Input.GetAxis(&amp;#34;Horizontal&amp;#34;) * PlayerMotionScaleLevel * Time.deltaTime; var vertical = Input.GetAxis(&amp;#34;Vertical&amp;#34;) * PlayerMotionScaleLevel * Time.deltaTime; var motion = transform.rotation * new Vector3(horizontal, 0, vertical); var mag = motion.magnitude; motion.y = 0; Player.transform.position += motion.normalized * mag; } 极其简单的做法，获取到键盘移动的轴之后，用摄像机的旋转四元数乘一下，即可得到旋转后的向量，加上去就 ok 了。
+需要注意的是这里用摄像机的四元数旋转要求摄像机必须只在 x 和 y 两个轴旋转。
+先备份一下三维向量的数量值，这是为了能保证摄像机向上和向下看时，平面 x 和 z 轴上的分量不会过小，保持一致的移动速度。
+用四元数旋转完成后，去除 y 轴的值，使目标只在当前平面上移动。再用算出来的向量的单位向量乘上之前备份的数量值，得到平面上移动的偏移向量。
+最后，算出新的位置坐标。</description></item><item><title>go语言实战之解密ons脚本</title><link>https://uniqptr.gitee.io/p/go%E8%AF%AD%E8%A8%80%E5%AE%9E%E6%88%98%E4%B9%8B%E8%A7%A3%E5%AF%86ons%E8%84%9A%E6%9C%AC/</link><pubDate>Sun, 16 Dec 2018 23:44:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/go%E8%AF%AD%E8%A8%80%E5%AE%9E%E6%88%98%E4%B9%8B%E8%A7%A3%E5%AF%86ons%E8%84%9A%E6%9C%AC/</guid><description>Intro ons 是一个开放源代码的视觉小说引擎，以简单实用出名。本博用 golang 来解密 ons 引擎的.dat和.nt2脚本，主要实践目标是异步解密输出。
+算法 .dat的加密非常简单，一次异或。密码是0x84。
+可以用 go 非常简单粗暴地写出以下代码。
+for i := 0; i &amp;lt; len(buf); i++ { buf[i] ^= 0x84 } .nt2的加密同样简单，一次异或，密码是0x85 &amp;amp; 0x97。
+可以用 go 非常粗暴地写出以下代码。
+for i := 0; i &amp;lt; len(buf); i++ { buf[i] = (buf[i] ^ (0x85 &amp;amp; 0x97)) - 1 } 异步读文件 go 方式比较多，ioutil或者bufio或者os都有文件模块。这里采用bufio套os.Open的方式读文件。
+func readFile(p string, outChannel chan []byte) { // 只读方式打开文件 file, err := os.OpenFile(p, os.O_RDONLY, 0644) if err !</description></item><item><title>关于笔记的考虑</title><link>https://uniqptr.gitee.io/p/%E5%85%B3%E4%BA%8E%E7%AC%94%E8%AE%B0%E7%9A%84%E8%80%83%E8%99%91/</link><pubDate>Sun, 16 Dec 2018 23:30:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E5%85%B3%E4%BA%8E%E7%AC%94%E8%AE%B0%E7%9A%84%E8%80%83%E8%99%91/</guid><description>使用了两年多的 One Note，但是 One Note 对代码的支持实在是难受，于是数次折腾之后最终还是选择再找个更合适的笔记工具。
+在知乎上搜了一圈之后，大多数笔记工具收费且不论，最严重的问题反而是对笔记能否生存下去的怀疑。
+大多笔记工具用私有格式来处理富文本（比如可用样式排版有限的 HTML），或者其他奇奇怪怪的格式。且不说这些东西导出来怎么办&amp;hellip;..把笔记多地备份本身就够难受了。
+再者，笔记这玩意儿记了自己都不一定看。偶尔想起来翻一下，还要怀疑自己当初写的什么狗屁玩意儿。
+所以经过这么多考虑&amp;hellip;&amp;hellip;还是直接搭个博客最自由且不会太担心保存的问题了。
+比较别的笔记工具可能密码忘了或长时间不登陆，git 天天用（这里应有自嘲），根本离不开。
+所以想了想，还是转移笔记到博客好了。写笔记可能很随便，写博客总要考据两下的。再说，还可以自定义页面效果，对我这种喜欢折腾的人还是蛮对胃口的。
+总而言之，先挂上去了，就这样。</description></item><item><title>AudioContext 技术和音乐可视化（2）</title><link>https://uniqptr.gitee.io/p/audiocontext-%E6%8A%80%E6%9C%AF%E5%92%8C%E9%9F%B3%E4%B9%90%E5%8F%AF%E8%A7%86%E5%8C%962/</link><pubDate>Thu, 08 Nov 2018 21:41:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/audiocontext-%E6%8A%80%E6%9C%AF%E5%92%8C%E9%9F%B3%E4%B9%90%E5%8F%AF%E8%A7%86%E5%8C%962/</guid><description>Intro 转载请注明来源，可以在测试博客查看完成效果。
+本篇讲述如何从频域数据绘制动态的星空。
+一、使用 Canvas 绘图 1.1 位置和大小 绘制背景的第一要务便是把 canvas 元素放置在背景这一层次上，避免遮盖其他元素。
+对我而言，个人习惯用 css 来设置大小和位置，用 html 来确定渲染顺序而不是 z-index。
+下面是 html 代码。
+&amp;lt;html&amp;gt; &amp;lt;body&amp;gt; &amp;lt;canvas id=&amp;#34;background-canvas&amp;#34;&amp;gt;&amp;lt;/canvas&amp;gt; &amp;lt;!-- other elements --&amp;gt; &amp;lt;/body&amp;gt; &amp;lt;/html&amp;gt; 下面是 css 代码。
+#background-canvas { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; background-color: black; } fixed确保拖动页面不会令背景也跟随移动。
+其余部分我想应该没什么有疑问的地方。
+1.2 CanvasContext2D 对于 canvas 元素的绘图操作我想很多人应该接触过。
+以绘制圆形为例，使用如下代码。
+const canvas = document.getElementById(&amp;#34;background-canvas&amp;#34;); const ctx = canvas.getContext(&amp;#34;2d&amp;#34;); ctx.fillStyle = &amp;#34;#fff&amp;#34;; ctx.beginPath(); ctx.arc(100, 100, 50, 0, Math.</description></item><item><title>AudioContext技术和音乐可视化（1）</title><link>https://uniqptr.gitee.io/p/audiocontext%E6%8A%80%E6%9C%AF%E5%92%8C%E9%9F%B3%E4%B9%90%E5%8F%AF%E8%A7%86%E5%8C%961/</link><pubDate>Wed, 07 Nov 2018 02:48:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/audiocontext%E6%8A%80%E6%9C%AF%E5%92%8C%E9%9F%B3%E4%B9%90%E5%8F%AF%E8%A7%86%E5%8C%961/</guid><description>Intro 因为自己搭了个博客，一时兴起，就想写个动态的博客背景。毕竟用 django 后端渲染，前端只有 jquery 和 bootstrap 已经够 low 了，虽说极简风格也很棒，但是多少有点亮眼的东西才好办不是吗。
+转载注明来源。
+为了方便讲解，整个思路分为两个部分：音乐播放和背景绘制。
+一、音乐播放 1.1 AudioContext 概述部分懒得自己写，参考 MDN 的描述。
+AudioContext接口表示由音频模块连接而成的音频处理图，每个模块对应一个AudioNode。AudioContext可以控制它所包含的节点的创建，以及音频处理、解码操作的执行。做任何事情之前都要先创建AudioContext对象，因为一切都发生在这个环境之中。
+1.2 浏览器支持状况 AudioContext标准目前还是草案，不过新 chrome 已经实现了。我使用的 chrome 版本如下。
+版本 70.0.3538.77（正式版本） （64 位） 如果发现 console 报错或者其他问题请检查浏览器版本，所有支持的浏览器可以在这个链接查看。
+1.3 AudioContext 和音频处理图 关于AudioContext我的了解不是很深入，所以只在需要用到的部分进行概述。
+首先，关于音频处理图的概念。
+这个名词不甚直观，我用过虚幻，所以用虚幻的Blueprint来类比理解。音频处理图，其实是一系列音频处理的模块，连接构成一张数据结构中的“图”，从一般使用的角度来讲，一个播放音频的图，就是AudioSource -&amp;gt; AudioContext.destination，两个节点构成的图。其中有很多特殊的节点可以对音频进行处理，比如音频增益节点GainNode。
+对于音频处理的部分介绍就到这里为止，毕竟真的了解不多，不过从 MDN 的文档看，可用的处理节点还是非常多的，就等标准制订完成了。
+1.4 加载音频文件并播放 音频文件加载使用典型的JavaScript接口FileReader实现。
+一个非常简单的实例是这样
+首先是 html 里写上 input
+&amp;lt;html&amp;gt; &amp;lt;body&amp;gt; &amp;lt;input type=&amp;#34;file&amp;#34; accept=&amp;#34;audio/*&amp;#34; onchange=&amp;#34;onInputChange&amp;#34; /&amp;gt; &amp;lt;/body&amp;gt; &amp;lt;/html&amp;gt; 然后在 javascript 里读文件内容。
+function onInputChange(files) { const reader = new FileReader(); reader.</description></item><item><title>Unity3D 键盘控制物体平面移动（操作相对于摄像机方向）</title><link>https://uniqptr.gitee.io/p/unity3d-%E9%94%AE%E7%9B%98%E6%8E%A7%E5%88%B6%E7%89%A9%E4%BD%93%E5%B9%B3%E9%9D%A2%E7%A7%BB%E5%8A%A8%E6%93%8D%E4%BD%9C%E7%9B%B8%E5%AF%B9%E4%BA%8E%E6%91%84%E5%83%8F%E6%9C%BA%E6%96%B9%E5%90%91/</link><pubDate>Sat, 03 Nov 2018 18:57:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/unity3d-%E9%94%AE%E7%9B%98%E6%8E%A7%E5%88%B6%E7%89%A9%E4%BD%93%E5%B9%B3%E9%9D%A2%E7%A7%BB%E5%8A%A8%E6%93%8D%E4%BD%9C%E7%9B%B8%E5%AF%B9%E4%BA%8E%E6%91%84%E5%83%8F%E6%9C%BA%E6%96%B9%E5%90%91/</guid><description>Intro 目标是实现目标随摄像机方向的不同而进行不同方向移动——而且，目标不需要随摄像机一起旋转。
+使用摄像机的四元数旋转 void HandleKeyboardAction() { var horizontal = Input.GetAxis(&amp;#34;Horizontal&amp;#34;) * PlayerMotionScaleLevel * Time.deltaTime; var vertical = Input.GetAxis(&amp;#34;Vertical&amp;#34;) * PlayerMotionScaleLevel * Time.deltaTime; var motion = transform.rotation * new Vector3(horizontal, 0, vertical); var mag = motion.magnitude; motion.y = 0; Player.transform.position += motion.normalized * mag; } 极其简单的做法，获取到键盘移动的轴之后，用摄像机的旋转四元数乘一下，即可得到旋转后的向量，加上去就 ok 了。
+需要注意的是这里用摄像机的四元数旋转要求摄像机必须只在 x 和 y 两个轴旋转。
+先备份一下三维向量的数量值，这是为了能保证摄像机向上和向下看时，平面 x 和 z 轴上的分量不会过小，保持一致的移动速度。
+用四元数旋转完成后，去除 y 轴的值，使目标只在当前平面上移动。再用算出来的向量的单位向量乘上之前备份的数量值，得到平面上移动的偏移向量。
+最后，算出新的位置坐标，赋值，完事儿。</description></item><item><title>Unity3d 摄像机跟随旋转的方案</title><link>https://uniqptr.gitee.io/p/unity3d-%E6%91%84%E5%83%8F%E6%9C%BA%E8%B7%9F%E9%9A%8F%E6%97%8B%E8%BD%AC%E7%9A%84%E6%96%B9%E6%A1%88/</link><pubDate>Sat, 03 Nov 2018 18:20:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/unity3d-%E6%91%84%E5%83%8F%E6%9C%BA%E8%B7%9F%E9%9A%8F%E6%97%8B%E8%BD%AC%E7%9A%84%E6%96%B9%E6%A1%88/</guid><description>Intro 主要想探讨的是如何令摄像机随鼠标操作进行旋转和移动，摄像机跟随的脚本官方就有 Example。
+方案：独立的角度变量 主要的特点是使用独立的角度变量，每次处理鼠标移动操作都会创建一个新的Quaternion用于计算。
+先看 Demo。
+public class PlayerControls : MonoBehaviour { public GameObject Player; public float Distance; //public float CameraRepositionSpeed; public float MouseMotionScaleLevel; public bool ReverseAxisY; public float PitchMaximum; public float PitchMinimum; private float _CurrentCameraAngleAroundX; private float _CurrentCameraAngleAroundY; private Vector3 _PositionTarget; // Use this for initialization void Start() { } // Update is called once per frame void Update() { _CurrentCameraAngleAroundX += Input.GetAxis(&amp;#34;Mouse Y&amp;#34;) * MouseMotionScaleLevel * Time.</description></item><item><title>GameHollywood 面试笔记</title><link>https://uniqptr.gitee.io/p/gamehollywood-%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</link><pubDate>Tue, 26 Jun 2018 17:22:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/gamehollywood-%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</guid><description>Intro 面试的职位是 C++后端开发工程师，主要聊的还是 C++。在过程中自我感觉面得还行，至少没上次那么蠢。
+聊的内容主要集中在 STL 和线程安全、资源管理的层面。
+惯例的，填完面试信息表并简历一起上交，然后等面试官来客套完，就开始聊技术了。
+注意，面试官的提问并非原话，有修饰和脑补。
+0. 预热：你用哪个版本的 C++？ 客套话什么的就略了。
+面试官：&amp;hellip;行，那我们就聊聊 C++吧。你常用哪个版本的 C++？
+我：我比较常用的是 C++11。
+C++版本这个问题面试里应该不多见，不过作为引入的话题还行，标准之神会瞑目的。
+对于C++版本这个词，很大概率上大家说的应该就是 C++标准委员会WG21制定的 C++标准了，最新版本的标准文档是 C++17 定稿N4659，制定中的 C++20 标准文档可以访问WG21/docs/papers/2018查阅。
+需要注意的是，如果答成了我用 VC6之类的骚话，很大概率会留下不好的映像——或者对方也是忠实的 VC6 神教教徒的话，达成共识也说不定。
+闲话少叙。
+1. 起手式：std::shared_ptr 面试官：说说std::shared_ptr是怎么实现的？一般怎么去使用它？
+答：shared_ptr是通过引用计数实现的，它可以作为容器元素，在程序里传递 blabal&amp;hellip;..而且shared_ptr不是线程安全的，它不能跨线程传递，要额外做一层包装 blabla&amp;hellip;&amp;hellip;
+正巧最近有想写一篇智能指针相关的博客，面试官的第一问就提到了。
+说到智能指针，就必须提一下 RAII 了。
+1.1 异常安全和 RAII std::shared_ptr和其他智能指针类型都在&amp;lt;memory&amp;gt;头文件里定义，主要的作用是实现自动化的资源管理，基于RAII的理念设计和实现。
+RAII指的是获取资源即初始化，英文全写是Resource Acquisition Is Initialization，属于一种面向对象编程语言中常见的惯用法。
+它的思路是这样子的：初始化即获取资源，离开作用域就自动销毁。
+RAII 解决的问题是，当异常发生时，如何确保资源释放。这是个异常安全的问题。
+常见的非 RAII 风格代码里，如果要确保资源被正确释放，就要用try {} catch() {} finally {}块捕获异常，然后执行资源释放的代码，再将异常重新抛出。</description></item><item><title>可重入和异步安全</title><link>https://uniqptr.gitee.io/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/</link><pubDate>Sun, 24 Jun 2018 22:48:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/</guid><description>这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。
+可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具体定义可能有所不同。这里聊的是 C++语言中的可重入性。
+所谓可重入性（reetrant），指的是同时具备并发安全和中断安全的特征，这是目前为止我对可重入性的认识，也是这篇博客在写下时给可重入性下的定义。
+这个认知可能并不准确，因为在wiki上的定义是这样的。
+若一个程序或子程序可以「在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错」，则称其为可重入（reentrant 或 re-entrant）的。即当该子程序正在运行时，执行线程可以再次进入并执行它，仍然获得符合設計時預期的结果。与多线程并发执行的线程安全不同，可重入强调对单个线程执行时重新进入同一个子程序仍然是安全的。
+但是在很多中文博客里，聊到可重入性的时候往往也会把并发安全混为一谈。实际上来说的话&amp;hellip;&amp;hellip;一个可重入的函数，常常也是并发安全的。
+那么先从并发安全讲起吧。
+并发安全性和可重入性 所谓并发安全已经是老生常谈了。
+以一段非常简单的代码为例，我们打算初始化一个对象，这个对象被两个线程共享。
+void initialize(Something** someshit) { if(!*someshit) { *someshit = createSomeShit(); } } 显而易见，如果线程在执行到特定环节时发生了切换
+void initialize(Something** someshit) { if(!*someshit) { // &amp;lt;-------- 线程切换 // 线程2() { // initialize(something); // } // 线程切换 ---------&amp;gt; *someshit = createSomeShit(); } } 那么 createSomeShit这段代码就会被执行两次。
+显然这和我们预期的行为不符。
+这里要聊的不是并发，而是&amp;hellip;&amp;hellip;可重入性。所以我们再看看这个函数能否被重入。
+按照 wiki 提供的定义，函数可重入指的是
+在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错。
+符合吗？不。为什么？因为同样在那个线程切换的位置上中断，然后再另一段代码里再次执行这个函数，也会触发同样的问题，导致createSomeShit被执行两次。
+void initialize(Something** someshit) { if(!</description></item><item><title>MySQL 24小时入门笔记 - 4</title><link>https://uniqptr.gitee.io/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-4/</link><pubDate>Sat, 23 Jun 2018 22:34:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-4/</guid><description>创建表 CREATE TABLE CREATE TABLE的作用是创建表。不多说，先创建个简单的学生表。
+CREATETABLEstudents(idint,namechar(16)NOTNULL,primarykey(id));这里没写 ENGINE=InnoDB，因为这是新 MariaDB 的默认值。
+那么进入正题，CREATE TABLE的语法如下。
+CREATETABLE[表名]([列名][类型][约束和其他属性],[列名][类型][约束和其他属性],....[其他表配置]);很容易看出，括号里面写的是表的相关配置，包括列定义，主键定义，索引定义等等。
+默认值 在创建表时可以指定默认值，有默认值的列在插入时可以不填。
+语法如下。
+CREATETABLE[表]([列][类型]DEFAULT[值],);即可为一个列设定默认值。
+非空 非空约束非常常见。比如说，我们要记录学生信息，包括学号、成绩、姓名，那么学生姓名能不能留空呢？显然不行，因为没有姓名的记录让谁看都是一脸懵逼，这破坏了一条记录的完整性。
+创建非空约束的语法如下。
+CREATETABLE[表]([列][类型]NOTNULL,);这就创建了非空约束。非空约束下，插入数据时不能不填写这个列。
+如果需要要求可空，那么这样做。但一般不用特地写，很多DBMS的列默认创建就是可空的。
+CREATETABLE[表]([列][类型]NULL,);修改表 ALTER TABLE ALTER TABLE可以修改表定义，添加删除列，修改约束，等等。
+添加列 举例，在一个只有学号和姓名两个列的学生表加入一个新的成绩列，代码如下。
+ALTERTABLEstudentsADDscoreint;语法基本是这样。
+ALTERTABLE[表名]ADD[列名][类型][其他属性和约束];后面列的定义写法基本和CREATE TABLE时差不多。
+删除列 和添加列差不多，但删除的关键字不是DELETE，而是DROP。
+ALTERTABLE[表名]DROP[列名];添加外键约束 外键约束其实保证的是引用完整性，外键约束的列的值必须引用了一个有效的行，或者是NULL。
+举例来说，我们先有两个表。
+学生表
+id name class 1 student 1 1 2 student 2 2 3 student 3 3 班级表
+id level 1 Lv5 2 Lv4 3 Lv3 为了让学生表的class关联到班级表的id，我们要这样做。</description></item><item><title>MySQL 24小时入门笔记 - 3</title><link>https://uniqptr.gitee.io/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-3/</link><pubDate>Sat, 23 Jun 2018 21:51:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-3/</guid><description>插入 INSERT INSERT用法非常简单。现在我们有表students如下。
+列名 类型 约束 id int primary key name char(16) NOT NULL 向里面插入一条学号为1，姓名为学姐的学生，只需要写如下SQL语句。
+INSERTINTOstudentsVALUES(1,&amp;#39;学姐&amp;#39;);语法
+INSERTINTO[表]VALUES(列值1,列值2,...);其中INSERT语句有一个简单的变体，能比较明确地指明将值交付给哪个列。
+INSERTINTOstudents(id,name)VALUES(1,&amp;#39;学妹&amp;#39;);这样写相当于指明了1应该是id，'学妹'应该是name。
+插入多条也很简单，只要在VALUES后面跟更多小括号包围的值集合就行了，记得拿括号分隔，下面给个例子。
+INSERTINTOstudents(id,name)VALUES(1,&amp;#39;学渣&amp;#39;),(2,&amp;#39;学霸&amp;#39;),(3,&amp;#39;学神&amp;#39;);INSERT SELECT 这个写法比较有意思，从一个表查询出数据，并插入另一个表。
+举个例子来说，我们有两个班级表，分别叫学渣班和补习班，一旦学渣成绩烂到一定程度，那么我们就要把他分配到补习班里去强制补习。
+怎么做呢？看下面啦。
+INSERTINTO补习班(name,score)SELECT学渣班.name,学渣班.scoreFROM学渣班WHERE学渣班.score&amp;lt;10;值得注意的是，INSERT 填充补习班表时用的并不是你SELECT的列名，而是SELECT后列名的顺序，来对应到要INSERT的表的列上。
+其他的写法和SELECT相同。
+修改 UPDATE UPDATE语句的作用是修改现存行的数据，非常值得注意的是用UPDATE语句时一定要小心写WHERE子句，不然就等着删库跑路吧。
+依然举个实际栗子，学号为10的学生成绩由于作弊而被取消了，我们要更新他的成绩为 0 分，这真是个悲伤的故事:P
+UPDATEstudentsSETscore=0WHEREid=10;语法是这样的。
+UPDATE[表名]SET[列名]=[新值]WHERE[条件];更新多条的话是这样的
+UPDATE[表名]SET[列1]=[新值],[列2]=[新值],...[列N]=[新值]WHERE[条件]; 千万小心，如果没有 WHERE子句的话，指定的列会全部被设置成这个值。这样一来，所有的学生都变成了 0 分&amp;hellip;&amp;hellip;你会被手撕了的。
+删除 DELETE DELETE的作用是删除行，同样的，万分注意WHERE子句一定要正确编写，不然真的要删库跑路了。
+同样以之前那位作弊的同学为例，很遗憾，他又一次作弊被抓住了，传说中的高科技 AR 技术作弊眼镜也没能让他逃过监考员的火眼金睛，于是他被退学了&amp;hellip;&amp;hellip;
+另一个悲伤的故事:P
+DELETEFROMstudentsWHEREid=10;语法是这样子的。
+DELETEFROM[表名]WHERE[条件];如果不写WHERE的话&amp;hellip;&amp;hellip;找个好点的新工作吧，不要再去写SQL了，ORM 多好。
+注意，不写WHERE子句会删除这个表里的所有行。</description></item><item><title>MySQL 24小时入门笔记 - 2</title><link>https://uniqptr.gitee.io/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-2/</link><pubDate>Sat, 23 Jun 2018 15:41:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-2/</guid><description>查询 SELECT SELECT是一个特殊的关键字，它的语义是查询，取出结果。
+注意：仅为个人理解。
+FROM FROM子句，标识要查询的对象的来源，来源可能是多个的。在查询有多个来源表的情况下，称之为联结查询（Join query）。
+最常见的常规写法是SELECT column FROM table，表示从特定表取出所有行的特定列。
+WHERE WHERE子句用于过滤查询的行，只有满足条件的行会被查询出来。
+常见的用法有SELECT column FROM table WHERE column &amp;lt;&amp;gt; 0，表示在table表中查询column非空的行，返回这些行的column。
+其中的二元关系运算符&amp;lt;&amp;gt;表示不等于，其他常见的关系运算符还有这些。
+运算符 含义 = 相等 &amp;gt; 大于 &amp;lt; 小于 &amp;gt;= 大于等于 &amp;lt;= 小于等于 != 不等于 &amp;lt;&amp;gt; 不等于 此外还有一些SQL关键字可以辅助编写判断逻辑。
+SQL关键字IN可以用于判断元素是否在集合中。举例，SELECT 1 IN (1,2,3)，查询1是否在1,2,3这个集合中。被判断的集合需要被小括号包围，并且以逗号分隔元素。
+SQL关键字BETWEEN可以判断元素是否在一定区间中。举例，SELECT 1 BETWEEN 0 and 10，查询1是否在0到10的区间内。语法是BETWEEN [low] AND [high]，区间较小的一端必须在左侧，较大的一端必须在右侧。</description></item><item><title>MySQL 24小时入门笔记 - 1</title><link>https://uniqptr.gitee.io/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-1/</link><pubDate>Sat, 23 Jun 2018 02:24:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-1/</guid><description>1. 数据库概念 1.1 数据和储存 数据库本质上做的工作是储存和查询数据。理论上而言，MySQL应该叫做DBMS，也就是数据库管理系统，而不是数据库。
+DBMS提供了统一的建立、使用、管理数据库的接口，常见的DBMS有postgreSQL、MariaDB、SQL Server等。
+1.2 数据库和Schema 通常来说，一个DBMS会支持多个数据库共存。这里所说的数据库指的是特定数据库管理系统管理下的数据库，而不是上一节说的DBMS。
+而Schema的中译术语一般叫模式，Schema描述了数据库的结构，比如说有哪些表，表有哪些字段，字段分别有哪些限制，有哪些声明了的函数，等等。
+通常的DBMS往往是这样的结构：位于DBMS管理最顶层的是一个或多个数据库，数据库里存放表，表里以行为单位存放数据。
+1.3 表、列、键、行 1.3.1 表 表的英语术语是Table。
+用过 Excl 吗？
+id name 1 Mike 2 John 直观的表就是一个二维的“表”，有行，有列。
+1.3.2 列 列的术语是 Column。
+每个列都应该有一个特定的类型（type），使该列仅仅储存指定类型的数据。
+1.3.3 键&amp;hellip;&amp;hellip;或者叫码 键的术语是 Key。
+通常指的是Primary Key，也就是主键。主键可以是任意一个列。但是如果列是主键，那么这个列必须每个行都保证不和其他行重复。
+主键也可以是多个列，如果是多个列，那么必须保证这些列的组合不重复。
+举例来说
+db table id name aa aaaaa 11 xxxx aa bbbbb 11 xxxx 其中db和table还有id都是主键，只要保证没有两个行同时存在相同的db/table/id就算是满足了主键约束。</description></item><item><title>鲸鱼游戏面试笔记</title><link>https://uniqptr.gitee.io/p/%E9%B2%B8%E9%B1%BC%E6%B8%B8%E6%88%8F%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</link><pubDate>Wed, 20 Jun 2018 19:15:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E9%B2%B8%E9%B1%BC%E6%B8%B8%E6%88%8F%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</guid><description>Intro 简单介绍下面试的前置情况。
+面试的公司是鲸鱼游戏，职位是后端开发工程师，开发语言 C++。
+这篇博文主要是为了记录面试中发现的自身不足。
+这次面试里，因为面试约得比较匆忙，所以基本没做任何准备。讲道理的说我是有点盲目自信了，毕竟 C/C++是我的第一语言来着，本来以为考察语言的部分不会有什么问题，但没想到因为紧张而错漏百出。
+那么接下来就直接进入正题，以下是对面试中遇到的问题重新思考后的回答和想法。
+下面面试官的提问并非原话，有经过脑补润色。
+起手式：面向对象 面试官：讲讲面向对象，继承，还有多态。我们都知道程序设计有两种常见的范式，面向过程和面向对象，讲讲面向对象给我们带来了什么好处？
+实话说第一问就已经有点出乎意料，但想想其实还是在意料之中。初级职位更注重于基础概念和技能，中高级职位可能会在数据结构和并发一类的问题上更深入。
+答：抽象，归类 blabla&amp;hellip;易于维护 blabla&amp;hellip;
+全错。
+现在回忆起来，面试官想问的其实只有一点，就是那句封装。
+封装是面向对象的核心概念之一。
+封装使代码成为一个黑箱，让我们不必关注它的实现，而是关注它的行为和接口。
+这产生了面向接口编程的概念，我们不再关注封装后的对象内部的逻辑，我们给封装后的对象以输入，然后从封装后的对象里取出数据。
+封装并不只是一系列接口的集合，更包含了数据和状态，它就是一个微型化的服务，调用者告诉它去做什么事，而不关心它怎么做。
+第二招：继承 面试官：讲讲继承。
+我：代码复用，blabla&amp;hellip;&amp;hellip;
+代码复用，这是核心。
+代码复用是继承最主要的作用，大家都知道。面试官并没有在这方面继续深入，所以能答出代码复用其实已经差不多了。
+除非再抠上语言相关的语法细节：多继承和单继承。
+多继承 C++ 采用了多继承模型，即一个子类可以有多个父类。
+Father ------| |====&amp;gt; child Mother ------| 多继承可以允许一些特殊的编程范式。比如说mixin模式。但是多继承也存在其固有的复杂性，主要表现在运行时多态上。
+举几个多继承上常见的问题。
+父类成员冲突 典型场景如下
+class ParentA { public: void func(){} }; class ParentB { public: void func(){} }; class Child: public ParentA,ParentB {}; int main() { Child c; c.</description></item><item><title>从零实现一个容器</title><link>https://uniqptr.gitee.io/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/</guid><description>前言 自从看了cocker项目的ppt之后就有点念念不忘的意思了，实现一个docker或docker的类似物看起来并不是做不到的事情。
+于是就动手试一试。
+核心技术 namespace 命名空间包装全局系统资源，让在命名空间中的进程看起来就像是有自己独立隔离的全局资源一样。命名空间中的全局资源对命名空间中的其他进程都是可见的，但对命名空间外的进程不可见。命名空间用途之一就是实现容器。
+Linux provides the following namespaces: Namespace Constant Isolates Cgroup CLONE_NEWCGROUP Cgroup root directory IPC CLONE_NEWIPC System V IPC, POSIX message queues Network CLONE_NEWNET Network devices, stacks, ports, etc. Mount CLONE_NEWNS Mount points PID CLONE_NEWPID Process IDs User CLONE_NEWUSER User and group IDs UTS CLONE_NEWUTS Hostname and NIS domain name 几个命名空间的 API
+clone setns unshare 不得不说 man 7 namespaces 对 namespace 的解释已经非常到位了。</description></item><item><title>利用 descriptor 实现自己的 property</title><link>https://uniqptr.gitee.io/p/%E5%88%A9%E7%94%A8-descriptor-%E5%AE%9E%E7%8E%B0%E8%87%AA%E5%B7%B1%E7%9A%84-property/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E5%88%A9%E7%94%A8-descriptor-%E5%AE%9E%E7%8E%B0%E8%87%AA%E5%B7%B1%E7%9A%84-property/</guid><description>1.概念简介 1.1 property 在 python 代码中，property 是非常常见的一个内置函数。property 可以为一个 python 类的 attribute 设置 getter/setter，可以类比之 C# 的 properties。
+见下面的例子。
+class A: def __init__(self): self.a = 1 @property() def hello(self): return self.a @hello.setter() def hell(self, value): self.a = value print(A().hello) # output: # 1 obj = A() obj.hello = &amp;#34;hello world&amp;#34; print(obj.hello) # output: # hello world 1.2 descriptor python 中的 descriptor 指的是实现了__get__、__set__、__delete__三个方法之一的类。
+当一个 descriptor 类的实例作为其他类的成员时，通过obj.attr语法访问该实例将会调用 descriptor 实例的__get__方法。同理，__set__和__delete__也是相似的逻辑。
+先看个例子。
+class DescriptorClass: def __get__(self, instance, owner): print(self) print(instance) print(owner) return &amp;#39;some value&amp;#39; class SomeClass: some_attr = DescriptorClass() print(SomeClass().</description></item><item><title>在C++中嵌入Python解释器</title><link>https://uniqptr.gitee.io/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://uniqptr.gitee.io/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</guid><description>先不说废话，项目地址：https://github.com/nnnewb/CQPy 。欢迎给个 Star 什么的。
+背景 想给最近在玩的酷 Q 写个插件，发现没有合适的直接使用 Python 的解决方案。
+Richard Chien 提供了一个比较通用的插件，CQHttp。CQHttp本体是用 C++ 编写的插件，将酷 Q 的回调包装成 HTTP 请求转发至指定的地址，支持http和websocket两种协议。
+不过由于个人想折腾折腾的想法，打算试试把 Python 解释器直接嵌入到 C++ 里得了。
+整个思路如下。
+graph LR; CQP[酷Q] --事件回调--&amp;gt; dll[插件DLL]; dll --事件回调--&amp;gt; python[Python脚本]; python --调用API--&amp;gt; dll; dll --调用API--&amp;gt; CQP; 依赖 为了简化操作 Python 接口，我没有使用 Python 自带的 C API，而是pybind11，使用vcpkg管理依赖。
+安装命令：
+vcpkg install pybind11:x86-windows 0x1 编译 DLL 我使用 CMake 作为编译系统，因此可以很简单地写一个编译出 DLL 的 CMakeLists.txt
+cmake_minimum_required(VERSION 3.15)project(top.weak-ptr.cqpy LANGUAGES CXX VERSION 0.1.0)include_directories(src)aux_source_directory(src SOURCES)set(CMAKE_CXX_STANDARD 17)# 引入 pybind11 find_package(pybind11 CONFIG REQUIRED)# 添加 target set(OUT_NAME &amp;#34;app&amp;#34;)add_library(${OUT_NAME} SHARED ${SOURCES})set_target_properties(${OUT_NAME} PROPERTIES LINKER_LANGUAGE CXX)target_link_libraries(${OUT_NAME} PRIVATE pybind11::embed)源代码使用 MSVC 和 MinGW 编译，另外再处理下源码编码的问题和宏。</description></item></channel></rss>

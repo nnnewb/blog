@@ -1,0 +1,315 @@
+<!doctype html><html lang=zh-cn>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="关于 MySQL XA 事务和 2PC（两阶段提交）分布式事务处理模型（Distributed Transaction Processing, DTP Model）的学习笔记。
+事务 分布式事务XA 介绍 MySQL内建分布式事务支持（XA），参考文档列出如下
+ [MySQL Manual - XA](MySQL :: MySQL 8.0 Reference Manual :: MySQL Glossary) [MySQL Manual - XA Transaction](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8 XA Transactions) [MySQL Manual - XA Transaction Statements](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.1 XA Transaction SQL Statements) [MySQL Manual - XA Transaction State](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.2 XA Transaction States)  XA 事务在 InnoDB 引擎中可用。MySQL XA 事务实现基于 X/Open CAE 文档 《Distributed Transaction Processing: The XA Specification》。这份文档由 Open Group 发布，可以在 http://www."><title>MySQL XA 事务和分布式事务处理模型：2阶段提交</title>
+<link rel=canonical href=https://uniqptr.gitee.io/p/mysql-xa-%E4%BA%8B%E5%8A%A1%E5%92%8C%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E6%A8%A1%E5%9E%8B2%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4/>
+<link rel=stylesheet href=/scss/style.min.css><meta property="og:title" content="MySQL XA 事务和分布式事务处理模型：2阶段提交">
+<meta property="og:description" content="关于 MySQL XA 事务和 2PC（两阶段提交）分布式事务处理模型（Distributed Transaction Processing, DTP Model）的学习笔记。
+事务 分布式事务XA 介绍 MySQL内建分布式事务支持（XA），参考文档列出如下
+ [MySQL Manual - XA](MySQL :: MySQL 8.0 Reference Manual :: MySQL Glossary) [MySQL Manual - XA Transaction](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8 XA Transactions) [MySQL Manual - XA Transaction Statements](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.1 XA Transaction SQL Statements) [MySQL Manual - XA Transaction State](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.2 XA Transaction States)  XA 事务在 InnoDB 引擎中可用。MySQL XA 事务实现基于 X/Open CAE 文档 《Distributed Transaction Processing: The XA Specification》。这份文档由 Open Group 发布，可以在 http://www.">
+<meta property="og:url" content="https://uniqptr.gitee.io/p/mysql-xa-%E4%BA%8B%E5%8A%A1%E5%92%8C%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E6%A8%A1%E5%9E%8B2%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="mysql"><meta property="article:published_time" content="2021-07-09T09:29:22+00:00"><meta property="article:modified_time" content="2021-07-09T09:29:22+00:00">
+<meta name=twitter:title content="MySQL XA 事务和分布式事务处理模型：2阶段提交">
+<meta name=twitter:description content="关于 MySQL XA 事务和 2PC（两阶段提交）分布式事务处理模型（Distributed Transaction Processing, DTP Model）的学习笔记。
+事务 分布式事务XA 介绍 MySQL内建分布式事务支持（XA），参考文档列出如下
+ [MySQL Manual - XA](MySQL :: MySQL 8.0 Reference Manual :: MySQL Glossary) [MySQL Manual - XA Transaction](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8 XA Transactions) [MySQL Manual - XA Transaction Statements](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.1 XA Transaction SQL Statements) [MySQL Manual - XA Transaction State](MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.2 XA Transaction States)  XA 事务在 InnoDB 引擎中可用。MySQL XA 事务实现基于 X/Open CAE 文档 《Distributed Transaction Processing: The XA Specification》。这份文档由 Open Group 发布，可以在 http://www.">
+</head>
+<body class="article-page has-toc">
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"auto")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex
+extended">
+<div id=article-toolbar>
+<a href=https://uniqptr.gitee.io/ class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
+<span>返回</span>
+</a>
+</div>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/categories/mysql/>
+mysql
+</a>
+</header>
+<h2 class=article-title>
+<a href=/p/mysql-xa-%E4%BA%8B%E5%8A%A1%E5%92%8C%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E6%A8%A1%E5%9E%8B2%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4/>MySQL XA 事务和分布式事务处理模型：2阶段提交</a>
+</h2>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>Jul 09, 2021</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 3 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<p>关于 MySQL XA 事务和 2PC（两阶段提交）分布式事务处理模型（<em>Distributed Transaction Processing, DTP Model</em>）的学习笔记。</p>
+<h2 id=事务>事务</h2>
+<h3 id=分布式事务xa>分布式事务XA</h3>
+<h4 id=介绍>介绍</h4>
+<p>MySQL内建分布式事务支持（<code>XA</code>），参考文档列出如下</p>
+<ul>
+<li>[MySQL Manual - XA](<a class=link href=https://dev.mysql.com/doc/refman/8.0/en/glossary.html#glos_xa target=_blank rel=noopener>MySQL :: MySQL 8.0 Reference Manual :: MySQL Glossary</a>)</li>
+<li>[MySQL Manual - XA Transaction](<a class=link href=https://dev.mysql.com/doc/refman/8.0/en/xa.html target=_blank rel=noopener>MySQL :: MySQL 8.0 Reference Manual :: 13.3.8 XA Transactions</a>)</li>
+<li>[MySQL Manual - XA Transaction Statements](<a class=link href=https://dev.mysql.com/doc/refman/8.0/en/xa-statements.html target=_blank rel=noopener>MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.1 XA Transaction SQL Statements</a>)</li>
+<li>[MySQL Manual - XA Transaction State](<a class=link href=https://dev.mysql.com/doc/refman/8.0/en/xa-states.html target=_blank rel=noopener>MySQL :: MySQL 8.0 Reference Manual :: 13.3.8.2 XA Transaction States</a>)</li>
+</ul>
+<p>XA 事务在 InnoDB 引擎中可用。MySQL XA 事务实现基于 X/Open CAE 文档 《Distributed Transaction Processing: The XA Specification》。这份文档由 <em>Open Group</em> 发布，可以在 <a class=link href=http://www.opengroup.org/public/pubs/catalog/c193.htm target=_blank rel=noopener>http://www.opengroup.org/public/pubs/catalog/c193.htm</a> 访问。当前 XA 实现的局限可以在 <a class=link href=https://dev.mysql.com/doc/refman/8.0/en/xa-restrictions.html target=_blank rel=noopener>Section 13.3.8.3, “Restrictions on XA Transactions”</a> 查看。</p>
+<p>&mldr;</p>
+<p>XA 事务是全局事务关联的一组事务性动作，要么全部成功，要么全部回滚。本质上，这是让 ACID 属性“提升了一层”，让多个ACID事务可以作为一个全局操作的一部分执行，使得这个全局操作也具备ACID属性。（对于非分布式事务，应用如果对读敏感，则<code>SERIALIZABLE</code>更推荐。<code>REPEATABLE READ</code> 在分布式事务中并不是很有效。）</p>
+<h4 id=事务模型>事务模型</h4>
+<p><img src=/%e4%ba%8b%e5%8a%a1%e6%a8%a1%e5%9e%8b.webp alt=img></p>
+<p>其中：</p>
+<ul>
+<li>**AP：**用户程序</li>
+<li>**RMs：**数据库</li>
+<li>**TM：**事务管理器</li>
+</ul>
+<p>用户程序不用介绍。</p>
+<p>根据 Open Group 在 Distributed Transaction Processing Model 中的定义，一个典型的 RM 可以是一个支持事务的数据库（DBMS）。</p>
+<p>TM 则是协调整个二阶段提交过程的中介。AP从TM获得XID，完成 <code>XA START</code> 到 <code>XA END</code> ，然后告知 TM 就绪。TM提取本次事务的所有XID，向RMs发出<code>XA PREPARE</code>请求，如果失败则对每个 XID 发出 <code>XA ROLLBACK</code> ，成功则继续发出 <code>XA COMMIT</code> 。</p>
+<p>需注意的是，<code>XA PREPARE</code> 失败可以通知其他事务回滚，但<code>XA COMMIT</code> 失败则只能等待数据库恢复，再行重试。<code>XA PREPARE</code>一旦成功，则<code>XA COMMIT</code> 一定成功（或者说必须成功）。</p>
+<p>TM 实现要求自身崩溃后必须能清理恢复，防止出现XA事务死锁。</p>
+<ul>
+<li>继续 PREPARE 需要提交的事务</li>
+<li>继续 ROLLBACK 未完成 ROLLBACK 的事务</li>
+<li>继续 COMMIT 未能 COMMIT 的事务
+<ul>
+<li>未能 COMMIT 成功则需要重试直到成功</li>
+</ul>
+</li>
+</ul>
+<p>几个 TM 角色（或整套方案）的实现：</p>
+<ul>
+<li><a class=link href=https://github.com/seata/seata/ target=_blank rel=noopener>seata/seata: Seata is an easy-to-use, high-performance, open source distributed transaction solution. (github.com)</a></li>
+<li><a class=link href="https://open.unionpay.com/tjweb/product/detail?proId=43" target=_blank rel=noopener>UPSQL Proxy-技术产品- 中国银联开放平台 (unionpay.com)</a></li>
+<li><a class=link href=https://cloud.tencent.com/product/dcdb/ target=_blank rel=noopener>分布式数据库TDSQL MySQL版_企业级分布式数据库解决方案 - 腾讯云 (tencent.com)</a></li>
+</ul>
+<h4 id=基本用法>基本用法</h4>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-mysql data-lang=mysql><span class=n>XA</span><span class=w> </span><span class=err>{</span><span class=n>START</span><span class=o>|</span><span class=n>BEGIN</span><span class=err>}</span><span class=w> </span><span class=n>xid</span><span class=w> </span><span class=p>[</span><span class=k>JOIN</span><span class=o>|</span><span class=n>RESUME</span><span class=p>]</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=n>XA</span><span class=w> </span><span class=n>END</span><span class=w> </span><span class=n>xid</span><span class=w> </span><span class=p>[</span><span class=n>SUSPEND</span><span class=w> </span><span class=p>[</span><span class=k>FOR</span><span class=w> </span><span class=n>MIGRATE</span><span class=p>]]</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=n>XA</span><span class=w> </span><span class=n>PREPARE</span><span class=w> </span><span class=n>xid</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=n>XA</span><span class=w> </span><span class=n>COMMIT</span><span class=w> </span><span class=n>xid</span><span class=w> </span><span class=p>[</span><span class=n>ONE</span><span class=w> </span><span class=n>PHASE</span><span class=p>]</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=n>XA</span><span class=w> </span><span class=n>ROLLBACK</span><span class=w> </span><span class=n>xid</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=n>XA</span><span class=w> </span><span class=n>RECOVER</span><span class=w> </span><span class=p>[</span><span class=k>CONVERT</span><span class=w> </span><span class=n>XID</span><span class=p>]</span><span class=w>
+</span></code></pre></div><p>其中 <code>XA START</code> 后跟随的 <code>JOIN</code>和<code>RESUME</code>子句没有任何效果。</p>
+<p><code>XA END</code> 后跟随的 <code>SUSPEND</code> 和 <code>FOR MIGRATE</code> 子句也没有任何效果。</p>
+<p>任何<code>XA</code>语句都以<code>XA</code>关键字开头，大多<code>XA</code>语句都需要<code>xid</code>值。<code>xid</code> 是 <strong>XA事务的标识符</strong> ，它确定语句应用到哪个XA事务上。</p>
+<p><code>xid</code>值可以由客户端指定或 MySQL 服务器生成。</p>
+<p>一个<code>xid</code>值有一到三个部分：</p>
+<pre><code>xid: gtrid [, bqual [, formatID ]]
+</code></pre><p><code>gtrid</code> 是<strong>全局事务标识符</strong> ，<code>bqual</code> 是<strong>分支修饰符</strong>，<code>formatID</code>是一个标记 <code>gtrid</code> 和 <code>bqual</code> 格式的数字。</p>
+<p><code>gtrid</code> 和 <code>bqual</code> 必须是字符串字面量，最多不超过 64 <strong>字节</strong> 长。<code>gtrid</code> 和 <code>bqual</code> 可以以多种方式指定，可以用引号包围的字符串（<code>'ab'</code>）；十六进制字符串（<code>X'6162'</code>，<code>0x6162</code>）；或者二进制值（<code>b'nnn'</code>）。</p>
+<p><code>formatID</code> 必须是一个无符号整数。</p>
+<p><code>gtrid</code> 和 <code>bqual</code> 值在 MySQL 服务器的底层 XA 支持程序中被解释为字节。不过，服务器在解释包含XA语句的SQL时，可能设置了特定字符集。安全起见，最好将 <code>gtrid</code> 和 <code>bqual</code> 写作十六进制字符串形式。</p>
+<p><code>xid</code> 值通常是由事务管理器生成。一个事务管理器产生的<code>xid</code>必须与另一个事务管理器产生的<code>xid</code>不同。一个给定的事务管理器必须能在 <code>XA RECOVER</code> 返回的 <code>xid</code> 列表中识别出属于自己的 <code>xid</code> 。</p>
+<p><code>XA START xid</code> 以指定的 <code>xid</code> 开启一个新 XA 事务。每个 XA 事务必须包含一个唯一的 <code>xid</code> ，<code>xid</code> 不能正在被另一个 XA 事务使用。唯一性通过 <code>gtrid</code> 与 <code>bqual</code> 评估。该 XA 事务的后续 XA 语句都必须指定<code>XA START</code>中指定的 <code>xid</code>。如果使用XA语句但没有指定一个对应XA事务的<code>xid</code>，则产生一个错误。</p>
+<p>多个XA事务可以是同一个全局事务的组成部分。在同一个全局事务中所有XA事务的<code>xid</code>必须使用同一个 <code>gtrid</code> 值。因此，<code>gtrid</code> 必须全局唯一以避免混淆。全局事务中XA事务<code>xid</code> 的 <code>bqual</code> 部分必须互不相同。（要求 <code>bqual</code> 不同是当前MySQL实现的限制，并不是XA规范的一部分。）</p>
+<p><code>XA RECOVER</code> 语句返回 MySQL 服务器中处于 <code>PREPARED</code> 状态的 XA 事务信息。输出中每一行都是一个服务器上的 XA 事务，不论是哪个客户端启动的事务。</p>
+<p>执行 <code>XA RECOVER</code> 需要 <code>XA_RECOVER_ADMIN</code> 特权。这个特权需求是为了防止用户发现其他不属于自己的事务<code>xid</code>，不影响XA事务的正常提交和回滚。</p>
+<p><code>XA RECOVER</code> 输出类似下面这样</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-mysql data-lang=mysql><span class=n>mysql</span><span class=o>&gt;</span><span class=w> </span><span class=n>XA</span><span class=w> </span><span class=n>RECOVER</span><span class=p>;</span><span class=w>
+</span><span class=w></span><span class=o>+----------+--------------+--------------+--------+</span><span class=w>
+</span><span class=w></span><span class=o>|</span><span class=w> </span><span class=n>formatID</span><span class=w> </span><span class=o>|</span><span class=w> </span><span class=n>gtrid_length</span><span class=w> </span><span class=o>|</span><span class=w> </span><span class=n>bqual_length</span><span class=w> </span><span class=o>|</span><span class=w> </span><span class=n>data</span><span class=w>   </span><span class=o>|</span><span class=w>
+</span><span class=w></span><span class=o>+----------+--------------+--------------+--------+</span><span class=w>
+</span><span class=w></span><span class=o>|</span><span class=w>        </span><span class=mi>7</span><span class=w> </span><span class=o>|</span><span class=w>            </span><span class=mi>3</span><span class=w> </span><span class=o>|</span><span class=w>            </span><span class=mi>3</span><span class=w> </span><span class=o>|</span><span class=w> </span><span class=n>abcdef</span><span class=w> </span><span class=o>|</span><span class=w>
+</span><span class=w></span><span class=o>+----------+--------------+--------------+--------+</span><span class=w>
+</span></code></pre></div><p>其中：</p>
+<ul>
+<li><code>formatID</code> 是 <code>xid</code> 中的 <code>formatID</code> 部分</li>
+<li><code>gtrid_length</code> 是 <code>xid</code> 中 <code>gtrid</code> 部分的长度（字节单位）</li>
+<li><code>bqual_length</code> 是 <code>xid</code> 中 <code>bqual</code> 部分的长度（字节单位）</li>
+</ul>
+<p>XID值可能包含不可打印的字符。<code>XA RECOVER</code> 允许一个可选的 <code>CONVERT XID</code> 子句，以便客户端可以请求十六进制格式的 XID 值。</p>
+<h4 id=事务状态>事务状态</h4>
+<p>一个 XA 事务经历以下状态</p>
+<ol>
+<li>使用<code>XA START</code>启动的XA事务，进入<code>ACTIVE</code>状态。</li>
+<li>一个处于<code>ACTIVE</code>状态的XA事务，可以发出SQL语句填充事务，然后发出<code>XA END</code>语句。<code>XA END</code>语句令XA事务进入<code>IDLE</code>状态。</li>
+<li>一个处于<code>IDLE</code>状态的XA事务，可以发出<code>XA PREPARE</code>语句或<code>XA COMMIT ... ONE PHASE</code>语句。
+<ul>
+<li><code>XA PREPARE</code> 语句令XA事务进入<code>PREPARED</code> 状态。<code>XA RECOVER</code> 语句此时可以发现并列出此事务的 XID。<code>XA RECOVER</code> 可以列出所有处于 <code>PREPARED</code> 状态的 XA 事务的 XID。</li>
+<li><code>XA COMMIT ... ONE PHASE</code> 准备并提交XA事务。<code>xid</code>不会列出在<code>XA RECOVER</code>中，因为XA事务实际在执行语句后就结束了。</li>
+</ul>
+</li>
+<li>一个处于<code>PREPARED</code>状态的XA事务，可以发出<code>XA COMMIT</code>语句来提交并结束XA事务，或发出<code>XA ROLLBACK</code>来回滚并结束事务。</li>
+</ol>
+<p>下面是一个简单的XA事务例子，作为一个全局事务，插入一个行。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-mysql data-lang=mysql><span class=n>mysql</span><span class=o>&gt;</span><span class=w> </span><span class=n>XA</span><span class=w> </span><span class=n>START</span><span class=w> </span><span class=s1>&#39;xatest&#39;</span><span class=p>;</span><span class=w>
+</span><span class=w></span><span class=n>Query</span><span class=w> </span><span class=n>OK</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=n>rows</span><span class=w> </span><span class=nf>affected</span><span class=w> </span><span class=p>(</span><span class=mi>0</span><span class=p>.</span><span class=mi>00</span><span class=w> </span><span class=n>sec</span><span class=p>)</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=n>mysql</span><span class=o>&gt;</span><span class=w> </span><span class=k>INSERT</span><span class=w> </span><span class=k>INTO</span><span class=w> </span><span class=nf>mytable</span><span class=w> </span><span class=p>(</span><span class=n>i</span><span class=p>)</span><span class=w> </span><span class=k>VALUES</span><span class=p>(</span><span class=mi>10</span><span class=p>);</span><span class=w>
+</span><span class=w></span><span class=n>Query</span><span class=w> </span><span class=n>OK</span><span class=p>,</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=n>row</span><span class=w> </span><span class=nf>affected</span><span class=w> </span><span class=p>(</span><span class=mi>0</span><span class=p>.</span><span class=mi>04</span><span class=w> </span><span class=n>sec</span><span class=p>)</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=n>mysql</span><span class=o>&gt;</span><span class=w> </span><span class=n>XA</span><span class=w> </span><span class=n>END</span><span class=w> </span><span class=s1>&#39;xatest&#39;</span><span class=p>;</span><span class=w>
+</span><span class=w></span><span class=n>Query</span><span class=w> </span><span class=n>OK</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=n>rows</span><span class=w> </span><span class=nf>affected</span><span class=w> </span><span class=p>(</span><span class=mi>0</span><span class=p>.</span><span class=mi>00</span><span class=w> </span><span class=n>sec</span><span class=p>)</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=n>mysql</span><span class=o>&gt;</span><span class=w> </span><span class=n>XA</span><span class=w> </span><span class=n>PREPARE</span><span class=w> </span><span class=s1>&#39;xatest&#39;</span><span class=p>;</span><span class=w>
+</span><span class=w></span><span class=n>Query</span><span class=w> </span><span class=n>OK</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=n>rows</span><span class=w> </span><span class=nf>affected</span><span class=w> </span><span class=p>(</span><span class=mi>0</span><span class=p>.</span><span class=mi>00</span><span class=w> </span><span class=n>sec</span><span class=p>)</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=n>mysql</span><span class=o>&gt;</span><span class=w> </span><span class=n>XA</span><span class=w> </span><span class=n>COMMIT</span><span class=w> </span><span class=s1>&#39;xatest&#39;</span><span class=p>;</span><span class=w>
+</span><span class=w></span><span class=n>Query</span><span class=w> </span><span class=n>OK</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=n>rows</span><span class=w> </span><span class=nf>affected</span><span class=w> </span><span class=p>(</span><span class=mi>0</span><span class=p>.</span><span class=mi>00</span><span class=w> </span><span class=n>sec</span><span class=p>)</span><span class=w>
+</span></code></pre></div><p>在给定客户端连接的上下文中，XA事务和本地事务彼此互斥。举例来说，如果<code>XA START</code>发出并启动了一个XA事务，此时不能再启动一个本地事务直到XA事务被提交或回滚。反过来说，如果一个本地事务已经通过<code>START TRANSACTION</code>启动，则不能执行任何XA语句直到本地事务被提交或回滚。</p>
+<p>如果一个XA事务在<code>ACTIVE</code>状态，则不能发出任何产生隐式提交的语句（如 <code>create table</code>），因为这违反了XA协议，导致不能回滚XA事务。尝试执行这类语句会导致一个错误：</p>
+<pre><code>ERROR 1399 (XAE07): XAER_RMFAIL: The command cannot be executed
+when global transaction is in the ACTIVE state
+</code></pre><h4 id=xa-事务实验>XA 事务实验</h4>
+<p>准备数据库</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-mysql data-lang=mysql><span class=k>create</span><span class=w> </span><span class=k>database</span><span class=w> </span><span class=k>if</span><span class=w> </span><span class=k>not</span><span class=w> </span><span class=k>exists</span><span class=w> </span><span class=n>test</span><span class=p>;</span><span class=w>
+</span><span class=w></span><span class=k>create</span><span class=w> </span><span class=k>table</span><span class=w> </span><span class=k>if</span><span class=w> </span><span class=k>not</span><span class=w> </span><span class=k>exists</span><span class=w> </span><span class=nf>test123</span><span class=w> </span><span class=p>(</span><span class=w>
+</span><span class=w>  </span><span class=o>`</span><span class=n>id</span><span class=o>`</span><span class=w> </span><span class=kt>bigint</span><span class=w> </span><span class=k>primary</span><span class=w> </span><span class=k>key</span><span class=w> </span><span class=kp>auto_increment</span><span class=p>,</span><span class=w>
+</span><span class=w>  </span><span class=o>`</span><span class=n>name</span><span class=o>`</span><span class=w> </span><span class=kt>varchar</span><span class=p>(</span><span class=mi>64</span><span class=p>)</span><span class=w> </span><span class=k>not</span><span class=w> </span><span class=no>null</span><span class=w>
+</span><span class=w></span><span class=p>);</span><span class=w>
+</span></code></pre></div><p>启动一个 XA 事务，插入表，最后提交。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-mysql data-lang=mysql><span class=n>xa</span><span class=w> </span><span class=n>start</span><span class=w> </span><span class=s1>&#39;this-is-gtrid&#39;</span><span class=p>,</span><span class=s1>&#39;this-is-bqual&#39;</span><span class=p>;</span><span class=w>
+</span><span class=w></span><span class=k>insert</span><span class=w> </span><span class=k>into</span><span class=w> </span><span class=nf>test123</span><span class=p>(</span><span class=n>name</span><span class=p>)</span><span class=w> </span><span class=k>values</span><span class=p>(</span><span class=s1>&#39;distributed transaction!&#39;</span><span class=p>);</span><span class=w>
+</span><span class=w></span><span class=n>xa</span><span class=w> </span><span class=n>end</span><span class=w> </span><span class=s1>&#39;this-is-gtrid&#39;</span><span class=p>,</span><span class=s1>&#39;this-is-bqual&#39;</span><span class=p>;</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=c1>-- 准备
+</span><span class=c1></span><span class=n>xa</span><span class=w> </span><span class=n>prepare</span><span class=w> </span><span class=s1>&#39;this-is-gtrid&#39;</span><span class=p>,</span><span class=s1>&#39;this-is-bqual&#39;</span><span class=p>;</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=c1>-- 应该看到上一步 prepare 的 xa 事务
+</span><span class=c1></span><span class=n>xa</span><span class=w> </span><span class=n>recover</span><span class=p>;</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=c1>-- 提交 xa 事务。
+</span><span class=c1></span><span class=n>xa</span><span class=w> </span><span class=n>commit</span><span class=w> </span><span class=s1>&#39;this-is-gtrid&#39;</span><span class=p>,</span><span class=s1>&#39;this-is-bqual&#39;</span><span class=p>;</span><span class=w>
+</span><span class=w></span><span class=c1>-- 或者 rollback
+</span><span class=c1>-- xa rollback &#39;this-is-gtrid&#39;,&#39;this-is-bqual&#39;;
+</span></code></pre></div><p>执行完成后，可以发现表中多了一条记录</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-mysql data-lang=mysql><span class=k>select</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=k>from</span><span class=w> </span><span class=n>test123</span><span class=p>;</span><span class=w>
+</span></code></pre></div>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/tags/mysql/>mysql</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-4/>
+<div class=article-details>
+<h2 class=article-title>MySQL 24小时入门笔记 - 4</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-3/>
+<div class=article-details>
+<h2 class=article-title>MySQL 24小时入门笔记 - 3</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-2/>
+<div class=article-details>
+<h2 class=article-title>MySQL 24小时入门笔记 - 2</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/p/mysql-24%E5%B0%8F%E6%97%B6%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0-1/>
+<div class=article-details>
+<h2 class=article-title>MySQL 24小时入门笔记 - 1</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 weakptr's 笔记
+</section>
+<section class=powerby>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.1.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#事务>事务</a>
+<ol>
+<li><a href=#分布式事务xa>分布式事务XA</a>
+<ol>
+<li><a href=#介绍>介绍</a></li>
+<li><a href=#事务模型>事务模型</a></li>
+<li><a href=#基本用法>基本用法</a></li>
+<li><a href=#事务状态>事务状态</a></li>
+<li><a href=#xa-事务实验>XA 事务实验</a></li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
