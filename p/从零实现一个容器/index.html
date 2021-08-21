@@ -1,22 +1,22 @@
 <!doctype html><html lang=zh-cn>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 自从看了cocker项目的ppt之后就有点念念不忘的意思了，实现一个docker或docker的类似物看起来并不是做不到的事情。
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 自从看了cocker项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。
 于是就动手试一试。
 核心技术 namespace 命名空间包装全局系统资源，让在命名空间中的进程看起来就像是有自己独立隔离的全局资源一样。命名空间中的全局资源对命名空间中的其他进程都是可见的，但对命名空间外的进程不可见。命名空间用途之一就是实现容器。
  Linux provides the following namespaces: Namespace Constant Isolates Cgroup CLONE_NEWCGROUP Cgroup root directory IPC CLONE_NEWIPC System V IPC, POSIX message queues Network CLONE_NEWNET Network devices, stacks, ports, etc. Mount CLONE_NEWNS Mount points PID CLONE_NEWPID Process IDs User CLONE_NEWUSER User and group IDs UTS CLONE_NEWUTS Hostname and NIS domain name   几个命名空间的 API
  clone setns unshare  不得不说 man 7 namespaces 对 namespace 的解释已经非常到位了。"><title>从零实现一个容器</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/>
 <link rel=stylesheet href=/blog/scss/style.min.css><meta property="og:title" content="从零实现一个容器">
-<meta property="og:description" content="前言 自从看了cocker项目的ppt之后就有点念念不忘的意思了，实现一个docker或docker的类似物看起来并不是做不到的事情。
+<meta property="og:description" content="前言 自从看了cocker项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。
 于是就动手试一试。
 核心技术 namespace 命名空间包装全局系统资源，让在命名空间中的进程看起来就像是有自己独立隔离的全局资源一样。命名空间中的全局资源对命名空间中的其他进程都是可见的，但对命名空间外的进程不可见。命名空间用途之一就是实现容器。
  Linux provides the following namespaces: Namespace Constant Isolates Cgroup CLONE_NEWCGROUP Cgroup root directory IPC CLONE_NEWIPC System V IPC, POSIX message queues Network CLONE_NEWNET Network devices, stacks, ports, etc. Mount CLONE_NEWNS Mount points PID CLONE_NEWPID Process IDs User CLONE_NEWUSER User and group IDs UTS CLONE_NEWUTS Hostname and NIS domain name   几个命名空间的 API
  clone setns unshare  不得不说 man 7 namespaces 对 namespace 的解释已经非常到位了。">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/">
 <meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="docker">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="docker"><meta property="article:published_time" content="2021-05-31T16:16:52+00:00"><meta property="article:modified_time" content="2021-05-31T16:16:52+00:00">
 <meta name=twitter:title content="从零实现一个容器">
-<meta name=twitter:description content="前言 自从看了cocker项目的ppt之后就有点念念不忘的意思了，实现一个docker或docker的类似物看起来并不是做不到的事情。
+<meta name=twitter:description content="前言 自从看了cocker项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。
 于是就动手试一试。
 核心技术 namespace 命名空间包装全局系统资源，让在命名空间中的进程看起来就像是有自己独立隔离的全局资源一样。命名空间中的全局资源对命名空间中的其他进程都是可见的，但对命名空间外的进程不可见。命名空间用途之一就是实现容器。
  Linux provides the following namespaces: Namespace Constant Isolates Cgroup CLONE_NEWCGROUP Cgroup root directory IPC CLONE_NEWIPC System V IPC, POSIX message queues Network CLONE_NEWNET Network devices, stacks, ports, etc. Mount CLONE_NEWNS Mount points PID CLONE_NEWPID Process IDs User CLONE_NEWUSER User and group IDs UTS CLONE_NEWUTS Hostname and NIS domain name   几个命名空间的 API
@@ -44,6 +44,9 @@ golang
 <a href=/blog/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/>从零实现一个容器</a>
 </h2>
 <footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2021年 5月 31日</time>
+</div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
 阅读时长: 7 分钟
@@ -54,7 +57,7 @@ golang
 </header>
 <section class=article-content>
 <h2 id=前言>前言</h2>
-<p>自从看了<code>cocker</code>项目的ppt之后就有点念念不忘的意思了，实现一个docker或docker的类似物看起来并不是做不到的事情。</p>
+<p>自从看了<code>cocker</code>项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。</p>
 <p>于是就动手试一试。</p>
 <h2 id=核心技术>核心技术</h2>
 <h3 id=namespace>namespace</h3>
@@ -81,7 +84,7 @@ UTS         CLONE_NEWUTS      Hostname and NIS domain name
 <p>不得不说 <code>man 7 namespaces</code> 对 <code>namespace</code> 的解释已经非常到位了。</p>
 <h3 id=chroot>chroot</h3>
 <p>这个 Linux 用户应该还是比较熟悉的，如 Arch Linux 这样的发行版在安装时就有用到。</p>
-<p>使用 <code>man 2 chroot</code> 查看这个api的文档。</p>
+<p>使用 <code>man 2 chroot</code> 查看这个 api 的文档。</p>
 <blockquote>
 <p>chroot() changes the root directory of the calling process to that specified in path. This directory will be used for pathnames beginning with /. The root directory is inherited by all children of the calling process.</p>
 <p>Only a privileged process (Linux: one with the CAP_SYS_CHROOT capability in its user namespace) may call chroot().</p>
@@ -382,7 +385,7 @@ root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container#
 <li><code>unshare</code> 启动新的 <code>/bin/bash</code> 进程后，<code>/proc</code> 挂载点还没有真正隔离，此时可以手动使用 <code>mount -t proc proc /proc</code> 命令挂载当前命名空间的 <code>procfs</code>。</li>
 <li>mount namespace 中挂载事件传播，可以查看文档 <code>man 7 mount_namespaces</code>。</li>
 </ol>
-<p>debian系的 Linux 发行版在 util-linux 包里提供了一个 <code>unshare</code> 程序，比上面的 demo 更强大，甚至可以用一行命令实现一个基本的<em>容器</em>。</p>
+<p>debian 系的 Linux 发行版在 util-linux 包里提供了一个 <code>unshare</code> 程序，比上面的 demo 更强大，甚至可以用一行命令实现一个基本的<em>容器</em>。</p>
 <div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=c1># 我在 workspace 目录里装了 busybox，所以能直接跑起来 chroot 和 /bin/ash</span>
 <span class=c1># busybox 的安装方法参考 busybox 源码目录下的 INSTALL 文件</span>
 <span class=c1># vim Config.in 修改 config STATIC 下的 default 为 y</span>
@@ -499,7 +502,7 @@ DESKTOP-HEKKTQ9 :: ~/repos/container »
 <li><code>mount</code></li>
 <li>&mldr;</li>
 </ul>
-<p>本篇还不涉及网络，仅在文件系统和PID、用户等层级做了隔离。网络隔离可以参考 <code>man 7 network_namespaces</code> ，不过谷歌搜了一大圈也还没找到怎么创建虚拟网卡，暂且先放着了。</p>
+<p>本篇还不涉及网络，仅在文件系统和 PID、用户等层级做了隔离。网络隔离可以参考 <code>man 7 network_namespaces</code> ，不过谷歌搜了一大圈也还没找到怎么创建虚拟网卡，暂且先放着了。</p>
 </section>
 <footer class=article-footer>
 <section class=article-tags>

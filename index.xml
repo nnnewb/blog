@@ -838,7 +838,408 @@ git reset --hard HEAD@&lt;span class="o">{&lt;/span>1&lt;span class="o">}&lt;/sp
 &lt;/span>&lt;span class="se">&lt;/span> &lt;span class="p">|&lt;/span> grep -E &lt;span class="s2">&amp;#34;^\\s+origin/(patch|feat|refactor|test|misc)&amp;#34;&lt;/span> &lt;span class="se">\
 &lt;/span>&lt;span class="se">&lt;/span> &lt;span class="p">|&lt;/span> sed &lt;span class="s1">&amp;#39;s/origin\///&amp;#39;&lt;/span> &lt;span class="se">\
 &lt;/span>&lt;span class="se">&lt;/span> &lt;span class="p">|&lt;/span> xargs -I&lt;span class="o">{}&lt;/span> &lt;span class="nb">echo&lt;/span> git push --delete origin &lt;span class="o">{}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>2021-04-25 无事发生</title><link>https://nnnewb.github.io/blog/p/2021-04-25-%E6%97%A0%E4%BA%8B%E5%8F%91%E7%94%9F/</link><pubDate>Sun, 25 Apr 2021 10:40:30 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/2021-04-25-%E6%97%A0%E4%BA%8B%E5%8F%91%E7%94%9F/</guid><description>&lt;p>4月25日好像也不是什么节日，对我个人来说也没有什么特殊意义。仅仅是普通的一天——如果不算五一调休导致今天明明是周日但还要上班这一点的话。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>从零实现一个容器</title><link>https://nnnewb.github.io/blog/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/</link><pubDate>Mon, 31 May 2021 16:16:52 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>自从看了&lt;code>cocker&lt;/code>项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。&lt;/p>
+&lt;p>于是就动手试一试。&lt;/p>
+&lt;h2 id="核心技术">核心技术&lt;/h2>
+&lt;h3 id="namespace">namespace&lt;/h3>
+&lt;p>命名空间包装全局系统资源，让在命名空间中的进程看起来就像是有自己独立隔离的全局资源一样。命名空间中的全局资源对命名空间中的其他进程都是可见的，但对命名空间外的进程不可见。命名空间用途之一就是实现容器。&lt;/p>
+&lt;blockquote>
+&lt;pre>&lt;code>Linux provides the following namespaces:
+Namespace Constant Isolates
+Cgroup CLONE_NEWCGROUP Cgroup root directory
+IPC CLONE_NEWIPC System V IPC, POSIX message queues
+Network CLONE_NEWNET Network devices, stacks, ports, etc.
+Mount CLONE_NEWNS Mount points
+PID CLONE_NEWPID Process IDs
+User CLONE_NEWUSER User and group IDs
+UTS CLONE_NEWUTS Hostname and NIS domain name
+&lt;/code>&lt;/pre>
+&lt;/blockquote>
+&lt;p>几个命名空间的 API&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>clone&lt;/code>&lt;/li>
+&lt;li>&lt;code>setns&lt;/code>&lt;/li>
+&lt;li>&lt;code>unshare&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>不得不说 &lt;code>man 7 namespaces&lt;/code> 对 &lt;code>namespace&lt;/code> 的解释已经非常到位了。&lt;/p>
+&lt;h3 id="chroot">chroot&lt;/h3>
+&lt;p>这个 Linux 用户应该还是比较熟悉的，如 Arch Linux 这样的发行版在安装时就有用到。&lt;/p>
+&lt;p>使用 &lt;code>man 2 chroot&lt;/code> 查看这个 api 的文档。&lt;/p>
+&lt;blockquote>
+&lt;p>chroot() changes the root directory of the calling process to that specified in path. This directory will be used for pathnames beginning with /. The root directory is inherited by all children of the calling process.&lt;/p>
+&lt;p>Only a privileged process (Linux: one with the CAP_SYS_CHROOT capability in its user namespace) may call chroot().&lt;/p>
+&lt;/blockquote>
+&lt;p>基本作用是把调用进程的根目录 &lt;code>/&lt;/code> 切换到指定目录，子进程会继承这个 &lt;code>/&lt;/code> 位置；调用 API 需要特权。&lt;/p>
+&lt;p>举例说调完 &lt;code>chroot(&amp;quot;/home/xxx&amp;quot;)&lt;/code>，你再用 &lt;code>ls&lt;/code> 之类的命令看 &lt;code>/&lt;/code> 下有什么文件，看到的就是 &lt;code>/home/xxx&lt;/code> 下的内容了。&lt;/p>
+&lt;p>&lt;code>man 2 chroot&lt;/code> 还有一些有意思的内容，不做赘述。&lt;/p>
+&lt;h3 id="mount">mount&lt;/h3>
+&lt;p>也是 Linux 用户很熟悉的东西。老规矩，&lt;code>man 2 mount&lt;/code> 看看文档。&lt;/p>
+&lt;blockquote>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sys/mount.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">mount&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">source&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">target&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">filesystemtype&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">unsigned&lt;/span> &lt;span class="kt">long&lt;/span> &lt;span class="n">mountflags&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="k">const&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>mount() attaches the filesystem specified by source (which is often a pathname referring to a device, but can also be the pathname of a directory or file, or a dummy string) to the location (a directory or file) specified by the pathname in target.&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;code>mount&lt;/code> 会挂载(attaches) &lt;code>source&lt;/code> 参数指定的文件系统（通常是设备路径，也可以是文件夹、文件的路径或虚拟字符串（如&lt;code>proc&lt;/code>））到 &lt;code>target&lt;/code> 指定的位置（目录或文件）。同样需要特权来执行。&lt;/p>
+&lt;p>&lt;code>source&lt;/code>/&lt;code>target&lt;/code> 都不难理解，&lt;code>filesystemtype&lt;/code>可以从&lt;code>/proc/filesystems&lt;/code>里读到可用值，或者自己搜一搜；比较重要的就是 &lt;code>mountflags&lt;/code> 了，可以指定诸如&lt;code>MS_RDONLY&lt;/code>之类的选项来挂载只读文件系统等等。具体还是自己查手册。&lt;/p>
+&lt;h3 id="clone">clone&lt;/h3>
+&lt;p>最后就是系统调用 &lt;code>clone&lt;/code> 了。还是先 &lt;code>man 2 clone&lt;/code>。&lt;/p>
+&lt;blockquote>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cm">/* Prototype for the glibc wrapper function */&lt;/span>
+&lt;span class="cp">#define _GNU_SOURCE
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sched.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">clone&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">fn&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">child_stack&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">flags&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">arg&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">...&lt;/span>
+&lt;span class="cm">/* pid_t *ptid, void *newtls, pid_t *ctid */&lt;/span> &lt;span class="p">);&lt;/span>
+&lt;span class="cm">/* For the prototype of the raw system call, see NOTES */&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>clone() creates a new process, in a manner similar to fork(2).&lt;/p>
+&lt;/blockquote>
+&lt;p>总体类似于&lt;code>fork()&lt;/code>，但可以指定一个入口函数，函数结束则子进程退出，也可以共享内存空间，所以行为也可以类似线程。看怎么用。&lt;/p>
+&lt;p>&lt;code>flags&lt;/code>依然是关注的重点，&lt;code>CLONE_NEWUTS&lt;/code>、&lt;code>CLONE_NEWNS&lt;/code>、&lt;code>CLONE_NEWPID&lt;/code>这些参数允许将子进程运行在独立的命名空间里。&lt;/p>
+&lt;p>&lt;code>man 2 clone&lt;/code> 还提供了一个 C 语言编写的例子可以参考。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#define _GNU_SOURCE
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sys/wait.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sys/utsname.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sched.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;string.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;unistd.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="cp">#define errExit(msg) \
+&lt;/span>&lt;span class="cp"> do \
+&lt;/span>&lt;span class="cp"> { \
+&lt;/span>&lt;span class="cp"> perror(msg); \
+&lt;/span>&lt;span class="cp"> exit(EXIT_FAILURE); \
+&lt;/span>&lt;span class="cp"> } while (0)
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">static&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="cm">/* Start function for cloned child */&lt;/span>
+&lt;span class="n">childFunc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">arg&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="k">struct&lt;/span> &lt;span class="n">utsname&lt;/span> &lt;span class="n">uts&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="cm">/* Change hostname in UTS namespace of child */&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">sethostname&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">arg&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">strlen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">arg&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;sethostname&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="cm">/* Retrieve and display hostname */&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">uname&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">uts&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;uname&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;uts.nodename in child: %s&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">uts&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">nodename&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="cm">/* Keep the namespace open for a while, by sleeping.
+&lt;/span>&lt;span class="cm"> This allows some experimentation--for example, another
+&lt;/span>&lt;span class="cm"> process might join the namespace. */&lt;/span>
+&lt;span class="n">sleep&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="cm">/* Child terminates now */&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="cp">#define STACK_SIZE (1024 * 1024) &lt;/span>&lt;span class="cm">/* Stack size for cloned child */&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">argc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[])&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="cm">/* Start of stack buffer */&lt;/span>
+&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">stackTop&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="cm">/* End of stack buffer */&lt;/span>
+&lt;span class="n">pid_t&lt;/span> &lt;span class="n">pid&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">struct&lt;/span> &lt;span class="n">utsname&lt;/span> &lt;span class="n">uts&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">argc&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;Usage: %s &amp;lt;child-hostname&amp;gt;&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]);&lt;/span>
+&lt;span class="n">exit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">EXIT_SUCCESS&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="cm">/* Allocate stack for child */&lt;/span>
+&lt;span class="n">stack&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">malloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">STACK_SIZE&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">stack&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;malloc&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">stackTop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">stack&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">STACK_SIZE&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="cm">/* Assume stack grows downward */&lt;/span>
+&lt;span class="cm">/* Create child that has its own UTS namespace;
+&lt;/span>&lt;span class="cm"> child commences execution in childFunc() */&lt;/span>
+&lt;span class="n">pid&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">clone&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">childFunc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">stackTop&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">CLONE_NEWUTS&lt;/span> &lt;span class="o">|&lt;/span> &lt;span class="n">SIGCHLD&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">pid&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;clone&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;clone() returned %ld&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">long&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">pid&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="cm">/* Parent falls through to here */&lt;/span>
+&lt;span class="n">sleep&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="cm">/* Give child time to change its hostname */&lt;/span>
+&lt;span class="cm">/* Display hostname in parent&amp;#39;s UTS namespace. This will be
+&lt;/span>&lt;span class="cm"> different from hostname in child&amp;#39;s UTS namespace. */&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">uname&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">uts&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;uname&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;uts.nodename in parent: %s&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">uts&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">nodename&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">waitpid&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">pid&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="cm">/* Wait for child */&lt;/span>
+&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;waitpid&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;child has terminated&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">exit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">EXIT_SUCCESS&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>把上面的代码保存到 &lt;code>main.c&lt;/code> 之后，使用命令 &lt;code>gcc main.c -o clone-demo&lt;/code> 编译。&lt;/p>
+&lt;p>编译完成后，&lt;code>sudo ./clone-demo new-hostname&lt;/code> 执行。&lt;/p>
+&lt;p>最终结果类似这样&lt;/p>
+&lt;pre>&lt;code>DESKTOP-HEKKTQ9 :: ~/repos/container » sudo ./clone-demo new-hostname
+clone() returned 1515
+uts.nodename in child: new-hostname
+uts.nodename in parent: DESKTOP-HEKKTQ9
+child has terminated
+DESKTOP-HEKKTQ9 :: ~/repos/container »
+&lt;/code>&lt;/pre>&lt;h3 id="setns">setns&lt;/h3>
+&lt;p>&lt;code>setns&lt;/code> 把调用这个函数的线程加入指定 fd 的命名空间里。这个 &lt;code>fd&lt;/code> 指的是 &lt;code>/proc/1234/ns/uts&lt;/code> 这些特殊文件的文件描述符。&lt;/p>
+&lt;p>举例来说，我们把 &lt;code>clone-demo&lt;/code> 的源码里，&lt;code>sleep(3)&lt;/code> 改为 &lt;code>sleep(200)&lt;/code>，再执行&lt;code>sudo clone-demo new-hostname &amp;amp;&lt;/code> 把进程放到后台。&lt;/p>
+&lt;p>然后编译下面的代码并测试加入 clone-demo 的 uts 名称空间。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#define _GNU_SOURCE
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;fcntl.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sched.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;unistd.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="cp">#define errExit(msg) \
+&lt;/span>&lt;span class="cp"> do \
+&lt;/span>&lt;span class="cp"> { \
+&lt;/span>&lt;span class="cp"> perror(msg); \
+&lt;/span>&lt;span class="cp"> exit(EXIT_FAILURE); \
+&lt;/span>&lt;span class="cp"> } while (0)
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">argc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[])&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">fd&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">argc&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;%s /proc/PID/ns/FILE cmd args...&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]);&lt;/span>
+&lt;span class="n">exit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">EXIT_FAILURE&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">fd&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">open&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">O_RDONLY&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="cm">/* Get file descriptor for namespace */&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">fd&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;open&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">setns&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">fd&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="cm">/* Join that namespace */&lt;/span>
+&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;setns&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">execvp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">]);&lt;/span> &lt;span class="cm">/* Execute a command in namespace */&lt;/span>
+&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;execvp&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>最终结果如下&lt;/p>
+&lt;pre>&lt;code>root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# ./clone-demo new-hostname &amp;amp;
+[1] 1826
+clone() returned 1827
+uts.nodename in child: new-hostname
+uts.nodename in parent: DESKTOP-HEKKTQ9
+root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# ./setns-demo /proc/1827/ns/uts /bin/bash
+root@new-hostname:/home/weakptr/repos/container# uname -n
+new-hostname
+root@new-hostname:/home/weakptr/repos/container# exit
+root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# exit
+DESKTOP-HEKKTQ9 :: ~/repos/container » uname -n
+DESKTOP-HEKKTQ9
+&lt;/code>&lt;/pre>&lt;h3 id="unshare">unshare&lt;/h3>
+&lt;blockquote>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#define _GNU_SOURCE
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sched.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">unshare&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">flags&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;/blockquote>
+&lt;p>&lt;code>unshare&lt;/code> 用于主动解除当前进程或线程从父进程继承的执行上下文（例如命名空间）。&lt;/p>
+&lt;p>&lt;code>unshare&lt;/code>的主要用途就是在不创建新的进程的前提下，控制自己的共享执行上下文（还是指命名空间）。&lt;/p>
+&lt;p>参数 &lt;code>flags&lt;/code> 依然是 &lt;code>CLONE_NEWNS&lt;/code> 这些常量。惯例还是有个 demo 。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cm">/* unshare.c
+&lt;/span>&lt;span class="cm">
+&lt;/span>&lt;span class="cm"> A simple implementation of the unshare(1) command: unshare
+&lt;/span>&lt;span class="cm"> namespaces and execute a command.
+&lt;/span>&lt;span class="cm">*/&lt;/span>
+&lt;span class="cp">#define _GNU_SOURCE
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sched.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;unistd.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;wait.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="cm">/* A simple error-handling function: print an error message based
+&lt;/span>&lt;span class="cm"> on the value in &amp;#39;errno&amp;#39; and terminate the calling process */&lt;/span>
+&lt;span class="cp">#define errExit(msg) \
+&lt;/span>&lt;span class="cp"> do \
+&lt;/span>&lt;span class="cp"> { \
+&lt;/span>&lt;span class="cp"> perror(msg); \
+&lt;/span>&lt;span class="cp"> exit(EXIT_FAILURE); \
+&lt;/span>&lt;span class="cp"> } while (0)
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">static&lt;/span> &lt;span class="kt">void&lt;/span>
+&lt;span class="nf">usage&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">pname&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;Usage: %s [options] program [arg...]&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">pname&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;Options can be:&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -i unshare IPC namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -m unshare mount namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -n unshare network namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -p unshare PID namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -u unshare UTS namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -U unshare user namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">exit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">EXIT_FAILURE&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">argc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[])&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">flags&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">opt&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">flags&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">while&lt;/span> &lt;span class="p">((&lt;/span>&lt;span class="n">opt&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">getopt&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">argv&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;imnpuU&amp;#34;&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="k">switch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">opt&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;i&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWIPC&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;m&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWNS&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;n&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWNET&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;p&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWPID&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;u&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWUTS&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;U&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWUSER&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="n">usage&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">optind&lt;/span> &lt;span class="o">&amp;gt;=&lt;/span> &lt;span class="n">argc&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">usage&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">unshare&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">flags&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;unshare&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">pid_t&lt;/span> &lt;span class="n">pid&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fork&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">pid&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;child process&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">execvp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">optind&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">optind&lt;/span>&lt;span class="p">]);&lt;/span>
+&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;execvp&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">else&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;waitpid %ld&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">pid&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">waitpid&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">pid&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>保存成 &lt;code>unshare.c&lt;/code>，使用&lt;code>gcc unshare.c -o unshare&lt;/code> 编译。&lt;/p>
+&lt;p>之后可以通过下面的命令来检查效果。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">sudo ./unshare -pm /bin/bash &lt;span class="c1"># 隔离 mount 和 pid 两个 namespace&lt;/span>
+waitpid &lt;span class="m">2178&lt;/span>
+root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# mount -t proc proc /proc
+root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# ps -ef
+UID PID PPID C STIME TTY TIME CMD
+root &lt;span class="m">1&lt;/span> &lt;span class="m">0&lt;/span> &lt;span class="m">0&lt;/span> 15:22 pts/0 00:00:00 /bin/bash
+root &lt;span class="m">3&lt;/span> &lt;span class="m">1&lt;/span> &lt;span class="m">0&lt;/span> 15:22 pts/0 00:00:00 ps -ef
+root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container#
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>需要注意几个点：&lt;/p>
+&lt;ol>
+&lt;li>&lt;code>unshare&lt;/code> 最后必须是 &lt;code>fork&lt;/code> 新进程再 &lt;code>execvp&lt;/code>，否则会出现 &lt;code>cannot allocate memory&lt;/code> 错误&lt;/li>
+&lt;li>&lt;code>unshare&lt;/code> 启动新的 &lt;code>/bin/bash&lt;/code> 进程后，&lt;code>/proc&lt;/code> 挂载点还没有真正隔离，此时可以手动使用 &lt;code>mount -t proc proc /proc&lt;/code> 命令挂载当前命名空间的 &lt;code>procfs&lt;/code>。&lt;/li>
+&lt;li>mount namespace 中挂载事件传播，可以查看文档 &lt;code>man 7 mount_namespaces&lt;/code>。&lt;/li>
+&lt;/ol>
+&lt;p>debian 系的 Linux 发行版在 util-linux 包里提供了一个 &lt;code>unshare&lt;/code> 程序，比上面的 demo 更强大，甚至可以用一行命令实现一个基本的&lt;em>容器&lt;/em>。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="c1"># 我在 workspace 目录里装了 busybox，所以能直接跑起来 chroot 和 /bin/ash&lt;/span>
+&lt;span class="c1"># busybox 的安装方法参考 busybox 源码目录下的 INSTALL 文件&lt;/span>
+&lt;span class="c1"># vim Config.in 修改 config STATIC 下的 default 为 y&lt;/span>
+&lt;span class="c1"># make defconfig &amp;amp;&amp;amp; make &amp;amp;&amp;amp; make install CONFIG_PREFIX=你的workspace目录&lt;/span>
+sudo unshare -pumf --mount-proc&lt;span class="o">=&lt;/span>workspace/proc chroot workspace /bin/ash
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>结果：&lt;/p>
+&lt;pre>&lt;code>/ # ps -ef
+PID USER TIME COMMAND
+1 0 0:00 /bin/ash
+2 0 0:00 ps -ef
+/ # ls
+bin linuxrc proc sbin usr
+/ # mount
+proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
+/ #
+&lt;/code>&lt;/pre>&lt;h2 id="用-go-实现">用 go 实现&lt;/h2>
+&lt;h3 id="syscall">syscall&lt;/h3>
+&lt;p>go 对系统调用其实做了不少封装，基本在 &lt;code>os&lt;/code> 和 &lt;code>syscall&lt;/code> 下，但有很多区别。比如在 go 里找不到 &lt;code>clone&lt;/code>、&lt;code>setns&lt;/code> 这些接口，取而代之的是 &lt;code>os/exec&lt;/code> 下的 &lt;code>Cmd&lt;/code> 结构。不过 &lt;code>syscall.Unshare&lt;/code> 倒是很忠实的还原了。诸如 &lt;code>CLONE_NEWNS&lt;/code> 这些常量也可以找到对应的 &lt;code>syscall.CLONE_NEWNS&lt;/code>。&lt;/p>
+&lt;p>不重复上面的代码了，写一个简短的启动 busybox 容器的 go 程序。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">package&lt;/span> &lt;span class="nx">main&lt;/span>
+&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;flag&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;fmt&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;os&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;os/exec&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;syscall&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">var&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="nx">flagBootstrap&lt;/span> &lt;span class="kt">bool&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">init&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">BoolVar&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">flagBootstrap&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;bootstrap&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">false&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;bootstrap busybox container&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">err&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nb">panic&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">runBusybox&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Start `busybox ash` in process %d\n&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Getpid&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="nx">cmd&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">exec&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Command&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;/bin/busybox&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;ash&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdin&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdin&lt;/span>
+&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdout&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdout&lt;/span>
+&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stderr&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stderr&lt;/span>
+&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Env&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Env&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;PATH=/bin:/sbin:/usr/bin:/usr/sbin&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Chroot&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;workspace&amp;#34;&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Chdir&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;/&amp;#34;&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Mount&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;proc&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;/proc&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;proc&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Run&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="nb">println&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;unmount proc&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Unmount&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;proc&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">runContainerizedCommand&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">cmd&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">exec&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Command&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;/proc/self/exe&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Path&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="s">&amp;#34;/proc/self/exe&amp;#34;&lt;/span>
+&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Args&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Args&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;-bootstrap&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdin&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdin&lt;/span>
+&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdout&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdout&lt;/span>
+&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stderr&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stderr&lt;/span>
+&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">SysProcAttr&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">SysProcAttr&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;span class="nx">Cloneflags&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CLONE_NEWUTS&lt;/span> &lt;span class="p">|&lt;/span> &lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CLONE_NEWNS&lt;/span> &lt;span class="p">|&lt;/span> &lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CLONE_NEWPID&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="nx">Unshareflags&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CLONE_NEWNS&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;starting current process %d\n&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Getpid&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Run&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Parse&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">flagBootstrap&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nf">runBusybox&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nf">runContainerizedCommand&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>保存为 &lt;code>demo.go&lt;/code> 后用 &lt;code>go build -o demo demo.go&lt;/code> 编译，然后执行 &lt;code>sudo ./demo&lt;/code> 。&lt;/p>
+&lt;p>结果像是这样：&lt;/p>
+&lt;pre>&lt;code>DESKTOP-HEKKTQ9 :: ~/repos/container » sudo ./demo
+starting current process 2954
+Start `busybox ash` in process 1
+/ # ps -ef
+PID USER TIME COMMAND
+1 0 0:00 /proc/self/exe -bootstrap
+6 0 0:00 /bin/busybox ash
+7 0 0:00 ps -ef
+/ # mount
+proc on /proc type proc (rw,relatime)
+/ #
+unmount proc
+DESKTOP-HEKKTQ9 :: ~/repos/container »
+&lt;/code>&lt;/pre>&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>上面的 demo 仅仅是创建了一个看起来像容器的玩具，连 cgroup 都没有，距离真正的 OCI 运行时还有不小差距。不过已经足够展示创建一个隔离的环境并不是特别困难的事情，这必须感谢 Linux 内核的开发者们让容器技术有了存在的可能，而且还能这么简单地使用。&lt;/p>
+&lt;p>可以点击[这个链接](&lt;a class="link" href="https://github.com/opencontainers/runtime-spec/blob/master/spec.md" target="_blank" rel="noopener"
+>runtime-spec/spec.md at master · opencontainers/runtime-spec (github.com)&lt;/a>)查看 OCI 运行时的规格说明。&lt;/p>
+&lt;p>涉及概念：&lt;/p>
+&lt;ul>
+&lt;li>namespace&lt;/li>
+&lt;/ul>
+&lt;p>重要系统调用&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>clone&lt;/code>&lt;/li>
+&lt;li>&lt;code>setns&lt;/code>&lt;/li>
+&lt;li>&lt;code>unshare&lt;/code>&lt;/li>
+&lt;li>&lt;code>mount&lt;/code>&lt;/li>
+&lt;li>&amp;hellip;&lt;/li>
+&lt;/ul>
+&lt;p>本篇还不涉及网络，仅在文件系统和 PID、用户等层级做了隔离。网络隔离可以参考 &lt;code>man 7 network_namespaces&lt;/code> ，不过谷歌搜了一大圈也还没找到怎么创建虚拟网卡，暂且先放着了。&lt;/p></description></item><item><title>2021-04-25 无事发生</title><link>https://nnnewb.github.io/blog/p/2021-04-25-%E6%97%A0%E4%BA%8B%E5%8F%91%E7%94%9F/</link><pubDate>Sun, 25 Apr 2021 10:40:30 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/2021-04-25-%E6%97%A0%E4%BA%8B%E5%8F%91%E7%94%9F/</guid><description>&lt;p>4月25日好像也不是什么节日，对我个人来说也没有什么特殊意义。仅仅是普通的一天——如果不算五一调休导致今天明明是周日但还要上班这一点的话。&lt;/p>
 &lt;p>想想也挺不可思议的，不知不觉已经到2021年这个在不少科学幻想中的“未来”时代了，光算工作年限，我也干了有四五年的程序了吧。&lt;/p>
 &lt;p>从最开始抱着“不写代码还能干啥”到“写代码也挺不错的”，再到现在，“还能写几年代码呢”。&lt;/p>
 &lt;p>反思一下这几年，几乎没干出什么成绩，工作一年一换，工作几年下来，也没几个认识、熟悉到可以称之为“朋友”的人。倒不是我孤僻（这么说的人一般都确实孤僻吧），主要是确实没什么主观能动性。&lt;/p>
@@ -1478,7 +1879,139 @@ source ~/.vimrc&lt;/p>
 &lt;p>当然非法的事情是不可能做的。&lt;/p>
 &lt;p>这玩意儿破解完之后发现有泄露隐私、被脱裤的严重漏洞，我也给市政平台发了件。&lt;/p>
 &lt;p>所以明年如果再硬推一次的话，到时候再拆了看看是不是有点长进。当然，没人管应该才是常态。&lt;/p>
-&lt;p>要是有关部门不管，开发的公司也不管，那我也没办法，我还年轻，也不想因为这个吃牢饭。&lt;/p></description></item><item><title>Flask源码阅读笔记：WSGI</title><link>https://nnnewb.github.io/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/</link><pubDate>Sun, 17 Mar 2019 00:00:00 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/</guid><description>&lt;h2 id="0-intro">0. Intro&lt;/h2>
+&lt;p>要是有关部门不管，开发的公司也不管，那我也没办法，我还年轻，也不想因为这个吃牢饭。&lt;/p></description></item><item><title>在C++中嵌入Python解释器</title><link>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</link><pubDate>Fri, 07 Feb 2020 21:59:00 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</guid><description>&lt;p>先不说废话，项目地址：https://github.com/nnnewb/CQPy 。欢迎给个 Star 什么的。&lt;/p>
+&lt;h2 id="背景">背景&lt;/h2>
+&lt;p>想给最近在玩的酷 Q 写个插件，发现没有合适的直接使用 Python 的解决方案。&lt;/p>
+&lt;p>Richard Chien 提供了一个比较通用的插件，&lt;code>CQHttp&lt;/code>。&lt;code>CQHttp&lt;/code>本体是用 C++ 编写的插件，将酷 Q 的回调包装成 HTTP 请求转发至指定的地址，支持&lt;code>http&lt;/code>和&lt;code>websocket&lt;/code>两种协议。&lt;/p>
+&lt;p>不过由于个人想折腾折腾的想法，打算试试把 Python 解释器直接嵌入到 C++ 里得了。&lt;/p>
+&lt;!-- raw HTML omitted -->
+&lt;p>整个思路如下。&lt;/p>
+&lt;pre>&lt;code class="language-mermaid" data-lang="mermaid">graph LR;
+CQP[酷Q] --事件回调--&amp;gt; dll[插件DLL];
+dll --事件回调--&amp;gt; python[Python脚本];
+python --调用API--&amp;gt; dll;
+dll --调用API--&amp;gt; CQP;
+&lt;/code>&lt;/pre>&lt;h2 id="依赖">依赖&lt;/h2>
+&lt;p>为了简化操作 Python 接口，我没有使用 Python 自带的 C API，而是&lt;code>pybind11&lt;/code>，使用&lt;code>vcpkg&lt;/code>管理依赖。&lt;/p>
+&lt;p>安装命令：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-batch" data-lang="batch">vcpkg install pybind11:x86-windows
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="0x1-编译-dll">0x1 编译 DLL&lt;/h2>
+&lt;p>我使用 CMake 作为编译系统，因此可以很简单地写一个编译出 DLL 的 &lt;code>CMakeLists.txt&lt;/code>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-cmake" data-lang="cmake">&lt;span class="nb">cmake_minimum_required&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">VERSION&lt;/span> &lt;span class="s">3.15&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">project&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">top.weak-ptr.cqpy&lt;/span> &lt;span class="s">LANGUAGES&lt;/span> &lt;span class="s">CXX&lt;/span> &lt;span class="s">VERSION&lt;/span> &lt;span class="s">0.1.0&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">include_directories&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">src&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">aux_source_directory&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">src&lt;/span> &lt;span class="s">SOURCES&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">CMAKE_CXX_STANDARD&lt;/span> &lt;span class="s">17&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="c"># 引入 pybind11
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="nb">find_package&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">pybind11&lt;/span> &lt;span class="s">CONFIG&lt;/span> &lt;span class="s">REQUIRED&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="c"># 添加 target
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">OUT_NAME&lt;/span> &lt;span class="s2">&amp;#34;app&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">add_library&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">${&lt;/span>&lt;span class="nv">OUT_NAME&lt;/span>&lt;span class="o">}&lt;/span> &lt;span class="s">SHARED&lt;/span> &lt;span class="o">${&lt;/span>&lt;span class="nv">SOURCES&lt;/span>&lt;span class="o">}&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">set_target_properties&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">${&lt;/span>&lt;span class="nv">OUT_NAME&lt;/span>&lt;span class="o">}&lt;/span> &lt;span class="s">PROPERTIES&lt;/span> &lt;span class="s">LINKER_LANGUAGE&lt;/span> &lt;span class="s">CXX&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">target_link_libraries&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">${&lt;/span>&lt;span class="nv">OUT_NAME&lt;/span>&lt;span class="o">}&lt;/span> &lt;span class="s">PRIVATE&lt;/span> &lt;span class="s">pybind11::embed&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>源代码使用 MSVC 和 MinGW 编译，另外再处理下源码编码的问题和宏。&lt;/p>
+&lt;p>主要涉及的几个问题：&lt;/p>
+&lt;ol>
+&lt;li>MSVC 编译时通过&lt;code>/utf-8&lt;/code>编译参数指定源码文件的编码。&lt;/li>
+&lt;li>MSVC 编译&lt;code>pybind11&lt;/code>时需要指定 &lt;code>-DNOMINMAX&lt;/code>，这是&lt;code>pybind11&lt;/code>要求的。&lt;/li>
+&lt;li>因为使用 VCPKG 管理依赖，MSVC 编译时还需要设置链接属性。&lt;/li>
+&lt;li>MinGW 编译时，指定 &lt;code>-static&lt;/code> 避免依赖 &lt;code>libgcc&lt;/code> 之类的 dll，最终编译结果只依赖于 &lt;code>libpython3.7.dll&lt;/code>。&lt;/li>
+&lt;li>MinGW 编译时，指定 &lt;code>-Wl,--kill-at,--enable-stdcall-fixup&lt;/code>，来确保导出的 DLL API 名字没有下划线开头和&lt;code>@&amp;lt;参数大小&amp;gt;&lt;/code>的后缀。&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-cmake" data-lang="cmake">&lt;span class="c"># 添加编译参数
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="nb">add_compile_definitions&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">APP_ID=&lt;/span>&lt;span class="s2">&amp;#34;${PROJECT_NAME}&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">add_definitions&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">-DAPP_ID=&lt;/span>&lt;span class="s2">&amp;#34;top.weak-ptr.cqpy&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="s">MSVC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">add_compile_options&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">/utf-8&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">add_definitions&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">-DNOMINMAX&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="c"># 设置静态链接
+&lt;/span>&lt;span class="c">&lt;/span> &lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">VCPKG_CRT_LINKAGE&lt;/span> &lt;span class="s">STATIC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">VCPKG_LIBRARY_LINKAGE&lt;/span> &lt;span class="s">STATIC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">else&lt;/span> &lt;span class="p">()&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">add_link_options&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">-static&lt;/span> &lt;span class="s">-Wl,--kill-at,--enable-stdcall-fixup&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">endif&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="s">MSVC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>最后的构建命令：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-batch" data-lang="batch">&lt;span class="k">mkdir&lt;/span> build
+&lt;span class="k">cd&lt;/span> build
+cmake .. \
+&lt;span class="s2">&amp;#34;-GVisual Studio 16 2019&amp;#34;&lt;/span> \
+-AWin32 \
+-DCMAKE_TOOLCHAIN_FILE=/path/to/your/vcpkg/scripts/buildsystems/vcpkg.cmake \
+cmake --build .
+cmake install
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>MinGW 对应改下 Generator，去掉&lt;code>-AWin32&lt;/code>和后面的&lt;code>-DCMAKE_TOOLCHAIN_FILE=/path/to/your/vcpkg/scripts/buildsystems/vcpkg.cmake&lt;/code>即可。&lt;/p>
+&lt;h2 id="0x2-msvc-编译导出-dll-的问题">0x2 MSVC 编译导出 DLL 的问题&lt;/h2>
+&lt;p>参考 MSDN 的文档，使用下面的方式无法正确导出 DLL 接口。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">extern&lt;/span> &lt;span class="s">&amp;#34;C&amp;#34;&lt;/span> &lt;span class="kr">__declspec&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dllexport&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="kr">__stdcall&lt;/span> &lt;span class="n">test&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>最终采用的是&lt;code>__pragma&lt;/code>的方式指定导出名，如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#define DLL_EXPORT extern &amp;#34;C&amp;#34; __declspec(dllexport)
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="cp">#define CQ_EXPORT(ReturnType, FuncName, ParamsSize, ...) \
+&lt;/span>&lt;span class="cp"> __pragma( \
+&lt;/span>&lt;span class="cp"> comment(linker, &amp;#34;/EXPORT:&amp;#34; #FuncName &amp;#34;=_&amp;#34; #FuncName &amp;#34;@&amp;#34; #ParamsSize)) \
+&lt;/span>&lt;span class="cp"> DLL_EXPORT ReturnType __stdcall FuncName(__VA_ARGS__)
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意&lt;code>__pragma&lt;/code>只能在 MSVC 中使用，所以要加上条件判断。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#define DLL_EXPORT extern &amp;#34;C&amp;#34; __declspec(dllexport)
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="cp">#if defined(_MSC_VER)
+&lt;/span>&lt;span class="cp">#define CQ_EXPORT(ReturnType, FuncName, ParamsSize, ...) \
+&lt;/span>&lt;span class="cp"> __pragma( \
+&lt;/span>&lt;span class="cp"> comment(linker, &amp;#34;/EXPORT:&amp;#34; #FuncName &amp;#34;=_&amp;#34; #FuncName &amp;#34;@&amp;#34; #ParamsSize)) \
+&lt;/span>&lt;span class="cp"> DLL_EXPORT ReturnType __stdcall FuncName(__VA_ARGS__)
+&lt;/span>&lt;span class="cp">#else
+&lt;/span>&lt;span class="cp">#define CQ_EXPORT(ReturnType, FuncName, ParamsSize, ...) \
+&lt;/span>&lt;span class="cp"> DLL_EXPORT ReturnType __stdcall FuncName(__VA_ARGS__)
+&lt;/span>&lt;span class="cp">#endif
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>理论上也能用&lt;code>.def&lt;/code>文件来定义导出表，可以自行尝试下。&lt;/p>
+&lt;h2 id="0x3-导入-cqpdll-的-api-的问题">0x3 导入 CQP.dll 的 API 的问题&lt;/h2>
+&lt;p>首先要知道&lt;code>CQP.dll&lt;/code>也会加载到&lt;code>CQP.exe&lt;/code>中，插件也会加载到&lt;code>CQP.exe&lt;/code>中，所以我们需要的就是使用 Windows API 获取到&lt;code>CQP.dll&lt;/code>的 Handle 再进行操作。&lt;/p>
+&lt;p>大致代码如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">const&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">dll&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">GetModuleHandleW&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">L&lt;/span>&lt;span class="s">&amp;#34;CQP.dll&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">const&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">CQ_addLog&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">reinterpret_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">int32_t&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kr">__stdcall&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dll&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;CQ_addLog&amp;#34;&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>通过两个 API 调用即可获得需要的函数指针了。&lt;/p>
+&lt;h2 id="0x4-嵌入-python-解释器">0x4 嵌入 Python 解释器&lt;/h2>
+&lt;p>到了这一步已经非常简单了，&lt;code>pybind11&lt;/code>提供了高度封装的 C++ API。可以直接参考&lt;a class="link" href="https://pybind11.readthedocs.io/en/stable/advanced/embedding.html" target="_blank" rel="noopener"
+>这个文档&lt;/a>。&lt;/p>
+&lt;p>再给个简单的例子代码：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">template&lt;/span> &lt;span class="o">&amp;lt;&lt;/span>&lt;span class="k">typename&lt;/span>&lt;span class="p">...&lt;/span> &lt;span class="n">Args&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>
+&lt;span class="kr">inline&lt;/span> &lt;span class="kt">int32_t&lt;/span> &lt;span class="n">py_callback&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">string&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">py_func&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">Args&lt;/span>&lt;span class="p">...&lt;/span> &lt;span class="n">args&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">guard&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">lock_guard&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">lock&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">try&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">m&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">module&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">import&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;cqpy._callback&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">py_func&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">c_str&lt;/span>&lt;span class="p">())(&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">...).&lt;/span>&lt;span class="k">template&lt;/span> &lt;span class="n">cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">catch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">error_already_set&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">e&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">logging&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">error&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">e&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">what&lt;/span>&lt;span class="p">());&lt;/span> &lt;span class="c1">// 记录 python 错误到日志
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">return&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 启用插件
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">CQ_EXPORT&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">cq_event_enable&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">initialize_interpreter&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="c1">// 设置 AUTH_CODE，但是暂时还不能使用酷Q的API
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">_embed&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">module&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">import&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;_embed&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">_embed&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;AUTH_CODE&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">AUTH_CODE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// 初始化 Python 解释器环境，把数据目录加入 python path
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">raw_app_dir&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">string&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">CQ_getAppDirectory&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">AUTH_CODE&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">app_dir&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">bytes&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">raw_app_dir&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;decode&amp;#34;&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="s">&amp;#34;gb18030&amp;#34;&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">str&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">sys&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">module&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">import&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;sys&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">sys&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;path&amp;#34;&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;append&amp;#34;&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">app_dir&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// 初始化完成
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">logging&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">info&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Python interpreter initialized.&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nf">py_callback&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;on_enable&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>需要注意的是，虽然在前面通过相关参数指定了静态链接，但实际&lt;code>Python3.7.dll&lt;/code>还是动态链接上去的。&lt;/p>
+&lt;p>所以分发这样编译出来的 dll，依然需要用户先安装一个 &lt;code>Python3.7&lt;/code>，或者把 &lt;code>Python3.7.dll&lt;/code> 也一起分发出去。&lt;/p>
+&lt;p>如果要完全的静态链接，可能要自行编译 Python 源代码。实在太麻烦，就懒得弄了。&lt;/p>
+&lt;h2 id="0x5-踩的坑">0x5 踩的坑&lt;/h2>
+&lt;p>通过 Python 调用 C++ 端提供的 API 时，特别注意参数一定要一一对应，特别是数据类型，一旦不匹配或传入数据有误（例如 None），可能造成 C++ 端内存异常，需要挂调试器才能发现原因，非常麻烦。&lt;/p>
+&lt;p>&lt;code>sys&lt;/code>是&lt;code>builtin&lt;/code>的库，和&lt;code>os&lt;/code>不同，如果分发的用户没有安装 Python，只有一个 &lt;code>Python3.7.dll&lt;/code>的话，很多 Python 自带的库是用不了的。例如说&lt;code>json&lt;/code>、&lt;code>logging&lt;/code>、甚至&lt;code>os&lt;/code>。这个应该算是常识，但最好一开始就意识到：你的用户还是要装一个 Python 才行。&lt;/p>
+&lt;p>关于 VirtualEnv 支持，建议直接参考&lt;a class="link" href="https://www.python.org/dev/peps/pep-0405/" target="_blank" rel="noopener"
+>PEP 405&lt;/a>。不多赘述。比较简单的处理就是把&lt;code>VENV\Lib\site-packages&lt;/code>加入到&lt;code>sys.path&lt;/code>里。&lt;/p>
+&lt;p>能不能把所有 Python 代码和 dll 都打包进 dll 里？大致原理就是丢进&lt;code>rc&lt;/code>里，但实际很麻烦，看&lt;code>py2exe&lt;/code>迄今为止还有一大堆坑就知道有多麻烦了。&lt;/p></description></item><item><title>Flask源码阅读笔记：WSGI</title><link>https://nnnewb.github.io/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/</link><pubDate>Sun, 17 Mar 2019 00:00:00 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/</guid><description>&lt;h2 id="0-intro">0. Intro&lt;/h2>
 &lt;p>Flask 是一个基于 WSGI 协议的上层应用框架，据我了解应该是和 Tornado、Django 流行程度相近，当然 Django 老大哥始终占据了最多的份额。Flask 是一个轻量级的 Micro Framework，源码值得一读。&lt;/p>
 &lt;h2 id="1-回顾-wsgi">1. 回顾 WSGI&lt;/h2>
 &lt;p>开始之前，需要先回顾以下 WSGI 协议。&lt;/p>
@@ -1889,7 +2422,80 @@ COMMIT a74864e , Line 2323 ~ 2327&lt;/p>
 &lt;span class="s2">&amp;#34;Parent&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
 &lt;span class="n">secondary&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">association_table&lt;/span>&lt;span class="p">,&lt;/span>
 &lt;span class="n">back_populates&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s2">&amp;#34;children&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>中间表里写上&lt;code>parent&lt;/code>和&lt;code>child&lt;/code>的主键作为&lt;code>foreignkey&lt;/code>，&lt;code>parent&lt;/code>和&lt;code>child&lt;/code>里的&lt;code>relationship&lt;/code>加入参数&lt;code>secondary&lt;/code>，指定为中间表。&lt;/p></description></item><item><title>python3元类深入解读</title><link>https://nnnewb.github.io/blog/p/python3%E5%85%83%E7%B1%BB%E6%B7%B1%E5%85%A5%E8%A7%A3%E8%AF%BB/</link><pubDate>Thu, 20 Dec 2018 19:46:00 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/python3%E5%85%83%E7%B1%BB%E6%B7%B1%E5%85%A5%E8%A7%A3%E8%AF%BB/</guid><description>&lt;h2 id="0-intro">0. intro&lt;/h2>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>中间表里写上&lt;code>parent&lt;/code>和&lt;code>child&lt;/code>的主键作为&lt;code>foreignkey&lt;/code>，&lt;code>parent&lt;/code>和&lt;code>child&lt;/code>里的&lt;code>relationship&lt;/code>加入参数&lt;code>secondary&lt;/code>，指定为中间表。&lt;/p></description></item><item><title>利用 descriptor 实现自己的 property</title><link>https://nnnewb.github.io/blog/p/%E5%88%A9%E7%94%A8-descriptor-%E5%AE%9E%E7%8E%B0%E8%87%AA%E5%B7%B1%E7%9A%84-property/</link><pubDate>Thu, 21 Feb 2019 17:53:00 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%88%A9%E7%94%A8-descriptor-%E5%AE%9E%E7%8E%B0%E8%87%AA%E5%B7%B1%E7%9A%84-property/</guid><description>&lt;h2 id="1概念简介">1.概念简介&lt;/h2>
+&lt;h3 id="11-property">1.1 property&lt;/h3>
+&lt;p>在 python 代码中，property 是非常常见的一个内置函数。property 可以为一个 python 类的 attribute 设置 getter/setter，可以类比之 C# 的 &lt;a class="link" href="https://docs.microsoft.com/zh-cn/dotnet/csharp/language-reference/language-specification/classes#properties" target="_blank" rel="noopener"
+>properties&lt;/a>。&lt;/p>
+&lt;p>见下面的例子。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">class&lt;/span> &lt;span class="nc">A&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">a&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">1&lt;/span>
+&lt;span class="nd">@property&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">hello&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">a&lt;/span>
+&lt;span class="nd">@hello&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">setter&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">hell&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">a&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">value&lt;/span>
+&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">A&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hello&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="c1"># output:&lt;/span>
+&lt;span class="c1"># 1&lt;/span>
+&lt;span class="n">obj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">A&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="n">obj&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hello&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s2">&amp;#34;hello world&amp;#34;&lt;/span>
+&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">obj&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hello&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="c1"># output:&lt;/span>
+&lt;span class="c1"># hello world&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="12-descriptor">1.2 descriptor&lt;/h3>
+&lt;p>python 中的 descriptor 指的是实现了&lt;code>__get__&lt;/code>、&lt;code>__set__&lt;/code>、&lt;code>__delete__&lt;/code>三个方法之一的类。&lt;/p>
+&lt;p>当一个 descriptor 类的实例作为其他类的成员时，通过&lt;code>obj.attr&lt;/code>语法访问该实例将会调用 descriptor 实例的&lt;code>__get__&lt;/code>方法。同理，&lt;code>__set__&lt;/code>和&lt;code>__delete__&lt;/code>也是相似的逻辑。&lt;/p>
+&lt;p>先看个例子。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">class&lt;/span> &lt;span class="nc">DescriptorClass&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="fm">__get__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">instance&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">owner&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">instance&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">owner&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="s1">&amp;#39;some value&amp;#39;&lt;/span>
+&lt;span class="k">class&lt;/span> &lt;span class="nc">SomeClass&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">some_attr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">DescriptorClass&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">SomeClass&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">some_attr&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="c1"># output:&lt;/span>
+&lt;span class="c1"># &amp;lt;__main__.DescriptorClass object at 0x0000027AAE777160&amp;gt;&lt;/span>
+&lt;span class="c1"># &amp;lt;__main__.SomeClass object at 0x0000027AAE777198&amp;gt;&lt;/span>
+&lt;span class="c1"># &amp;lt;class &amp;#39;__main__.SomeClass&amp;#39;&amp;gt;&lt;/span>
+&lt;span class="c1"># some value&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="2-实现">2. 实现&lt;/h2>
+&lt;p>property 的逻辑在于，&lt;strong>当实例访问这个属性时，调用方法&lt;/strong>。descriptor 刚好处在那个正确的位置上。&lt;/p>
+&lt;p>看代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">class&lt;/span> &lt;span class="nc">PropertyDescriptor&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">getter&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fn&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="fm">__get__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">instance&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">owner&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">getter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">instance&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="fm">__set__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">instance&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">setter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">instance&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">setter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">func&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">setter&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">func&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">my_property&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">func&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">PropertyDescriptor&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">func&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">class&lt;/span> &lt;span class="nc">SimpleClass&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nd">@my_property&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">simple_attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="s1">&amp;#39;a simple property&amp;#39;&lt;/span>
+&lt;span class="nd">@simple_attr&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">setter&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">simple_attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;simple attr setter&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">SimpleClass&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">simple_attr&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">SimpleClass&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">simple_attr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s1">&amp;#39;something&amp;#39;&lt;/span>
+&lt;span class="c1"># output:&lt;/span>
+&lt;span class="c1"># a simple property&lt;/span>
+&lt;span class="c1"># simple attr setter&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="3-总结">3. 总结&lt;/h2>
+&lt;blockquote>
+&lt;p>个人看法，谨慎参考&lt;/p>
+&lt;/blockquote>
+&lt;p>descriptor 避免了重复编写&lt;code>getter&lt;/code>和&lt;code>setter&lt;/code>方法，非常直觉的一种用途就是类似于&lt;code>SQLAlchemy&lt;/code>这样的 ORM 框架的的字段映射。不需要为每一个特定类型的字段在基类或元类里编写大量样板代码。&lt;/p>
+&lt;p>但这种设计是侵入式的（需要修改目标类的代码），而且非常不直观。在合适的地方使用相信可以有其发光发热的空间。&lt;/p>
+&lt;p>对可读性来讲，结合元类，这俩被一起滥用的话对维护者而言完全是地狱吧&amp;hellip;&lt;/p></description></item><item><title>python3元类深入解读</title><link>https://nnnewb.github.io/blog/p/python3%E5%85%83%E7%B1%BB%E6%B7%B1%E5%85%A5%E8%A7%A3%E8%AF%BB/</link><pubDate>Thu, 20 Dec 2018 19:46:00 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/python3%E5%85%83%E7%B1%BB%E6%B7%B1%E5%85%A5%E8%A7%A3%E8%AF%BB/</guid><description>&lt;h2 id="0-intro">0. intro&lt;/h2>
 &lt;p>元类是 python 里被说烂了的一个东西，然而日常用到的地方实在不多，每次想到都得查一下谷歌，想想干脆在博客留个笔记好了。&lt;/p>
 &lt;p>元类的主要用途是定制&lt;strong>类&lt;/strong>的产生过程，以便于根据类声明包含的信息来创建出不同的类。&lt;/p>
 &lt;h2 id="1-type">1. type&lt;/h2>
@@ -4207,610 +4813,4 @@ v Pointer to ParentA
 &lt;p>的提问确实让人不容易抓住重点&amp;hellip;&amp;hellip;&lt;/p>
 &lt;p>考察基础的角度来说，现场白板写一个程序，然后再深入聊聊这么写的用意，有没有优化方案，考察对语言的理解和 api 设计、代码架构能力，比单纯的说说 xxx，问 xxx 作用要实际的多。当然并不是说这么问不好，这些概念的掌握也是非常重要的基础，而且能有效考察面试者语言组织能力和对这方面知识的掌握程度。&lt;/p>
 &lt;p>唯一不好的就是，面试者和面试官聊的过程就像是用&lt;strong>黑话&lt;/strong>交流一样&amp;hellip;&amp;hellip;&lt;/p>
-&lt;p>不说了，学这黑话去&amp;hellip;&amp;hellip;&lt;/p></description></item><item><title>从零实现一个容器</title><link>https://nnnewb.github.io/blog/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
-&lt;p>自从看了&lt;code>cocker&lt;/code>项目的ppt之后就有点念念不忘的意思了，实现一个docker或docker的类似物看起来并不是做不到的事情。&lt;/p>
-&lt;p>于是就动手试一试。&lt;/p>
-&lt;h2 id="核心技术">核心技术&lt;/h2>
-&lt;h3 id="namespace">namespace&lt;/h3>
-&lt;p>命名空间包装全局系统资源，让在命名空间中的进程看起来就像是有自己独立隔离的全局资源一样。命名空间中的全局资源对命名空间中的其他进程都是可见的，但对命名空间外的进程不可见。命名空间用途之一就是实现容器。&lt;/p>
-&lt;blockquote>
-&lt;pre>&lt;code>Linux provides the following namespaces:
-Namespace Constant Isolates
-Cgroup CLONE_NEWCGROUP Cgroup root directory
-IPC CLONE_NEWIPC System V IPC, POSIX message queues
-Network CLONE_NEWNET Network devices, stacks, ports, etc.
-Mount CLONE_NEWNS Mount points
-PID CLONE_NEWPID Process IDs
-User CLONE_NEWUSER User and group IDs
-UTS CLONE_NEWUTS Hostname and NIS domain name
-&lt;/code>&lt;/pre>
-&lt;/blockquote>
-&lt;p>几个命名空间的 API&lt;/p>
-&lt;ul>
-&lt;li>&lt;code>clone&lt;/code>&lt;/li>
-&lt;li>&lt;code>setns&lt;/code>&lt;/li>
-&lt;li>&lt;code>unshare&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;p>不得不说 &lt;code>man 7 namespaces&lt;/code> 对 &lt;code>namespace&lt;/code> 的解释已经非常到位了。&lt;/p>
-&lt;h3 id="chroot">chroot&lt;/h3>
-&lt;p>这个 Linux 用户应该还是比较熟悉的，如 Arch Linux 这样的发行版在安装时就有用到。&lt;/p>
-&lt;p>使用 &lt;code>man 2 chroot&lt;/code> 查看这个api的文档。&lt;/p>
-&lt;blockquote>
-&lt;p>chroot() changes the root directory of the calling process to that specified in path. This directory will be used for pathnames beginning with /. The root directory is inherited by all children of the calling process.&lt;/p>
-&lt;p>Only a privileged process (Linux: one with the CAP_SYS_CHROOT capability in its user namespace) may call chroot().&lt;/p>
-&lt;/blockquote>
-&lt;p>基本作用是把调用进程的根目录 &lt;code>/&lt;/code> 切换到指定目录，子进程会继承这个 &lt;code>/&lt;/code> 位置；调用 API 需要特权。&lt;/p>
-&lt;p>举例说调完 &lt;code>chroot(&amp;quot;/home/xxx&amp;quot;)&lt;/code>，你再用 &lt;code>ls&lt;/code> 之类的命令看 &lt;code>/&lt;/code> 下有什么文件，看到的就是 &lt;code>/home/xxx&lt;/code> 下的内容了。&lt;/p>
-&lt;p>&lt;code>man 2 chroot&lt;/code> 还有一些有意思的内容，不做赘述。&lt;/p>
-&lt;h3 id="mount">mount&lt;/h3>
-&lt;p>也是 Linux 用户很熟悉的东西。老规矩，&lt;code>man 2 mount&lt;/code> 看看文档。&lt;/p>
-&lt;blockquote>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sys/mount.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="kt">int&lt;/span> &lt;span class="nf">mount&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">source&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">target&lt;/span>&lt;span class="p">,&lt;/span>
-&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">filesystemtype&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">unsigned&lt;/span> &lt;span class="kt">long&lt;/span> &lt;span class="n">mountflags&lt;/span>&lt;span class="p">,&lt;/span>
-&lt;span class="k">const&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>mount() attaches the filesystem specified by source (which is often a pathname referring to a device, but can also be the pathname of a directory or file, or a dummy string) to the location (a directory or file) specified by the pathname in target.&lt;/p>
-&lt;/blockquote>
-&lt;p>&lt;code>mount&lt;/code> 会挂载(attaches) &lt;code>source&lt;/code> 参数指定的文件系统（通常是设备路径，也可以是文件夹、文件的路径或虚拟字符串（如&lt;code>proc&lt;/code>））到 &lt;code>target&lt;/code> 指定的位置（目录或文件）。同样需要特权来执行。&lt;/p>
-&lt;p>&lt;code>source&lt;/code>/&lt;code>target&lt;/code> 都不难理解，&lt;code>filesystemtype&lt;/code>可以从&lt;code>/proc/filesystems&lt;/code>里读到可用值，或者自己搜一搜；比较重要的就是 &lt;code>mountflags&lt;/code> 了，可以指定诸如&lt;code>MS_RDONLY&lt;/code>之类的选项来挂载只读文件系统等等。具体还是自己查手册。&lt;/p>
-&lt;h3 id="clone">clone&lt;/h3>
-&lt;p>最后就是系统调用 &lt;code>clone&lt;/code> 了。还是先 &lt;code>man 2 clone&lt;/code>。&lt;/p>
-&lt;blockquote>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cm">/* Prototype for the glibc wrapper function */&lt;/span>
-&lt;span class="cp">#define _GNU_SOURCE
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sched.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="kt">int&lt;/span> &lt;span class="nf">clone&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">fn&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">child_stack&lt;/span>&lt;span class="p">,&lt;/span>
-&lt;span class="kt">int&lt;/span> &lt;span class="n">flags&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">arg&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">...&lt;/span>
-&lt;span class="cm">/* pid_t *ptid, void *newtls, pid_t *ctid */&lt;/span> &lt;span class="p">);&lt;/span>
-&lt;span class="cm">/* For the prototype of the raw system call, see NOTES */&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>clone() creates a new process, in a manner similar to fork(2).&lt;/p>
-&lt;/blockquote>
-&lt;p>总体类似于&lt;code>fork()&lt;/code>，但可以指定一个入口函数，函数结束则子进程退出，也可以共享内存空间，所以行为也可以类似线程。看怎么用。&lt;/p>
-&lt;p>&lt;code>flags&lt;/code>依然是关注的重点，&lt;code>CLONE_NEWUTS&lt;/code>、&lt;code>CLONE_NEWNS&lt;/code>、&lt;code>CLONE_NEWPID&lt;/code>这些参数允许将子进程运行在独立的命名空间里。&lt;/p>
-&lt;p>&lt;code>man 2 clone&lt;/code> 还提供了一个 C 语言编写的例子可以参考。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#define _GNU_SOURCE
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sys/wait.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sys/utsname.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sched.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;string.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;unistd.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="cp">#define errExit(msg) \
-&lt;/span>&lt;span class="cp"> do \
-&lt;/span>&lt;span class="cp"> { \
-&lt;/span>&lt;span class="cp"> perror(msg); \
-&lt;/span>&lt;span class="cp"> exit(EXIT_FAILURE); \
-&lt;/span>&lt;span class="cp"> } while (0)
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="k">static&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="cm">/* Start function for cloned child */&lt;/span>
-&lt;span class="n">childFunc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">arg&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="p">{&lt;/span>
-&lt;span class="k">struct&lt;/span> &lt;span class="n">utsname&lt;/span> &lt;span class="n">uts&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="cm">/* Change hostname in UTS namespace of child */&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">sethostname&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">arg&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">strlen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">arg&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;sethostname&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="cm">/* Retrieve and display hostname */&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">uname&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">uts&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;uname&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;uts.nodename in child: %s&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">uts&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">nodename&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="cm">/* Keep the namespace open for a while, by sleeping.
-&lt;/span>&lt;span class="cm"> This allows some experimentation--for example, another
-&lt;/span>&lt;span class="cm"> process might join the namespace. */&lt;/span>
-&lt;span class="n">sleep&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="cm">/* Child terminates now */&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="cp">#define STACK_SIZE (1024 * 1024) &lt;/span>&lt;span class="cm">/* Stack size for cloned child */&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="kt">int&lt;/span> &lt;span class="n">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">argc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[])&lt;/span>
-&lt;span class="p">{&lt;/span>
-&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="cm">/* Start of stack buffer */&lt;/span>
-&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">stackTop&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="cm">/* End of stack buffer */&lt;/span>
-&lt;span class="n">pid_t&lt;/span> &lt;span class="n">pid&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">struct&lt;/span> &lt;span class="n">utsname&lt;/span> &lt;span class="n">uts&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">argc&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="p">{&lt;/span>
-&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;Usage: %s &amp;lt;child-hostname&amp;gt;&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]);&lt;/span>
-&lt;span class="n">exit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">EXIT_SUCCESS&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="cm">/* Allocate stack for child */&lt;/span>
-&lt;span class="n">stack&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">malloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">STACK_SIZE&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">stack&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;malloc&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">stackTop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">stack&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">STACK_SIZE&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="cm">/* Assume stack grows downward */&lt;/span>
-&lt;span class="cm">/* Create child that has its own UTS namespace;
-&lt;/span>&lt;span class="cm"> child commences execution in childFunc() */&lt;/span>
-&lt;span class="n">pid&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">clone&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">childFunc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">stackTop&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">CLONE_NEWUTS&lt;/span> &lt;span class="o">|&lt;/span> &lt;span class="n">SIGCHLD&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]);&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">pid&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;clone&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;clone() returned %ld&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">long&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">pid&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="cm">/* Parent falls through to here */&lt;/span>
-&lt;span class="n">sleep&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="cm">/* Give child time to change its hostname */&lt;/span>
-&lt;span class="cm">/* Display hostname in parent&amp;#39;s UTS namespace. This will be
-&lt;/span>&lt;span class="cm"> different from hostname in child&amp;#39;s UTS namespace. */&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">uname&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">uts&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;uname&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;uts.nodename in parent: %s&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">uts&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">nodename&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">waitpid&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">pid&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="cm">/* Wait for child */&lt;/span>
-&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;waitpid&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;child has terminated&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">exit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">EXIT_SUCCESS&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>把上面的代码保存到 &lt;code>main.c&lt;/code> 之后，使用命令 &lt;code>gcc main.c -o clone-demo&lt;/code> 编译。&lt;/p>
-&lt;p>编译完成后，&lt;code>sudo ./clone-demo new-hostname&lt;/code> 执行。&lt;/p>
-&lt;p>最终结果类似这样&lt;/p>
-&lt;pre>&lt;code>DESKTOP-HEKKTQ9 :: ~/repos/container » sudo ./clone-demo new-hostname
-clone() returned 1515
-uts.nodename in child: new-hostname
-uts.nodename in parent: DESKTOP-HEKKTQ9
-child has terminated
-DESKTOP-HEKKTQ9 :: ~/repos/container »
-&lt;/code>&lt;/pre>&lt;h3 id="setns">setns&lt;/h3>
-&lt;p>&lt;code>setns&lt;/code> 把调用这个函数的线程加入指定 fd 的命名空间里。这个 &lt;code>fd&lt;/code> 指的是 &lt;code>/proc/1234/ns/uts&lt;/code> 这些特殊文件的文件描述符。&lt;/p>
-&lt;p>举例来说，我们把 &lt;code>clone-demo&lt;/code> 的源码里，&lt;code>sleep(3)&lt;/code> 改为 &lt;code>sleep(200)&lt;/code>，再执行&lt;code>sudo clone-demo new-hostname &amp;amp;&lt;/code> 把进程放到后台。&lt;/p>
-&lt;p>然后编译下面的代码并测试加入 clone-demo 的 uts 名称空间。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#define _GNU_SOURCE
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;fcntl.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sched.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;unistd.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="cp">#define errExit(msg) \
-&lt;/span>&lt;span class="cp"> do \
-&lt;/span>&lt;span class="cp"> { \
-&lt;/span>&lt;span class="cp"> perror(msg); \
-&lt;/span>&lt;span class="cp"> exit(EXIT_FAILURE); \
-&lt;/span>&lt;span class="cp"> } while (0)
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">argc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[])&lt;/span>
-&lt;span class="p">{&lt;/span>
-&lt;span class="kt">int&lt;/span> &lt;span class="n">fd&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">argc&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="p">{&lt;/span>
-&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;%s /proc/PID/ns/FILE cmd args...&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]);&lt;/span>
-&lt;span class="n">exit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">EXIT_FAILURE&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="n">fd&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">open&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">O_RDONLY&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="cm">/* Get file descriptor for namespace */&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">fd&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;open&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">setns&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">fd&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="cm">/* Join that namespace */&lt;/span>
-&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;setns&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">execvp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">]);&lt;/span> &lt;span class="cm">/* Execute a command in namespace */&lt;/span>
-&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;execvp&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>最终结果如下&lt;/p>
-&lt;pre>&lt;code>root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# ./clone-demo new-hostname &amp;amp;
-[1] 1826
-clone() returned 1827
-uts.nodename in child: new-hostname
-uts.nodename in parent: DESKTOP-HEKKTQ9
-root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# ./setns-demo /proc/1827/ns/uts /bin/bash
-root@new-hostname:/home/weakptr/repos/container# uname -n
-new-hostname
-root@new-hostname:/home/weakptr/repos/container# exit
-root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# exit
-DESKTOP-HEKKTQ9 :: ~/repos/container » uname -n
-DESKTOP-HEKKTQ9
-&lt;/code>&lt;/pre>&lt;h3 id="unshare">unshare&lt;/h3>
-&lt;blockquote>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#define _GNU_SOURCE
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sched.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="kt">int&lt;/span> &lt;span class="nf">unshare&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">flags&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;/blockquote>
-&lt;p>&lt;code>unshare&lt;/code> 用于主动解除当前进程或线程从父进程继承的执行上下文（例如命名空间）。&lt;/p>
-&lt;p>&lt;code>unshare&lt;/code>的主要用途就是在不创建新的进程的前提下，控制自己的共享执行上下文（还是指命名空间）。&lt;/p>
-&lt;p>参数 &lt;code>flags&lt;/code> 依然是 &lt;code>CLONE_NEWNS&lt;/code> 这些常量。惯例还是有个 demo 。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cm">/* unshare.c
-&lt;/span>&lt;span class="cm">
-&lt;/span>&lt;span class="cm"> A simple implementation of the unshare(1) command: unshare
-&lt;/span>&lt;span class="cm"> namespaces and execute a command.
-&lt;/span>&lt;span class="cm">*/&lt;/span>
-&lt;span class="cp">#define _GNU_SOURCE
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;sched.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;unistd.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;wait.h&amp;gt;&lt;/span>&lt;span class="cp">
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="cm">/* A simple error-handling function: print an error message based
-&lt;/span>&lt;span class="cm"> on the value in &amp;#39;errno&amp;#39; and terminate the calling process */&lt;/span>
-&lt;span class="cp">#define errExit(msg) \
-&lt;/span>&lt;span class="cp"> do \
-&lt;/span>&lt;span class="cp"> { \
-&lt;/span>&lt;span class="cp"> perror(msg); \
-&lt;/span>&lt;span class="cp"> exit(EXIT_FAILURE); \
-&lt;/span>&lt;span class="cp"> } while (0)
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="k">static&lt;/span> &lt;span class="kt">void&lt;/span>
-&lt;span class="nf">usage&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">pname&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="p">{&lt;/span>
-&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;Usage: %s [options] program [arg...]&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">pname&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;Options can be:&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -i unshare IPC namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -m unshare mount namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -n unshare network namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -p unshare PID namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -u unshare UTS namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">fprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stderr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34; -U unshare user namespace&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">exit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">EXIT_FAILURE&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">argc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[])&lt;/span>
-&lt;span class="p">{&lt;/span>
-&lt;span class="kt">int&lt;/span> &lt;span class="n">flags&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">opt&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="n">flags&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">while&lt;/span> &lt;span class="p">((&lt;/span>&lt;span class="n">opt&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">getopt&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">argv&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;imnpuU&amp;#34;&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="p">{&lt;/span>
-&lt;span class="k">switch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">opt&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="p">{&lt;/span>
-&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;i&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
-&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWIPC&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;m&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
-&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWNS&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;n&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
-&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWNET&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;p&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
-&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWPID&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;u&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
-&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWUTS&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">case&lt;/span> &lt;span class="sc">&amp;#39;U&amp;#39;&lt;/span>&lt;span class="o">:&lt;/span>
-&lt;span class="n">flags&lt;/span> &lt;span class="o">|=&lt;/span> &lt;span class="n">CLONE_NEWUSER&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="k">default&lt;/span>&lt;span class="o">:&lt;/span>
-&lt;span class="n">usage&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]);&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">optind&lt;/span> &lt;span class="o">&amp;gt;=&lt;/span> &lt;span class="n">argc&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="n">usage&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]);&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">unshare&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">flags&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;unshare&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">pid_t&lt;/span> &lt;span class="n">pid&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fork&lt;/span>&lt;span class="p">();&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">pid&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="p">{&lt;/span>
-&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;child process&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">execvp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">optind&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">optind&lt;/span>&lt;span class="p">]);&lt;/span>
-&lt;span class="n">errExit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;execvp&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="k">else&lt;/span>
-&lt;span class="p">{&lt;/span>
-&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;waitpid %ld&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">pid&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">waitpid&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">pid&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>保存成 &lt;code>unshare.c&lt;/code>，使用&lt;code>gcc unshare.c -o unshare&lt;/code> 编译。&lt;/p>
-&lt;p>之后可以通过下面的命令来检查效果。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">sudo ./unshare -pm /bin/bash &lt;span class="c1"># 隔离 mount 和 pid 两个 namespace&lt;/span>
-waitpid &lt;span class="m">2178&lt;/span>
-root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# mount -t proc proc /proc
-root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# ps -ef
-UID PID PPID C STIME TTY TIME CMD
-root &lt;span class="m">1&lt;/span> &lt;span class="m">0&lt;/span> &lt;span class="m">0&lt;/span> 15:22 pts/0 00:00:00 /bin/bash
-root &lt;span class="m">3&lt;/span> &lt;span class="m">1&lt;/span> &lt;span class="m">0&lt;/span> 15:22 pts/0 00:00:00 ps -ef
-root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container#
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>需要注意几个点：&lt;/p>
-&lt;ol>
-&lt;li>&lt;code>unshare&lt;/code> 最后必须是 &lt;code>fork&lt;/code> 新进程再 &lt;code>execvp&lt;/code>，否则会出现 &lt;code>cannot allocate memory&lt;/code> 错误&lt;/li>
-&lt;li>&lt;code>unshare&lt;/code> 启动新的 &lt;code>/bin/bash&lt;/code> 进程后，&lt;code>/proc&lt;/code> 挂载点还没有真正隔离，此时可以手动使用 &lt;code>mount -t proc proc /proc&lt;/code> 命令挂载当前命名空间的 &lt;code>procfs&lt;/code>。&lt;/li>
-&lt;li>mount namespace 中挂载事件传播，可以查看文档 &lt;code>man 7 mount_namespaces&lt;/code>。&lt;/li>
-&lt;/ol>
-&lt;p>debian系的 Linux 发行版在 util-linux 包里提供了一个 &lt;code>unshare&lt;/code> 程序，比上面的 demo 更强大，甚至可以用一行命令实现一个基本的&lt;em>容器&lt;/em>。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="c1"># 我在 workspace 目录里装了 busybox，所以能直接跑起来 chroot 和 /bin/ash&lt;/span>
-&lt;span class="c1"># busybox 的安装方法参考 busybox 源码目录下的 INSTALL 文件&lt;/span>
-&lt;span class="c1"># vim Config.in 修改 config STATIC 下的 default 为 y&lt;/span>
-&lt;span class="c1"># make defconfig &amp;amp;&amp;amp; make &amp;amp;&amp;amp; make install CONFIG_PREFIX=你的workspace目录&lt;/span>
-sudo unshare -pumf --mount-proc&lt;span class="o">=&lt;/span>workspace/proc chroot workspace /bin/ash
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>结果：&lt;/p>
-&lt;pre>&lt;code>/ # ps -ef
-PID USER TIME COMMAND
-1 0 0:00 /bin/ash
-2 0 0:00 ps -ef
-/ # ls
-bin linuxrc proc sbin usr
-/ # mount
-proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
-/ #
-&lt;/code>&lt;/pre>&lt;h2 id="用-go-实现">用 go 实现&lt;/h2>
-&lt;h3 id="syscall">syscall&lt;/h3>
-&lt;p>go 对系统调用其实做了不少封装，基本在 &lt;code>os&lt;/code> 和 &lt;code>syscall&lt;/code> 下，但有很多区别。比如在 go 里找不到 &lt;code>clone&lt;/code>、&lt;code>setns&lt;/code> 这些接口，取而代之的是 &lt;code>os/exec&lt;/code> 下的 &lt;code>Cmd&lt;/code> 结构。不过 &lt;code>syscall.Unshare&lt;/code> 倒是很忠实的还原了。诸如 &lt;code>CLONE_NEWNS&lt;/code> 这些常量也可以找到对应的 &lt;code>syscall.CLONE_NEWNS&lt;/code>。&lt;/p>
-&lt;p>不重复上面的代码了，写一个简短的启动 busybox 容器的 go 程序。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">package&lt;/span> &lt;span class="nx">main&lt;/span>
-&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
-&lt;span class="s">&amp;#34;flag&amp;#34;&lt;/span>
-&lt;span class="s">&amp;#34;fmt&amp;#34;&lt;/span>
-&lt;span class="s">&amp;#34;os&amp;#34;&lt;/span>
-&lt;span class="s">&amp;#34;os/exec&amp;#34;&lt;/span>
-&lt;span class="s">&amp;#34;syscall&amp;#34;&lt;/span>
-&lt;span class="p">)&lt;/span>
-&lt;span class="kd">var&lt;/span> &lt;span class="p">(&lt;/span>
-&lt;span class="nx">flagBootstrap&lt;/span> &lt;span class="kt">bool&lt;/span>
-&lt;span class="p">)&lt;/span>
-&lt;span class="kd">func&lt;/span> &lt;span class="nf">init&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
-&lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">BoolVar&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">flagBootstrap&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;bootstrap&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">false&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;bootstrap busybox container&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="kd">func&lt;/span> &lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">err&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
-&lt;span class="nb">panic&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="kd">func&lt;/span> &lt;span class="nf">runBusybox&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
-&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Start `busybox ash` in process %d\n&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Getpid&lt;/span>&lt;span class="p">())&lt;/span>
-&lt;span class="nx">cmd&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">exec&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Command&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;/bin/busybox&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;ash&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdin&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdin&lt;/span>
-&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdout&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdout&lt;/span>
-&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stderr&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stderr&lt;/span>
-&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Env&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Env&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;PATH=/bin:/sbin:/usr/bin:/usr/sbin&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Chroot&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;workspace&amp;#34;&lt;/span>&lt;span class="p">))&lt;/span>
-&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Chdir&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;/&amp;#34;&lt;/span>&lt;span class="p">))&lt;/span>
-&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Mount&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;proc&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;/proc&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;proc&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">))&lt;/span>
-&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Run&lt;/span>&lt;span class="p">())&lt;/span>
-&lt;span class="nb">println&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;unmount proc&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Unmount&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;proc&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">))&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="kd">func&lt;/span> &lt;span class="nf">runContainerizedCommand&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
-&lt;span class="nx">cmd&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">exec&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Command&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;/proc/self/exe&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Path&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="s">&amp;#34;/proc/self/exe&amp;#34;&lt;/span>
-&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Args&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Args&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;-bootstrap&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdin&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdin&lt;/span>
-&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdout&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stdout&lt;/span>
-&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stderr&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stderr&lt;/span>
-&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">SysProcAttr&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">SysProcAttr&lt;/span>&lt;span class="p">{&lt;/span>
-&lt;span class="nx">Cloneflags&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CLONE_NEWUTS&lt;/span> &lt;span class="p">|&lt;/span> &lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CLONE_NEWNS&lt;/span> &lt;span class="p">|&lt;/span> &lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CLONE_NEWPID&lt;/span>&lt;span class="p">,&lt;/span>
-&lt;span class="nx">Unshareflags&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">syscall&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CLONE_NEWNS&lt;/span>&lt;span class="p">,&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;starting current process %d\n&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Getpid&lt;/span>&lt;span class="p">())&lt;/span>
-&lt;span class="nf">must&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">cmd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Run&lt;/span>&lt;span class="p">())&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="kd">func&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
-&lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Parse&lt;/span>&lt;span class="p">()&lt;/span>
-&lt;span class="k">if&lt;/span> &lt;span class="nx">flagBootstrap&lt;/span> &lt;span class="p">{&lt;/span>
-&lt;span class="nf">runBusybox&lt;/span>&lt;span class="p">()&lt;/span>
-&lt;span class="k">return&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="nf">runContainerizedCommand&lt;/span>&lt;span class="p">()&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>保存为 &lt;code>demo.go&lt;/code> 后用 &lt;code>go build -o demo demo.go&lt;/code> 编译，然后执行 &lt;code>sudo ./demo&lt;/code> 。&lt;/p>
-&lt;p>结果像是这样：&lt;/p>
-&lt;pre>&lt;code>DESKTOP-HEKKTQ9 :: ~/repos/container » sudo ./demo
-starting current process 2954
-Start `busybox ash` in process 1
-/ # ps -ef
-PID USER TIME COMMAND
-1 0 0:00 /proc/self/exe -bootstrap
-6 0 0:00 /bin/busybox ash
-7 0 0:00 ps -ef
-/ # mount
-proc on /proc type proc (rw,relatime)
-/ #
-unmount proc
-DESKTOP-HEKKTQ9 :: ~/repos/container »
-&lt;/code>&lt;/pre>&lt;h2 id="总结">总结&lt;/h2>
-&lt;p>上面的 demo 仅仅是创建了一个看起来像容器的玩具，连 cgroup 都没有，距离真正的 OCI 运行时还有不小差距。不过已经足够展示创建一个隔离的环境并不是特别困难的事情，这必须感谢 Linux 内核的开发者们让容器技术有了存在的可能，而且还能这么简单地使用。&lt;/p>
-&lt;p>可以点击[这个链接](&lt;a class="link" href="https://github.com/opencontainers/runtime-spec/blob/master/spec.md" target="_blank" rel="noopener"
->runtime-spec/spec.md at master · opencontainers/runtime-spec (github.com)&lt;/a>)查看 OCI 运行时的规格说明。&lt;/p>
-&lt;p>涉及概念：&lt;/p>
-&lt;ul>
-&lt;li>namespace&lt;/li>
-&lt;/ul>
-&lt;p>重要系统调用&lt;/p>
-&lt;ul>
-&lt;li>&lt;code>clone&lt;/code>&lt;/li>
-&lt;li>&lt;code>setns&lt;/code>&lt;/li>
-&lt;li>&lt;code>unshare&lt;/code>&lt;/li>
-&lt;li>&lt;code>mount&lt;/code>&lt;/li>
-&lt;li>&amp;hellip;&lt;/li>
-&lt;/ul>
-&lt;p>本篇还不涉及网络，仅在文件系统和PID、用户等层级做了隔离。网络隔离可以参考 &lt;code>man 7 network_namespaces&lt;/code> ，不过谷歌搜了一大圈也还没找到怎么创建虚拟网卡，暂且先放着了。&lt;/p></description></item><item><title>利用 descriptor 实现自己的 property</title><link>https://nnnewb.github.io/blog/p/%E5%88%A9%E7%94%A8-descriptor-%E5%AE%9E%E7%8E%B0%E8%87%AA%E5%B7%B1%E7%9A%84-property/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%88%A9%E7%94%A8-descriptor-%E5%AE%9E%E7%8E%B0%E8%87%AA%E5%B7%B1%E7%9A%84-property/</guid><description>&lt;h2 id="1概念简介">1.概念简介&lt;/h2>
-&lt;h3 id="11-property">1.1 property&lt;/h3>
-&lt;p>在 python 代码中，property 是非常常见的一个内置函数。property 可以为一个 python 类的 attribute 设置 getter/setter，可以类比之 C# 的 &lt;a class="link" href="https://docs.microsoft.com/zh-cn/dotnet/csharp/language-reference/language-specification/classes#properties" target="_blank" rel="noopener"
->properties&lt;/a>。&lt;/p>
-&lt;p>见下面的例子。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">class&lt;/span> &lt;span class="nc">A&lt;/span>&lt;span class="p">:&lt;/span>
-&lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
-&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">a&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">1&lt;/span>
-&lt;span class="nd">@property&lt;/span>&lt;span class="p">()&lt;/span>
-&lt;span class="k">def&lt;/span> &lt;span class="nf">hello&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
-&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">a&lt;/span>
-&lt;span class="nd">@hello&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">setter&lt;/span>&lt;span class="p">()&lt;/span>
-&lt;span class="k">def&lt;/span> &lt;span class="nf">hell&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">):&lt;/span>
-&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">a&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">value&lt;/span>
-&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">A&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hello&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="c1"># output:&lt;/span>
-&lt;span class="c1"># 1&lt;/span>
-&lt;span class="n">obj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">A&lt;/span>&lt;span class="p">()&lt;/span>
-&lt;span class="n">obj&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hello&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s2">&amp;#34;hello world&amp;#34;&lt;/span>
-&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">obj&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hello&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="c1"># output:&lt;/span>
-&lt;span class="c1"># hello world&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="12-descriptor">1.2 descriptor&lt;/h3>
-&lt;p>python 中的 descriptor 指的是实现了&lt;code>__get__&lt;/code>、&lt;code>__set__&lt;/code>、&lt;code>__delete__&lt;/code>三个方法之一的类。&lt;/p>
-&lt;p>当一个 descriptor 类的实例作为其他类的成员时，通过&lt;code>obj.attr&lt;/code>语法访问该实例将会调用 descriptor 实例的&lt;code>__get__&lt;/code>方法。同理，&lt;code>__set__&lt;/code>和&lt;code>__delete__&lt;/code>也是相似的逻辑。&lt;/p>
-&lt;p>先看个例子。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">class&lt;/span> &lt;span class="nc">DescriptorClass&lt;/span>&lt;span class="p">:&lt;/span>
-&lt;span class="k">def&lt;/span> &lt;span class="fm">__get__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">instance&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">owner&lt;/span>&lt;span class="p">):&lt;/span>
-&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">instance&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">owner&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="k">return&lt;/span> &lt;span class="s1">&amp;#39;some value&amp;#39;&lt;/span>
-&lt;span class="k">class&lt;/span> &lt;span class="nc">SomeClass&lt;/span>&lt;span class="p">:&lt;/span>
-&lt;span class="n">some_attr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">DescriptorClass&lt;/span>&lt;span class="p">()&lt;/span>
-&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">SomeClass&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">some_attr&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="c1"># output:&lt;/span>
-&lt;span class="c1"># &amp;lt;__main__.DescriptorClass object at 0x0000027AAE777160&amp;gt;&lt;/span>
-&lt;span class="c1"># &amp;lt;__main__.SomeClass object at 0x0000027AAE777198&amp;gt;&lt;/span>
-&lt;span class="c1"># &amp;lt;class &amp;#39;__main__.SomeClass&amp;#39;&amp;gt;&lt;/span>
-&lt;span class="c1"># some value&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="2-实现">2. 实现&lt;/h2>
-&lt;p>property 的逻辑在于，&lt;strong>当实例访问这个属性时，调用方法&lt;/strong>。descriptor 刚好处在那个正确的位置上。&lt;/p>
-&lt;p>看代码。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">class&lt;/span> &lt;span class="nc">PropertyDescriptor&lt;/span>&lt;span class="p">:&lt;/span>
-&lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">):&lt;/span>
-&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">getter&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fn&lt;/span>
-&lt;span class="k">def&lt;/span> &lt;span class="fm">__get__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">instance&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">owner&lt;/span>&lt;span class="p">):&lt;/span>
-&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">getter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">instance&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="k">def&lt;/span> &lt;span class="fm">__set__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">instance&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">):&lt;/span>
-&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">setter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">instance&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="k">def&lt;/span> &lt;span class="nf">setter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">func&lt;/span>&lt;span class="p">):&lt;/span>
-&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">setter&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">func&lt;/span>
-&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>
-&lt;span class="k">def&lt;/span> &lt;span class="nf">my_property&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">func&lt;/span>&lt;span class="p">):&lt;/span>
-&lt;span class="k">return&lt;/span> &lt;span class="n">PropertyDescriptor&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">func&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="k">class&lt;/span> &lt;span class="nc">SimpleClass&lt;/span>&lt;span class="p">:&lt;/span>
-&lt;span class="nd">@my_property&lt;/span>
-&lt;span class="k">def&lt;/span> &lt;span class="nf">simple_attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
-&lt;span class="k">return&lt;/span> &lt;span class="s1">&amp;#39;a simple property&amp;#39;&lt;/span>
-&lt;span class="nd">@simple_attr&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">setter&lt;/span>
-&lt;span class="k">def&lt;/span> &lt;span class="nf">simple_attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">):&lt;/span>
-&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;simple attr setter&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">SimpleClass&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">simple_attr&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;span class="n">SimpleClass&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">simple_attr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s1">&amp;#39;something&amp;#39;&lt;/span>
-&lt;span class="c1"># output:&lt;/span>
-&lt;span class="c1"># a simple property&lt;/span>
-&lt;span class="c1"># simple attr setter&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="3-总结">3. 总结&lt;/h2>
-&lt;blockquote>
-&lt;p>个人看法，谨慎参考&lt;/p>
-&lt;/blockquote>
-&lt;p>descriptor 避免了重复编写&lt;code>getter&lt;/code>和&lt;code>setter&lt;/code>方法，非常直觉的一种用途就是类似于&lt;code>SQLAlchemy&lt;/code>这样的 ORM 框架的的字段映射。不需要为每一个特定类型的字段在基类或元类里编写大量样板代码。&lt;/p>
-&lt;p>但这种设计是侵入式的（需要修改目标类的代码），而且非常不直观。在合适的地方使用相信可以有其发光发热的空间。&lt;/p>
-&lt;p>对可读性来讲，结合元类，这俩被一起滥用的话对维护者而言完全是地狱吧&amp;hellip;&lt;/p></description></item><item><title>在C++中嵌入Python解释器</title><link>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</guid><description>&lt;p>先不说废话，项目地址：https://github.com/nnnewb/CQPy 。欢迎给个 Star 什么的。&lt;/p>
-&lt;h2 id="背景">背景&lt;/h2>
-&lt;p>想给最近在玩的酷 Q 写个插件，发现没有合适的直接使用 Python 的解决方案。&lt;/p>
-&lt;p>Richard Chien 提供了一个比较通用的插件，&lt;code>CQHttp&lt;/code>。&lt;code>CQHttp&lt;/code>本体是用 C++ 编写的插件，将酷 Q 的回调包装成 HTTP 请求转发至指定的地址，支持&lt;code>http&lt;/code>和&lt;code>websocket&lt;/code>两种协议。&lt;/p>
-&lt;p>不过由于个人想折腾折腾的想法，打算试试把 Python 解释器直接嵌入到 C++ 里得了。&lt;/p>
-&lt;!-- raw HTML omitted -->
-&lt;p>整个思路如下。&lt;/p>
-&lt;pre>&lt;code class="language-mermaid" data-lang="mermaid">graph LR;
-CQP[酷Q] --事件回调--&amp;gt; dll[插件DLL];
-dll --事件回调--&amp;gt; python[Python脚本];
-python --调用API--&amp;gt; dll;
-dll --调用API--&amp;gt; CQP;
-&lt;/code>&lt;/pre>&lt;h2 id="依赖">依赖&lt;/h2>
-&lt;p>为了简化操作 Python 接口，我没有使用 Python 自带的 C API，而是&lt;code>pybind11&lt;/code>，使用&lt;code>vcpkg&lt;/code>管理依赖。&lt;/p>
-&lt;p>安装命令：&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-batch" data-lang="batch">vcpkg install pybind11:x86-windows
-&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="0x1-编译-dll">0x1 编译 DLL&lt;/h2>
-&lt;p>我使用 CMake 作为编译系统，因此可以很简单地写一个编译出 DLL 的 &lt;code>CMakeLists.txt&lt;/code>&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-cmake" data-lang="cmake">&lt;span class="nb">cmake_minimum_required&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">VERSION&lt;/span> &lt;span class="s">3.15&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">project&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">top.weak-ptr.cqpy&lt;/span> &lt;span class="s">LANGUAGES&lt;/span> &lt;span class="s">CXX&lt;/span> &lt;span class="s">VERSION&lt;/span> &lt;span class="s">0.1.0&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">include_directories&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">src&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">aux_source_directory&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">src&lt;/span> &lt;span class="s">SOURCES&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">CMAKE_CXX_STANDARD&lt;/span> &lt;span class="s">17&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="c"># 引入 pybind11
-&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="nb">find_package&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">pybind11&lt;/span> &lt;span class="s">CONFIG&lt;/span> &lt;span class="s">REQUIRED&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="c"># 添加 target
-&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">OUT_NAME&lt;/span> &lt;span class="s2">&amp;#34;app&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">add_library&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">${&lt;/span>&lt;span class="nv">OUT_NAME&lt;/span>&lt;span class="o">}&lt;/span> &lt;span class="s">SHARED&lt;/span> &lt;span class="o">${&lt;/span>&lt;span class="nv">SOURCES&lt;/span>&lt;span class="o">}&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">set_target_properties&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">${&lt;/span>&lt;span class="nv">OUT_NAME&lt;/span>&lt;span class="o">}&lt;/span> &lt;span class="s">PROPERTIES&lt;/span> &lt;span class="s">LINKER_LANGUAGE&lt;/span> &lt;span class="s">CXX&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">target_link_libraries&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">${&lt;/span>&lt;span class="nv">OUT_NAME&lt;/span>&lt;span class="o">}&lt;/span> &lt;span class="s">PRIVATE&lt;/span> &lt;span class="s">pybind11::embed&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>源代码使用 MSVC 和 MinGW 编译，另外再处理下源码编码的问题和宏。&lt;/p>
-&lt;p>主要涉及的几个问题：&lt;/p>
-&lt;ol>
-&lt;li>MSVC 编译时通过&lt;code>/utf-8&lt;/code>编译参数指定源码文件的编码。&lt;/li>
-&lt;li>MSVC 编译&lt;code>pybind11&lt;/code>时需要指定 &lt;code>-DNOMINMAX&lt;/code>，这是&lt;code>pybind11&lt;/code>要求的。&lt;/li>
-&lt;li>因为使用 VCPKG 管理依赖，MSVC 编译时还需要设置链接属性。&lt;/li>
-&lt;li>MinGW 编译时，指定 &lt;code>-static&lt;/code> 避免依赖 &lt;code>libgcc&lt;/code> 之类的 dll，最终编译结果只依赖于 &lt;code>libpython3.7.dll&lt;/code>。&lt;/li>
-&lt;li>MinGW 编译时，指定 &lt;code>-Wl,--kill-at,--enable-stdcall-fixup&lt;/code>，来确保导出的 DLL API 名字没有下划线开头和&lt;code>@&amp;lt;参数大小&amp;gt;&lt;/code>的后缀。&lt;/li>
-&lt;/ol>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-cmake" data-lang="cmake">&lt;span class="c"># 添加编译参数
-&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="nb">add_compile_definitions&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">APP_ID=&lt;/span>&lt;span class="s2">&amp;#34;${PROJECT_NAME}&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">add_definitions&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">-DAPP_ID=&lt;/span>&lt;span class="s2">&amp;#34;top.weak-ptr.cqpy&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="s">MSVC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">add_compile_options&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">/utf-8&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">add_definitions&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">-DNOMINMAX&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="c"># 设置静态链接
-&lt;/span>&lt;span class="c">&lt;/span> &lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">VCPKG_CRT_LINKAGE&lt;/span> &lt;span class="s">STATIC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">VCPKG_LIBRARY_LINKAGE&lt;/span> &lt;span class="s">STATIC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">else&lt;/span> &lt;span class="p">()&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">add_link_options&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">-static&lt;/span> &lt;span class="s">-Wl,--kill-at,--enable-stdcall-fixup&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">endif&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="s">MSVC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>最后的构建命令：&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-batch" data-lang="batch">&lt;span class="k">mkdir&lt;/span> build
-&lt;span class="k">cd&lt;/span> build
-cmake .. \
-&lt;span class="s2">&amp;#34;-GVisual Studio 16 2019&amp;#34;&lt;/span> \
--AWin32 \
--DCMAKE_TOOLCHAIN_FILE=/path/to/your/vcpkg/scripts/buildsystems/vcpkg.cmake \
-cmake --build .
-cmake install
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>MinGW 对应改下 Generator，去掉&lt;code>-AWin32&lt;/code>和后面的&lt;code>-DCMAKE_TOOLCHAIN_FILE=/path/to/your/vcpkg/scripts/buildsystems/vcpkg.cmake&lt;/code>即可。&lt;/p>
-&lt;h2 id="0x2-msvc-编译导出-dll-的问题">0x2 MSVC 编译导出 DLL 的问题&lt;/h2>
-&lt;p>参考 MSDN 的文档，使用下面的方式无法正确导出 DLL 接口。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">extern&lt;/span> &lt;span class="s">&amp;#34;C&amp;#34;&lt;/span> &lt;span class="kr">__declspec&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dllexport&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="kr">__stdcall&lt;/span> &lt;span class="n">test&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>最终采用的是&lt;code>__pragma&lt;/code>的方式指定导出名，如下。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#define DLL_EXPORT extern &amp;#34;C&amp;#34; __declspec(dllexport)
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="cp">#define CQ_EXPORT(ReturnType, FuncName, ParamsSize, ...) \
-&lt;/span>&lt;span class="cp"> __pragma( \
-&lt;/span>&lt;span class="cp"> comment(linker, &amp;#34;/EXPORT:&amp;#34; #FuncName &amp;#34;=_&amp;#34; #FuncName &amp;#34;@&amp;#34; #ParamsSize)) \
-&lt;/span>&lt;span class="cp"> DLL_EXPORT ReturnType __stdcall FuncName(__VA_ARGS__)
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意&lt;code>__pragma&lt;/code>只能在 MSVC 中使用，所以要加上条件判断。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#define DLL_EXPORT extern &amp;#34;C&amp;#34; __declspec(dllexport)
-&lt;/span>&lt;span class="cp">&lt;/span>
-&lt;span class="cp">#if defined(_MSC_VER)
-&lt;/span>&lt;span class="cp">#define CQ_EXPORT(ReturnType, FuncName, ParamsSize, ...) \
-&lt;/span>&lt;span class="cp"> __pragma( \
-&lt;/span>&lt;span class="cp"> comment(linker, &amp;#34;/EXPORT:&amp;#34; #FuncName &amp;#34;=_&amp;#34; #FuncName &amp;#34;@&amp;#34; #ParamsSize)) \
-&lt;/span>&lt;span class="cp"> DLL_EXPORT ReturnType __stdcall FuncName(__VA_ARGS__)
-&lt;/span>&lt;span class="cp">#else
-&lt;/span>&lt;span class="cp">#define CQ_EXPORT(ReturnType, FuncName, ParamsSize, ...) \
-&lt;/span>&lt;span class="cp"> DLL_EXPORT ReturnType __stdcall FuncName(__VA_ARGS__)
-&lt;/span>&lt;span class="cp">#endif
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>理论上也能用&lt;code>.def&lt;/code>文件来定义导出表，可以自行尝试下。&lt;/p>
-&lt;h2 id="0x3-导入-cqpdll-的-api-的问题">0x3 导入 CQP.dll 的 API 的问题&lt;/h2>
-&lt;p>首先要知道&lt;code>CQP.dll&lt;/code>也会加载到&lt;code>CQP.exe&lt;/code>中，插件也会加载到&lt;code>CQP.exe&lt;/code>中，所以我们需要的就是使用 Windows API 获取到&lt;code>CQP.dll&lt;/code>的 Handle 再进行操作。&lt;/p>
-&lt;p>大致代码如下。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">const&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">dll&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">GetModuleHandleW&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">L&lt;/span>&lt;span class="s">&amp;#34;CQP.dll&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="k">const&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">CQ_addLog&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">reinterpret_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">int32_t&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kr">__stdcall&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dll&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;CQ_addLog&amp;#34;&lt;/span>&lt;span class="p">));&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>通过两个 API 调用即可获得需要的函数指针了。&lt;/p>
-&lt;h2 id="0x4-嵌入-python-解释器">0x4 嵌入 Python 解释器&lt;/h2>
-&lt;p>到了这一步已经非常简单了，&lt;code>pybind11&lt;/code>提供了高度封装的 C++ API。可以直接参考&lt;a class="link" href="https://pybind11.readthedocs.io/en/stable/advanced/embedding.html" target="_blank" rel="noopener"
->这个文档&lt;/a>。&lt;/p>
-&lt;p>再给个简单的例子代码：&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">template&lt;/span> &lt;span class="o">&amp;lt;&lt;/span>&lt;span class="k">typename&lt;/span>&lt;span class="p">...&lt;/span> &lt;span class="n">Args&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>
-&lt;span class="kr">inline&lt;/span> &lt;span class="kt">int32_t&lt;/span> &lt;span class="n">py_callback&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">string&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">py_func&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">Args&lt;/span>&lt;span class="p">...&lt;/span> &lt;span class="n">args&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
-&lt;span class="k">auto&lt;/span> &lt;span class="n">guard&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">lock_guard&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">lock&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="k">try&lt;/span> &lt;span class="p">{&lt;/span>
-&lt;span class="k">auto&lt;/span> &lt;span class="n">m&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">module&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">import&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;cqpy._callback&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="k">return&lt;/span> &lt;span class="n">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">py_func&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">c_str&lt;/span>&lt;span class="p">())(&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">...).&lt;/span>&lt;span class="k">template&lt;/span> &lt;span class="n">cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">();&lt;/span>
-&lt;span class="p">}&lt;/span> &lt;span class="k">catch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">error_already_set&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">e&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
-&lt;span class="n">logging&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">error&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">e&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">what&lt;/span>&lt;span class="p">());&lt;/span> &lt;span class="c1">// 记录 python 错误到日志
-&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">return&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;span class="c1">// 启用插件
-&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">CQ_EXPORT&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">cq_event_enable&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
-&lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">initialize_interpreter&lt;/span>&lt;span class="p">();&lt;/span>
-&lt;span class="c1">// 设置 AUTH_CODE，但是暂时还不能使用酷Q的API
-&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">_embed&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">module&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">import&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;_embed&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">_embed&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;AUTH_CODE&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">AUTH_CODE&lt;/span>&lt;span class="p">;&lt;/span>
-&lt;span class="c1">// 初始化 Python 解释器环境，把数据目录加入 python path
-&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">raw_app_dir&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">string&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">CQ_getAppDirectory&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">AUTH_CODE&lt;/span>&lt;span class="p">));&lt;/span>
-&lt;span class="k">auto&lt;/span> &lt;span class="n">app_dir&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">bytes&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">raw_app_dir&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;decode&amp;#34;&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="s">&amp;#34;gb18030&amp;#34;&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">str&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">();&lt;/span>
-&lt;span class="k">auto&lt;/span> &lt;span class="n">sys&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">module&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">import&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;sys&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="n">sys&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;path&amp;#34;&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;append&amp;#34;&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">app_dir&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="c1">// 初始化完成
-&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">logging&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">info&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Python interpreter initialized.&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="k">return&lt;/span> &lt;span class="nf">py_callback&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;on_enable&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>需要注意的是，虽然在前面通过相关参数指定了静态链接，但实际&lt;code>Python3.7.dll&lt;/code>还是动态链接上去的。&lt;/p>
-&lt;p>所以分发这样编译出来的 dll，依然需要用户先安装一个 &lt;code>Python3.7&lt;/code>，或者把 &lt;code>Python3.7.dll&lt;/code> 也一起分发出去。&lt;/p>
-&lt;p>如果要完全的静态链接，可能要自行编译 Python 源代码。实在太麻烦，就懒得弄了。&lt;/p>
-&lt;h2 id="0x5-踩的坑">0x5 踩的坑&lt;/h2>
-&lt;p>通过 Python 调用 C++ 端提供的 API 时，特别注意参数一定要一一对应，特别是数据类型，一旦不匹配或传入数据有误（例如 None），可能造成 C++ 端内存异常，需要挂调试器才能发现原因，非常麻烦。&lt;/p>
-&lt;p>&lt;code>sys&lt;/code>是&lt;code>builtin&lt;/code>的库，和&lt;code>os&lt;/code>不同，如果分发的用户没有安装 Python，只有一个 &lt;code>Python3.7.dll&lt;/code>的话，很多 Python 自带的库是用不了的。例如说&lt;code>json&lt;/code>、&lt;code>logging&lt;/code>、甚至&lt;code>os&lt;/code>。这个应该算是常识，但最好一开始就意识到：你的用户还是要装一个 Python 才行。&lt;/p>
-&lt;p>关于 VirtualEnv 支持，建议直接参考&lt;a class="link" href="https://www.python.org/dev/peps/pep-0405/" target="_blank" rel="noopener"
->PEP 405&lt;/a>。不多赘述。比较简单的处理就是把&lt;code>VENV\Lib\site-packages&lt;/code>加入到&lt;code>sys.path&lt;/code>里。&lt;/p>
-&lt;p>能不能把所有 Python 代码和 dll 都打包进 dll 里？大致原理就是丢进&lt;code>rc&lt;/code>里，但实际很麻烦，看&lt;code>py2exe&lt;/code>迄今为止还有一大堆坑就知道有多麻烦了。&lt;/p></description></item></channel></rss>
+&lt;p>不说了，学这黑话去&amp;hellip;&amp;hellip;&lt;/p></description></item></channel></rss>
