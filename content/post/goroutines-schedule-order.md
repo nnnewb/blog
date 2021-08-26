@@ -114,7 +114,7 @@ B: 3
 
 先看 `runtime.GOMAXPROCS(1)` 。
 
-{% asset_img G-M-P.png %}
+![GMP](image/goroutines-schedule-order/G-M-P.png)
 
 从 GMP 模型可以得知这一句代码实际限制了所有 goroutine 只能被顺序串行执行（所有 g 都只能在这唯一一个 p 的本地队列里等待 m）。
 

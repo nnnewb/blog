@@ -32,7 +32,7 @@ XA 事务是全局事务关联的一组事务性动作，要么全部成功，�
 
 #### 事务模型
 
-![img](事务模型.webp)
+![DTM](image/MySQL-XA-and-2PC-DTP-model/事务模型.webp)
 
 其中：
 
