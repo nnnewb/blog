@@ -1791,39 +1791,39 @@ source ~/.vimrc&lt;/p>
 &lt;p>mitmproxy 怎么抓 https 流量不多说了，基本流程就是装证书，然后配置代理。能看到有流量进 mitmproxy 就算成功了。&lt;/p>
 &lt;p>直接参考 mitmproxy 的文档快一点。&lt;/p>
 &lt;/blockquote>
-&lt;p>{% asset_img 01.png encrypted %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/01.png" alt="01" />&lt;/p>
 &lt;p>搜了一圈没有什么现成的对这个 App 的破解的文章，于是决定自己动手。&lt;/p>
 &lt;h2 id="0x02-解包和脱壳">0x02 解包和脱壳&lt;/h2>
 &lt;p>先确认下电脑上装了 JDK 或者 JRE ，没有的话就装好。&lt;/p>
 &lt;p>推荐一个 vscode 的插件，&lt;code>apklab&lt;/code>。会帮你装好 jadx 和 apktools / signer 这些工具。&lt;/p>
 &lt;p>接下来直接用 &lt;code>apklab&lt;/code> 打开需要破解的 apk 文件。&lt;/p>
-&lt;p>{% asset_img 02.png %}
-{% asset_img 03.png %}
-{% asset_img 04.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/02.png" alt="02" />&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/03.png" alt="03" />&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/04.png" alt="04" />&lt;/p>
 &lt;p>apklab 会自动用 apktools 和 jadx 完成拆包和反编译。&lt;/p>
 &lt;p>然后简单观察&amp;hellip;&lt;/p>
-&lt;p>{% asset_img 05.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/05.png" alt="05" />&lt;/p>
 &lt;p>应该是被 360 加固了。&lt;/p>
 &lt;p>apk 加固的基本原理就是把易被反编译的 java 字节码转译或者加密后保存，运行的时候再释放出来。用过 upx 一类的软件应该会联想到，就是加壳、反调试什么的这一套。&lt;/p>
 &lt;p>xposed 提供了一个&lt;a class="link" href="https://api.xposed.info/reference/de/robv/android/xposed/IXposedHookLoadPackage.html" target="_blank" rel="noopener"
 >在安卓包加载时设置钩子的机会&lt;/a>，将 ClassLoader Hook 掉，以此获得真正的应用字节码。&lt;/p>
 &lt;p>代码看参考资料。&lt;/p>
 &lt;p>安装 xposed 框架和 FDex2 之后启动目标应用，即可获得对应的字节码 dex 文件。&lt;/p>
-&lt;p>{% asset_img 06.png %}
-{% asset_img 07.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/06.png" alt="06" />&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/07.png" alt="07" />&lt;/p>
 &lt;p>接着把这些 dex 文件复制出来，即可使用 jadx 反编译到 java 了。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">jadx -d out *.dex
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>将反编译的结果用 vscode 打开，可以看到目标已经被我们脱干净了。&lt;/p>
-&lt;p>{% asset_img 08.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/08.png" alt="08" />&lt;/p>
 &lt;h2 id="0x03-寻找加解密代码">0x03 寻找加解密代码&lt;/h2>
 &lt;p>目标是解密 Api 请求的内容，所以下一步就是找到哪里保存了加密代码。&lt;/p>
 &lt;p>幸运的是这个 App 没有做过混淆，完成脱壳后就已经是全身赤裸的站在我们面前了。&lt;/p>
 &lt;p>直接在代码里搜索之前我们观察到的 url：&lt;code>index_des.php&lt;/code>，仅有一个结果。&lt;/p>
-&lt;p>{% asset_img 09.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/09.png" alt="09" />&lt;/p>
 &lt;p>相关函数非常短，这个 HTTP 框架我没有使用过，不过从函数名看应该是一个中间件模式，对所有 Web 请求进行加密处理。&lt;/p>
-&lt;p>{% asset_img 10.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/10.png" alt="10" />&lt;/p>
 &lt;p>&lt;code>getOverPost2&lt;/code> 源码如下&lt;/p>
-&lt;p>{% asset_img 11.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/11.png" alt="11" />&lt;/p>
 &lt;p>从代码里可以得出：&lt;/p>
 &lt;ul>
 &lt;li>g 的含义是 Get 请求的参数，应该就是 QueryString。函数名 &lt;code>getOverPost2&lt;/code> 字面意义就是把 GET 请求以 POST 方式发送出去。&lt;/li>
@@ -1831,36 +1831,36 @@ source ~/.vimrc&lt;/p>
 &lt;li>加密代码在 &lt;code>encryptByte&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;p>如此看来已经接近终点了，再点开 &lt;code>encryptByte&lt;/code> 的定义&lt;/p>
-&lt;p>{% asset_img 12.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/12.png" alt="12" />&lt;/p>
 &lt;p>密钥保存在 &lt;code>DesLib.sharedInstance().getAuthKey()&lt;/code> 中。&lt;/p>
 &lt;p>接着点开 &lt;code>getAuthKey&lt;/code> 的定义:&lt;/p>
-&lt;p>{% asset_img 13.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/13.png" alt="13" />&lt;/p>
 &lt;p>&lt;code>native&lt;/code> 关键字一出，得，白高兴了。差点劝退成功。&lt;/p>
 &lt;p>还是先看下怎么加密的。&lt;/p>
-&lt;p>{% asset_img 14.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/14.png" alt="14" />&lt;/p>
 &lt;p>再往回翻一下响应解密的代码，免得拆除密钥来又白高兴一场。&lt;/p>
-&lt;p>{% asset_img 15.png %}
-{% asset_img 16.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/15.png" alt="15" />&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/16.png" alt="16" />&lt;/p>
 &lt;p>很好，也是 DES 。&lt;/p>
 &lt;p>其实到这一步已经基本完成解密了，唯一欠缺的就是密钥。&lt;/p>
 &lt;p>抱着试一试的心情，还是找到了 &lt;code>libencry.so&lt;/code> ，用 IDA 打开分析了一下。&lt;/p>
-&lt;p>{% asset_img 17.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/17.png" alt="17" />&lt;/p>
 &lt;p>一通操作猛如虎，结果发现看不懂汇编。=w=&lt;/p>
 &lt;p>按下 F5，看看伪代码。&lt;/p>
-&lt;p>{% asset_img 18.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/18.png" alt="18" />&lt;/p>
 &lt;p>还是看不懂。这都调的什么函数&amp;hellip; &lt;code>a1 + 668&lt;/code> 这个蜜汁偏移也不知道是在算什么。&lt;/p>
 &lt;p>网上搜索了一圈，说道可以手动改一下函数签名，IDA 就能提示出函数了。试试看。&lt;/p>
 &lt;p>先把函数签名纠正&lt;/p>
-&lt;p>{% asset_img 19.png %}
-{% asset_img 20.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/19.png" alt="19" />&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/20.png" alt="20" />&lt;/p>
 &lt;p>再关掉类型转换&lt;/p>
-&lt;p>{% asset_img 21.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/21.png" alt="21" />&lt;/p>
 &lt;p>最终关键代码清晰了很多，看起来就是个直接返回字符串常量的函数。&lt;/p>
-&lt;p>{% asset_img 22.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/22.png" alt="22" />&lt;/p>
 &lt;p>比较具有迷惑性的是上面的 v5-v9，可以看到 v5-v9 地址是增长、连续的，只有 v5 和 v6 有值。v7/v8/v9 都是 0 。而 v5 的地址被用作 &lt;code>NewStringUTF&lt;/code> 函数的参数。查阅 JNI 接口也可以看到这个参数应该是 &lt;code>const char*&lt;/code> 类型。&lt;/p>
 &lt;p>所以 &amp;hellip;&lt;/p>
 &lt;p>把数值转换成 16 进制再做观察。&lt;/p>
-&lt;p>{% asset_img 23.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/23.png" alt="23" />&lt;/p>
 &lt;p>发现很有规律，每个字节的值都在 ASCII 范围内。于是右键转换成字符串，再按字节序翻转一下，即可得到密钥。&lt;/p>
 &lt;p>到此，解密方法的探索已经完成。&lt;/p>
 &lt;h2 id="0x04-mitmproxy-解密">0x04 mitmproxy 解密&lt;/h2>
@@ -1868,7 +1868,7 @@ source ~/.vimrc&lt;/p>
 &lt;p>可以参考 mitmproxy 的&lt;a class="link" href="https://github.com/mitmproxy/mitmproxy/blob/master/examples/addons/contentview.py" target="_blank" rel="noopener"
 >例子&lt;/a>&lt;/p>
 &lt;p>最终效果应该是这样&lt;/p>
-&lt;p>{% asset_img 25.png %}&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/25.png" alt="24" />&lt;/p>
 &lt;p>核心的解密代码就一句，利用 mitmproxy 的扩展即可对每个请求进行统一的处理。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="kn">from&lt;/span> &lt;span class="nn">pyDes&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">des&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PAD_PKCS5&lt;/span>
 &lt;span class="k">def&lt;/span> &lt;span class="nf">decrypt&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">data&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">Union&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">bytes&lt;/span>&lt;span class="p">])&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">bytes&lt;/span>&lt;span class="p">:&lt;/span>
@@ -1878,8 +1878,7 @@ source ~/.vimrc&lt;/p>
 &lt;p>以后再遇到一些傻逼软件或者强制推广的东西就可以用这一手技能来研究吐槽下都什么傻逼代码了。&lt;/p>
 &lt;p>当然非法的事情是不可能做的。&lt;/p>
 &lt;p>这玩意儿破解完之后发现有泄露隐私、被脱裤的严重漏洞，我也给市政平台发了件。&lt;/p>
-&lt;p>所以明年如果再硬推一次的话，到时候再拆了看看是不是有点长进。当然，没人管应该才是常态。&lt;/p>
-&lt;p>要是有关部门不管，开发的公司也不管，那我也没办法，我还年轻，也不想因为这个吃牢饭。&lt;/p></description></item><item><title>在C++中嵌入Python解释器</title><link>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</link><pubDate>Fri, 07 Feb 2020 21:59:00 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</guid><description>&lt;p>先不说废话，项目地址：https://github.com/nnnewb/CQPy 。欢迎给个 Star 什么的。&lt;/p>
+&lt;p>所以明年如果再硬推一次的话，到时候再拆了看看是不是有点长进。当然，没人管应该才是常态。&lt;/p></description></item><item><title>在C++中嵌入Python解释器</title><link>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</link><pubDate>Fri, 07 Feb 2020 21:59:00 +0000</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</guid><description>&lt;p>先不说废话，项目地址：https://github.com/nnnewb/CQPy 。欢迎给个 Star 什么的。&lt;/p>
 &lt;h2 id="背景">背景&lt;/h2>
 &lt;p>想给最近在玩的酷 Q 写个插件，发现没有合适的直接使用 Python 的解决方案。&lt;/p>
 &lt;p>Richard Chien 提供了一个比较通用的插件，&lt;code>CQHttp&lt;/code>。&lt;code>CQHttp&lt;/code>本体是用 C++ 编写的插件，将酷 Q 的回调包装成 HTTP 请求转发至指定的地址，支持&lt;code>http&lt;/code>和&lt;code>websocket&lt;/code>两种协议。&lt;/p>
