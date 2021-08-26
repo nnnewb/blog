@@ -1,15 +1,11 @@
 ---
-*title*: 信号量 vs 互斥锁
-date: 2021-08-26 10:17:00
+title: 信号量 vs 互斥锁
+date: 2021-08-26
 tags:
 - "golang"
 categories:
 - "golang"
 ---
-
-
-
-
 
 看 [go-patterns/semaphore.md at master · tmrts/go-patterns (github.com)](https://github.com/tmrts/go-patterns/blob/master/synchronization/semaphore.md) 时产生了疑问，信号量为啥长得和互斥锁没啥区别呢。于是就谷歌了一圈，重温下一些关于并发的知识，对比信号量 *semaphore* 和互斥锁 *mutex* 。
 
