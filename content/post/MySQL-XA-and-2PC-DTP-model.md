@@ -139,6 +139,8 @@ XID值可能包含不可打印的字符。`XA RECOVER` 允许一个可选的 `CO
    - `XA COMMIT ... ONE PHASE` 准备并提交XA事务。`xid`不会列出在`XA RECOVER`中，因为XA事务实际在执行语句后就结束了。
 4. 一个处于`PREPARED`状态的XA事务，可以发出`XA COMMIT`语句来提交并结束XA事务，或发出`XA ROLLBACK`来回滚并结束事务。
 
+![image-20210831105435330](image/MySQL-XA-and-2PC-DTP-model/xa-state-transition-diagram.png)
+
 下面是一个简单的XA事务例子，作为一个全局事务，插入一个行。
 
 ```mysql
