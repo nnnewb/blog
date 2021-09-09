@@ -1,0 +1,622 @@
+<!doctype html><html lang=zh-cn>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 最近迷上了 Crack Me，入门无果。老是看到有大佬发52pojie又有哪个佬把什么黄油给手撕了，心痒痒。干脆也正正经经地去学一下好了。
+这当然也算是程序员本职的正经知识（心虚而且超大声）。
+常规知识和速记 笔记内容是关于 8086/x86 汇编。
+x86体系结构下内存和寄存器都是小端序。小端序指低位在右，高位在左。如0x1的小端序表示是0000 0001。
+8比特能表示2位16进制数（0xFF，也就是255），16比特能表示4位16进制数（0xFFFF，65535），32比特能表示8位16进制数（0XFFFFFFFF，4294967295）。
+数据类型：
+   助记符 描述     dword 双字（double word），32比特整型数据。   word 字，16比特整型数据。   byte 字节，8比特整型数据。    常用的16进制数记法：
+ 0x2A，前缀0x 2AH，后缀H  寄存器 通用寄存器 参考：x86汇编 - 维基百科
+参考：x64体系结构 - windows hardware
+   64位寄存器 32位寄存器 16位寄存器 8位寄存器 用途     RAX或R0 EAX AX AL和AH Accumlator，累加寄存器，用于算术运算。   RBX或R3 EBX BX BL和BH Base，基址寄存器，指向数据块基址（段模式存于段寄存器DS）   RCX或R1 ECX CX CL和CH Counter，用于用于移/环指令及循环（没懂）。   RDX或R2 EDX DX DL和DH Data，用于数学运算和IO操作。   RSI或R6 ESI SI SIL Source Index，指向指令流操作中的源。   RDI或R7 EDI DI DIL Destination Index，指向指令流操作中的目标。   RBP或R5 EBP BP BPL Stack Base Pointer，指向栈的基地址。   RSP或R4 ESP SP SPL Stack Pointer，指向栈顶的地址。   R8 R8D R8W R8B 无别名。   R9 R9D R9W R9B 无别名。   R10 R10D R10W R10B 无别名。   R11 R11D R11W R11B 无别名。   R12 R12D R12W R12B 无别名。   R13 R13D R13W R13B 无别名。   R14 R14D R14W R14B 无别名。   R15 R15D R15W R15B 无别名。    后续还是用 32 位寄存器的名字称呼这些寄存器。"><title>32位 Windows x86 汇编语言学习</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/assembly-learning-note/>
+<link rel=stylesheet href=/blog/scss/style.min.css><meta property="og:title" content="32位 Windows x86 汇编语言学习">
+<meta property="og:description" content="前言 最近迷上了 Crack Me，入门无果。老是看到有大佬发52pojie又有哪个佬把什么黄油给手撕了，心痒痒。干脆也正正经经地去学一下好了。
+这当然也算是程序员本职的正经知识（心虚而且超大声）。
+常规知识和速记 笔记内容是关于 8086/x86 汇编。
+x86体系结构下内存和寄存器都是小端序。小端序指低位在右，高位在左。如0x1的小端序表示是0000 0001。
+8比特能表示2位16进制数（0xFF，也就是255），16比特能表示4位16进制数（0xFFFF，65535），32比特能表示8位16进制数（0XFFFFFFFF，4294967295）。
+数据类型：
+   助记符 描述     dword 双字（double word），32比特整型数据。   word 字，16比特整型数据。   byte 字节，8比特整型数据。    常用的16进制数记法：
+ 0x2A，前缀0x 2AH，后缀H  寄存器 通用寄存器 参考：x86汇编 - 维基百科
+参考：x64体系结构 - windows hardware
+   64位寄存器 32位寄存器 16位寄存器 8位寄存器 用途     RAX或R0 EAX AX AL和AH Accumlator，累加寄存器，用于算术运算。   RBX或R3 EBX BX BL和BH Base，基址寄存器，指向数据块基址（段模式存于段寄存器DS）   RCX或R1 ECX CX CL和CH Counter，用于用于移/环指令及循环（没懂）。   RDX或R2 EDX DX DL和DH Data，用于数学运算和IO操作。   RSI或R6 ESI SI SIL Source Index，指向指令流操作中的源。   RDI或R7 EDI DI DIL Destination Index，指向指令流操作中的目标。   RBP或R5 EBP BP BPL Stack Base Pointer，指向栈的基地址。   RSP或R4 ESP SP SPL Stack Pointer，指向栈顶的地址。   R8 R8D R8W R8B 无别名。   R9 R9D R9W R9B 无别名。   R10 R10D R10W R10B 无别名。   R11 R11D R11W R11B 无别名。   R12 R12D R12W R12B 无别名。   R13 R13D R13W R13B 无别名。   R14 R14D R14W R14B 无别名。   R15 R15D R15W R15B 无别名。    后续还是用 32 位寄存器的名字称呼这些寄存器。">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/assembly-learning-note/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="汇编"><meta property="article:tag" content="逆向"><meta property="article:published_time" content="2021-09-09T16:14:00+08:00"><meta property="article:modified_time" content="2021-09-09T16:14:00+08:00">
+<meta name=twitter:title content="32位 Windows x86 汇编语言学习">
+<meta name=twitter:description content="前言 最近迷上了 Crack Me，入门无果。老是看到有大佬发52pojie又有哪个佬把什么黄油给手撕了，心痒痒。干脆也正正经经地去学一下好了。
+这当然也算是程序员本职的正经知识（心虚而且超大声）。
+常规知识和速记 笔记内容是关于 8086/x86 汇编。
+x86体系结构下内存和寄存器都是小端序。小端序指低位在右，高位在左。如0x1的小端序表示是0000 0001。
+8比特能表示2位16进制数（0xFF，也就是255），16比特能表示4位16进制数（0xFFFF，65535），32比特能表示8位16进制数（0XFFFFFFFF，4294967295）。
+数据类型：
+   助记符 描述     dword 双字（double word），32比特整型数据。   word 字，16比特整型数据。   byte 字节，8比特整型数据。    常用的16进制数记法：
+ 0x2A，前缀0x 2AH，后缀H  寄存器 通用寄存器 参考：x86汇编 - 维基百科
+参考：x64体系结构 - windows hardware
+   64位寄存器 32位寄存器 16位寄存器 8位寄存器 用途     RAX或R0 EAX AX AL和AH Accumlator，累加寄存器，用于算术运算。   RBX或R3 EBX BX BL和BH Base，基址寄存器，指向数据块基址（段模式存于段寄存器DS）   RCX或R1 ECX CX CL和CH Counter，用于用于移/环指令及循环（没懂）。   RDX或R2 EDX DX DL和DH Data，用于数学运算和IO操作。   RSI或R6 ESI SI SIL Source Index，指向指令流操作中的源。   RDI或R7 EDI DI DIL Destination Index，指向指令流操作中的目标。   RBP或R5 EBP BP BPL Stack Base Pointer，指向栈的基地址。   RSP或R4 ESP SP SPL Stack Pointer，指向栈顶的地址。   R8 R8D R8W R8B 无别名。   R9 R9D R9W R9B 无别名。   R10 R10D R10W R10B 无别名。   R11 R11D R11W R11B 无别名。   R12 R12D R12W R12B 无别名。   R13 R13D R13W R13B 无别名。   R14 R14D R14W R14B 无别名。   R15 R15D R15W R15B 无别名。    后续还是用 32 位寄存器的名字称呼这些寄存器。">
+</head>
+<body class="article-page has-toc">
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"auto")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex
+extended">
+<div id=article-toolbar>
+<a href=https://nnnewb.github.io/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
+<span>返回</span>
+</a>
+</div>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/%E6%B1%87%E7%BC%96/>
+汇编
+</a>
+</header>
+<h2 class=article-title>
+<a href=/blog/p/assembly-learning-note/>32位 Windows x86 汇编语言学习</a>
+</h2>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2021年 9月 9日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 3 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>最近迷上了 Crack Me，入门无果。老是看到有大佬发52pojie又有哪个佬把什么黄油给手撕了，心痒痒。干脆也正正经经地去学一下好了。</p>
+<p>这当然也算是程序员本职的正经知识（心虚而且超大声）。</p>
+<h2 id=常规知识和速记>常规知识和速记</h2>
+<p>笔记内容是关于 8086/x86 汇编。</p>
+<p>x86体系结构下内存和寄存器都是小端序。小端序指低位在右，高位在左。如<code>0x1</code>的小端序表示是<code>0000 0001</code>。</p>
+<p>8比特能表示2位16进制数（<code>0xFF</code>，也就是<code>255</code>），16比特能表示4位16进制数（<code>0xFFFF</code>，<code>65535</code>），32比特能表示8位16进制数（<code>0XFFFFFFFF</code>，<code>4294967295</code>）。</p>
+<p>数据类型：</p>
+<table>
+<thead>
+<tr>
+<th>助记符</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dword</code></td>
+<td>双字（double word），32比特整型数据。</td>
+</tr>
+<tr>
+<td><code>word</code></td>
+<td>字，16比特整型数据。</td>
+</tr>
+<tr>
+<td><code>byte</code></td>
+<td>字节，8比特整型数据。</td>
+</tr>
+</tbody>
+</table>
+<p>常用的16进制数记法：</p>
+<ul>
+<li><code>0x2A</code>，前缀<code>0x</code></li>
+<li><code>2AH</code>，后缀<code>H</code></li>
+</ul>
+<h2 id=寄存器>寄存器</h2>
+<h3 id=通用寄存器>通用寄存器</h3>
+<p>参考：<a class=link href=https://zh.wikibooks.org/wiki/X86_%E6%B1%87%E7%BC%96/X86_%E6%9E%B6%E6%9E%84 target=_blank rel=noopener>x86汇编 - 维基百科</a></p>
+<p>参考：<a class=link href=https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/x64-architecture target=_blank rel=noopener>x64体系结构 - windows hardware</a></p>
+<table>
+<thead>
+<tr>
+<th>64位寄存器</th>
+<th>32位寄存器</th>
+<th>16位寄存器</th>
+<th>8位寄存器</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RAX</code>或<code>R0</code></td>
+<td><code>EAX</code></td>
+<td><code>AX</code></td>
+<td><code>AL</code>和<code>AH</code></td>
+<td>Accumlator，累加寄存器，用于算术运算。</td>
+</tr>
+<tr>
+<td><code>RBX</code>或<code>R3</code></td>
+<td><code>EBX</code></td>
+<td><code>BX</code></td>
+<td><code>BL</code>和<code>BH</code></td>
+<td>Base，基址寄存器，指向数据块基址（段模式存于段寄存器<code>DS</code>）</td>
+</tr>
+<tr>
+<td><code>RCX</code>或<code>R1</code></td>
+<td><code>ECX</code></td>
+<td><code>CX</code></td>
+<td><code>CL</code>和<code>CH</code></td>
+<td>Counter，用于用于移/环指令及循环（没懂）。</td>
+</tr>
+<tr>
+<td><code>RDX</code>或<code>R2</code></td>
+<td><code>EDX</code></td>
+<td><code>DX</code></td>
+<td><code>DL</code>和<code>DH</code></td>
+<td>Data，用于数学运算和IO操作。</td>
+</tr>
+<tr>
+<td><code>RSI</code>或<code>R6</code></td>
+<td><code>ESI</code></td>
+<td><code>SI</code></td>
+<td><code>SIL</code></td>
+<td>Source Index，指向指令流操作中的源。</td>
+</tr>
+<tr>
+<td><code>RDI</code>或<code>R7</code></td>
+<td><code>EDI</code></td>
+<td><code>DI</code></td>
+<td><code>DIL</code></td>
+<td>Destination Index，指向指令流操作中的目标。</td>
+</tr>
+<tr>
+<td><code>RBP</code>或<code>R5</code></td>
+<td><code>EBP</code></td>
+<td><code>BP</code></td>
+<td><code>BPL</code></td>
+<td>Stack Base Pointer，指向栈的基地址。</td>
+</tr>
+<tr>
+<td><code>RSP</code>或<code>R4</code></td>
+<td><code>ESP</code></td>
+<td><code>SP</code></td>
+<td><code>SPL</code></td>
+<td>Stack Pointer，指向栈顶的地址。</td>
+</tr>
+<tr>
+<td><code>R8</code></td>
+<td><code>R8D</code></td>
+<td><code>R8W</code></td>
+<td><code>R8B</code></td>
+<td>无别名。</td>
+</tr>
+<tr>
+<td><code>R9</code></td>
+<td><code>R9D</code></td>
+<td><code>R9W</code></td>
+<td><code>R9B</code></td>
+<td>无别名。</td>
+</tr>
+<tr>
+<td><code>R10</code></td>
+<td><code>R10D</code></td>
+<td><code>R10W</code></td>
+<td><code>R10B</code></td>
+<td>无别名。</td>
+</tr>
+<tr>
+<td><code>R11</code></td>
+<td><code>R11D</code></td>
+<td><code>R11W</code></td>
+<td><code>R11B</code></td>
+<td>无别名。</td>
+</tr>
+<tr>
+<td><code>R12</code></td>
+<td><code>R12D</code></td>
+<td><code>R12W</code></td>
+<td><code>R12B</code></td>
+<td>无别名。</td>
+</tr>
+<tr>
+<td><code>R13</code></td>
+<td><code>R13D</code></td>
+<td><code>R13W</code></td>
+<td><code>R13B</code></td>
+<td>无别名。</td>
+</tr>
+<tr>
+<td><code>R14</code></td>
+<td><code>R14D</code></td>
+<td><code>R14W</code></td>
+<td><code>R14B</code></td>
+<td>无别名。</td>
+</tr>
+<tr>
+<td><code>R15</code></td>
+<td><code>R15D</code></td>
+<td><code>R15W</code></td>
+<td><code>R15B</code></td>
+<td>无别名。</td>
+</tr>
+</tbody>
+</table>
+<p>后续还是用 32 位寄存器的名字称呼这些寄存器。</p>
+<p>通用寄存器的用途并不是绝对的，程序可以根据自己的需要将通用寄存器挪作它用。</p>
+<p>其中：</p>
+<ul>
+<li>
+<p>16位寄存器本身是32位寄存器的低16位。32位寄存器的高16位没有单独的助记符。</p>
+</li>
+<li>
+<p>16位寄存器又可以单独分成两个8位寄存器使用。其中如<code>AH</code>形式的寄存器表示<code>AX</code>高位8比特，<code>AL</code>则表示低位8比特。</p>
+</li>
+</ul>
+<h3 id=edi-和-esi>EDI 和 ESI</h3>
+<p>关于<code>EDI</code>和<code>ESI</code>这两个寄存器的用途可以参考 <a class=link href=https://stackoverflow.com/questions/1856320/purpose-of-esi-edi-registers target=_blank rel=noopener>stack overflow 的这篇问答</a>。摘一段例子，下面的C代码：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=n>srcp</span><span class=p>[</span><span class=n>srcidx</span><span class=o>++</span><span class=p>]</span> <span class=o>=</span> <span class=n>argv</span><span class=p>[</span><span class=n>j</span><span class=p>];</span>
+</code></pre></div><p>可以被编译成下面的汇编语句：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>mov</span> <span class=no>edx</span><span class=p>,[</span><span class=no>ebp</span><span class=err>+</span><span class=mi>0</span><span class=no>c</span><span class=p>]</span>
+<span class=nf>mov</span> <span class=no>ecx</span><span class=p>,[</span><span class=no>edx</span><span class=err>+</span><span class=mi>4</span><span class=p>*</span><span class=no>ebx</span><span class=p>]</span>
+<span class=nf>mov</span> <span class=p>[</span><span class=no>ebp</span><span class=err>+</span><span class=mi>4</span><span class=p>*</span><span class=no>edi-54</span><span class=p>],</span><span class=no>ecx</span>
+<span class=nf>inc</span> <span class=no>edi</span>
+</code></pre></div><p><code>ebp+0c</code>包含了<code>argv</code>内容，<code>ebx</code>就是<code>j</code>，<code>edi</code>就是<code>srcidx</code>。</p>
+<h3 id=段寄存器>段寄存器</h3>
+<p>现代操作系统采用内存分页模式，把所有段寄存器指向同址来禁用内存分段模式。然而<code>FS</code>和<code>GS</code>依然用于内存分段模式，用于线程内数据存取。</p>
+<table>
+<thead>
+<tr>
+<th>段寄存器助记符</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SS</code></td>
+<td>Stack Segment，栈段</td>
+</tr>
+<tr>
+<td><code>CS</code></td>
+<td>Code Segment，代码段</td>
+</tr>
+<tr>
+<td><code>DS</code></td>
+<td>Data Segment，数据段</td>
+</tr>
+<tr>
+<td><code>ES</code></td>
+<td>Extra Segment，额外数据段</td>
+</tr>
+<tr>
+<td><code>FS</code></td>
+<td>更额外的数据段</td>
+</tr>
+<tr>
+<td><code>GS</code></td>
+<td>更额外的数据段</td>
+</tr>
+</tbody>
+</table>
+<p>x86一共有6个段寄存器，所有段寄存器都是16比特位宽。</p>
+<p>关于段寄存器用途和计算放在主存一节中。</p>
+<h3 id=指令指针-eip>指令指针 EIP</h3>
+<p>IP 寄存器全称是 Instruction Pointer 寄存器，保存总是保存下一指令的地址。</p>
+<p>x86实模式下使用段内存管理，可寻址1MB内存空间，采用基址（段寄存器）左移4位加上偏移量，相当于20比特位宽地址总线。实模式下EIP可以和CS代码段寄存器结合求取下一指令的具体地址。</p>
+<h3 id=标志寄存器>标志寄存器</h3>
+<table>
+<thead>
+<tr>
+<th>助记符</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CF</code></td>
+<td>Carry Flag，进位或借位溢出时记为1，否则0</td>
+</tr>
+<tr>
+<td><code>PF</code></td>
+<td>Parity Flag，运算结果最低字节有偶数个1位时记为1，否则0</td>
+</tr>
+<tr>
+<td><code>AF</code></td>
+<td>Auxiliary Flag，BCD码算术运算中进位或借位溢出，即运算结果第三位发生进借位时记1，否则0</td>
+</tr>
+<tr>
+<td><code>ZF</code></td>
+<td>Zero Flag，运算结果为0时记1，否则0</td>
+</tr>
+<tr>
+<td><code>SF</code></td>
+<td>Sign Flag，记运算结果最高位（符号位）</td>
+</tr>
+<tr>
+<td><code>TF</code></td>
+<td>Trap Flag，单步调试记1，否则0</td>
+</tr>
+<tr>
+<td><code>IF</code></td>
+<td>Interrupt Enable Flag，是否允许响应中断</td>
+</tr>
+<tr>
+<td><code>DF</code></td>
+<td>Direction Flag，串方向标记，指示串指令从高地址向低地址还是低地址向高地址处理。</td>
+</tr>
+<tr>
+<td><code>OF</code></td>
+<td>Overflow Flag，指示算术运算是否溢出。</td>
+</tr>
+<tr>
+<td><code>IOPL</code></td>
+<td>I/O Privilege Level，I/O特权级，2比特宽，<code>CPL</code>小于等于<code>IOPL</code>才允许访问I/O地址空间。</td>
+</tr>
+<tr>
+<td><code>NT</code></td>
+<td>Nested Task Flag，当前任务链接上衣任务时置1，否则0。</td>
+</tr>
+<tr>
+<td><code>RF</code></td>
+<td>Resume Flag，控制处理器对除障异常的响应。</td>
+</tr>
+<tr>
+<td><code>VM</code></td>
+<td>Virtual-8086 Mode Flag，虚拟8086模式标志，置1时进入虚拟8086模式，清0返回保护模式。</td>
+</tr>
+<tr>
+<td><code>AC</code></td>
+<td>Alignment Check Flag，该标志以及在CR0寄存器中的AM位置1时将允许内存引用的对齐检查，以上两个标志中至少有一个被清零则禁用对齐检查。</td>
+</tr>
+<tr>
+<td><code>VIF</code></td>
+<td>Virtual interrupt flag，该标志是IF标志的虚拟镜像(Virtual image)，与VIP标志结合起来使用。使用这个标志以及VIP标志，并设置CR4控制寄存器中的VME标志就可以允许虚拟模式扩展(virtual mode extensions)。</td>
+</tr>
+<tr>
+<td><code>VIP</code></td>
+<td>Virtual interrupt pending flag，该位置1以指示一个中断正在被挂起，当没有中断挂起时该位清零。与VIF标志结合使用。</td>
+</tr>
+<tr>
+<td><code>ID</code></td>
+<td>Identification flag，程序能够设置或清除这个标志指示了处理器对CPUID指令的支持。</td>
+</tr>
+</tbody>
+</table>
+<h2 id=主存>主存</h2>
+<h3 id=运行模式和地址模型>运行模式和地址模型</h3>
+<p>x86 CPU 运行模式主要考虑<strong>实模式</strong>和<strong>保护模式</strong>，以及特殊的<strong>虚拟8086模式</strong>。</p>
+<p>实模式有自己的独特地址空间模型，下可视作16位CPU+20比特无保护地址空间，使用段寄存器和通用16位通用寄存器组合寻址，算法<code>base&lt;&lt;4+offset</code>。最大可寻址1MB。</p>
+<p>虚拟8086模式用于在保护模式下运行实模式程序，并不是真正的CPU模式，CPU实际还是运行在保护模式。一些程序利用虚拟8086模式可以实现在保护模式下运行实模式程序，如 dosbox、dosemu 。</p>
+<p>保护模式下可以用<strong>逻辑地址</strong>访问主存，逻辑地址又称<strong>远指针</strong>（<code>far ptr</code>），逻辑地址由段选择器加上偏移寻址组成。运行于 IA-32 体系的程序，段选择器最多可以选择 2^14^-1 个段，每个段可以长达 2^32^ 字节。</p>
+<h3 id=nearfarhuge-指针>near/far/huge 指针</h3>
+<p>near 指针是给定段内用16比特表示的偏移值，最大访问地址空间64KB。</p>
+<p>far 指针是32比特表示的偏移值，在16位架构下可以访问段外的内存，32/64位架构下则依然是段内。</p>
+<p>huge指针和far指针大小相同，大体目标就是在16位限制下访问更大的地址空间。</p>
+<h3 id=平坦内存模型线性内存模型>平坦内存模型/线性内存模型</h3>
+<p>参考：<a class=link href=https://en.wikipedia.org/wiki/Flat_memory_model target=_blank rel=noopener>flat memory model - wiki</a></p>
+<p>平坦内存模型也叫线性内存模型，定义是程序中的内存在同一个连续的地址空间中，不需要通过分段或分页机制间接取址。（从操作系统或硬件角度来说，可能依然有分页或分段，但对用户程序来说无感知）。</p>
+<h3 id=intel-内存模型>Intel 内存模型</h3>
+<p>下述内存模型是实模式下的，保护模式下更近似于线性模型。</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>数据段指针</th>
+<th>代码段指针</th>
+<th>定义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tiny</td>
+<td>near</td>
+<td>near</td>
+<td>CS=DS=SS</td>
+</tr>
+<tr>
+<td>Small</td>
+<td>near</td>
+<td>near</td>
+<td>DS=SS</td>
+</tr>
+<tr>
+<td>Medium</td>
+<td>near</td>
+<td>far</td>
+<td>DS=SS，多个代码段</td>
+</tr>
+<tr>
+<td>Compact</td>
+<td>far</td>
+<td>near</td>
+<td>一个代码段，多个数据段</td>
+</tr>
+<tr>
+<td>Large</td>
+<td>far</td>
+<td>far</td>
+<td>多个代码段和数据段</td>
+</tr>
+<tr>
+<td>Huge</td>
+<td>huge</td>
+<td>far</td>
+<td>多个代码段和数据段，单个数组可能超过64KB</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>在Tiny模型下，所有段寄存器指针指向相同的段。</li>
+<li>在所有DS=SS的模型里，数据段指针总是near。</li>
+<li>栈总是限制在最高64KB。</li>
+</ul>
+<h2 id=函数>函数</h2>
+<h3 id=栈>栈</h3>
+<p>参考：<a class=link href=https://www.zhihu.com/question/36103513 target=_blank rel=noopener>栈的增长方向？ - 知乎</a></p>
+<p>讨论对象是 Windows x86 32位程序。栈从高位向低位增长，需要注意看栈视图的地址是高地址在上还是低地址在上，被调用方的栈帧总是在调用方的增长方向上。</p>
+<p>例如下面的汇编指令。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>push</span> <span class=no>eax</span>        <span class=c>; 把eax当参数入栈 esp=75f888
+</span><span class=c></span><span class=no>push</span> <span class=no>eax</span>        <span class=c>; 把eax当参数入栈 esp=75f884
+</span><span class=c></span><span class=no>push</span> <span class=no>eax</span>        <span class=c>; 把eax当参数入栈 esp=75f880
+</span><span class=c></span><span class=no>call</span> <span class=no>example.fn</span> <span class=c>; 调用
+</span><span class=c></span><span class=no>add</span> <span class=no>esp</span><span class=p>,</span><span class=mi>0xc</span>     <span class=c>; 调用方清栈，cdecl调用约定
+</span></code></pre></div><p>执行call指令，跳转到被调用函数时，栈上会压入函数的返回地址。</p>
+<h3 id=栈指针-frame-pointer>栈指针 frame pointer</h3>
+<p>栈指针可以通过编译参数 <code>-fomit-frame-pointer</code> 或 <code>/Oy-</code> 来关闭。</p>
+<p>在有栈指针（frame pointer）的情况下，每个函数开头会做一个</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>push</span> <span class=no>ebp</span>
+<span class=nf>mov</span> <span class=no>ebp</span><span class=p>,</span><span class=no>esp</span>
+</code></pre></div><p>的动作，这个动作做完后，新栈帧的栈底就是 ebp 了，ebp正好指向旧栈帧基地址，在ebp下（和栈增长方向相反）就是函数返回地址和调用方给的实参。</p>
+<p>在函数返回前，又会做一个</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>pop</span> <span class=no>ebp</span>
+</code></pre></div><p>来完成平栈。</p>
+<p>下面就是被调函数执行完函数开头的指令后的栈。</p>
+<table>
+<thead>
+<tr>
+<th>地址（栈向下增长）</th>
+<th>内容含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[ebp+0x10]</code></td>
+<td>第3个参数</td>
+</tr>
+<tr>
+<td><code>[ebp+0xc]</code></td>
+<td>第2个参数</td>
+</tr>
+<tr>
+<td><code>[ebp+0x8]</code></td>
+<td>第1个参数</td>
+</tr>
+<tr>
+<td><code>[ebp+0x4]</code></td>
+<td>函数的返回地址</td>
+</tr>
+<tr>
+<td><code>[ebp]</code></td>
+<td>上一个栈帧基地址，此时<code>esp</code>和<code>ebp</code>相同。</td>
+</tr>
+</tbody>
+</table>
+<p>关闭栈指针的情况下，函数不会在开头保存ebp了，对函数参数的引用也会改为相对esp的偏移。</p>
+<h3 id=调用约定>调用约定</h3>
+<p>先讨论 cdecl 调用约定，函数调用的一般过程是：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>push</span> <span class=mi>0x0</span>              <span class=c>; 压栈参数 0
+</span><span class=c></span><span class=no>push</span> <span class=no>example.50be50</span>   <span class=c>; 压栈参数 &#34;%d&#34;
+</span><span class=c></span><span class=no>call</span> <span class=no>example._printf</span>  <span class=c>; 调用    printf(&#34;%d&#34;, 0)
+</span><span class=c></span><span class=no>add</span> <span class=no>esp</span><span class=p>,</span><span class=mi>0x8</span>           <span class=c>; cdecl 约定下，调用者清栈
+</span></code></pre></div><p><code>stdcall</code>调用约定和<code>cdecl</code>调用约定的区别在于<code>stdcall</code>是被调用方清栈：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>ret</span> <span class=mi>0x8</span> <span class=c>; ret 有一个的可选参数，指示要从栈上弹出多少空间。相当于是先 add esp,0x8 再 ret
+</span></code></pre></div><p><code>cdecl</code>是大部分编译器包括微软VC++默认的调用约定，<code>stdcall</code>是所有 Windows API 的调用约定。</p>
+<h3 id=name-mangling>name mangling</h3>
+<p>好像没有广泛使用的译名，可以叫名字修饰、名字重整或改编，意会吧。</p>
+<p>对于有使用c/c++编程经验的人可能已经见过很多链接错误：</p>
+<ul>
+<li>undefined reference to &mldr;</li>
+<li>无法解析的外部符号 &mldr;</li>
+</ul>
+<p>如果注意过提示中的符号名应该会发现这些符号名称都不是代码里写的函数名称，而是经过了变形的。</p>
+<p><code>cdecl</code>调用约定下，name mangling 的规则是在符号前加下划线。比如C库的<code>printf</code>函数，经过name mangling后是<code>_printf</code>。</p>
+<p><code>stdcall</code>调用约定下，name mangling 的规则是在符号前加下划线，符号后加 <em>@参数长度</em>。需要注意的是对于C中的变长参数 variadic function，是不能用 <code>stdcall</code> 调用约定的。</p>
+<p>用函数 <code>int fn(int a, int b)</code> 举例，认为 int 是 4 字节长，此时<code>cdecl</code>下叫<code>_fn</code>，<code>stdcall</code>下叫<code>_fn@8</code>。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/%E6%B1%87%E7%BC%96/>汇编</a>
+<a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+</article>
+<aside class=related-contents--wrapper>
+</aside>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 weakptr's 笔记
+</section>
+<section class=powerby>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.1.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#常规知识和速记>常规知识和速记</a></li>
+<li><a href=#寄存器>寄存器</a>
+<ol>
+<li><a href=#通用寄存器>通用寄存器</a></li>
+<li><a href=#edi-和-esi>EDI 和 ESI</a></li>
+<li><a href=#段寄存器>段寄存器</a></li>
+<li><a href=#指令指针-eip>指令指针 EIP</a></li>
+<li><a href=#标志寄存器>标志寄存器</a></li>
+</ol>
+</li>
+<li><a href=#主存>主存</a>
+<ol>
+<li><a href=#运行模式和地址模型>运行模式和地址模型</a></li>
+<li><a href=#nearfarhuge-指针>near/far/huge 指针</a></li>
+<li><a href=#平坦内存模型线性内存模型>平坦内存模型/线性内存模型</a></li>
+<li><a href=#intel-内存模型>Intel 内存模型</a></li>
+</ol>
+</li>
+<li><a href=#函数>函数</a>
+<ol>
+<li><a href=#栈>栈</a></li>
+<li><a href=#栈指针-frame-pointer>栈指针 frame pointer</a></li>
+<li><a href=#调用约定>调用约定</a></li>
+<li><a href=#name-mangling>name mangling</a></li>
+</ol>
+</li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
