@@ -1,4 +1,183 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 09 Sep 2021 16:14:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>32位 Windows x86 汇编语言学习</title><link>https://nnnewb.github.io/blog/p/assembly-learning-note/</link><pubDate>Thu, 09 Sep 2021 16:14:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/assembly-learning-note/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 10 Sep 2021 09:49:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>自娱自乐 CrackMe-1</title><link>https://nnnewb.github.io/blog/p/crackme-01/</link><pubDate>Fri, 10 Sep 2021 09:49:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/crackme-01/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>总之得有个前言。从前有个老和尚（不是，掉光了头发的攻城狮），&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>以上略，于是作为萌新含量110%的萌新，出于练手、熟悉下反汇编调试的环境之类的目的，还是自己写crackme来把玩吧。&lt;/p>
+&lt;h2 id="cm01-介绍">CM01 介绍&lt;/h2>
+&lt;p>于是这个 CrackMe 就叫 CM01 好了，命令行无界面。适合差不多对这些东西懂个大概或者打算学习的萌新：&lt;/p>
+&lt;ul>
+&lt;li>反汇编/调试工具&lt;/li>
+&lt;li>寄存器（主要是 ebp、esp、eip、eax）&lt;/li>
+&lt;li>函数调用（cdecl）&lt;/li>
+&lt;li>栈/栈帧&lt;/li>
+&lt;li>内存模型和寻址&lt;/li>
+&lt;/ul>
+&lt;h2 id="cm01-源码">CM01 源码&lt;/h2>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;string.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="n">size_t&lt;/span> &lt;span class="nf">getline&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">**&lt;/span>&lt;span class="n">lineptr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_t&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">n&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">FILE&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">stream&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">bufptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">bufptr&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">size_t&lt;/span> &lt;span class="n">size&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">lineptr&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">stream&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">n&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">bufptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">lineptr&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">n&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">c&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fgetc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stream&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">c&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">EOF&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">bufptr&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">bufptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">malloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">128&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">bufptr&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">128&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">p&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">bufptr&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">while&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">c&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="n">EOF&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">((&lt;/span>&lt;span class="n">p&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">bufptr&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">size&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">size&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">128&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">bufptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">realloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">bufptr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">bufptr&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">p&lt;/span>&lt;span class="o">++&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">c&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="sc">&amp;#39;\n&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">c&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fgetc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stream&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">p&lt;/span>&lt;span class="o">++&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sc">&amp;#39;\0&amp;#39;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">lineptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">bufptr&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">n&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">size&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">p&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">bufptr&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">pwd&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s">&amp;#34;secret&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">line&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">size_t&lt;/span> &lt;span class="n">len&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">long&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">linesize&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">while&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;password:&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">linesize&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">getline&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">line&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">stdin&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">rc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">strncmp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">line&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">pwd&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">6&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">rc&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Good job!&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;wrong pwd!&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>编译工具链：&lt;/p>
+&lt;ul>
+&lt;li>因为VC++对单纯C的支持比较垃圾，所以用LLVM（Clang）-12.0.1，Clang&lt;/li>
+&lt;/ul>
+&lt;p>编译指令&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">clang cm01.c -o cm01-easy.exe -m32 -O0
+clang cm01.c -o cm01-normal.exe -m32 -O1
+clang cm01.c -o cm01-hard.exe -m32 -O2
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="观察">观察&lt;/h2>
+&lt;p>假装没看到源码，先观察下程序的行为，确定目标。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plain" data-lang="plain">weakptr in assembly-play ❯ .\cm01-easy.exe
+password:password?
+wrong pwd!
+password:asdf
+wrong pwd!
+password:wrong pwd!
+password:
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>一个 &lt;em>password:&lt;/em> 提示符，随便输入了点什么会提示 &lt;em>wrong pwd!&lt;/em> 。&lt;/p>
+&lt;p>确定目标是找出正确的密码。&lt;/p>
+&lt;h2 id="静态分析">静态分析&lt;/h2>
+&lt;h3 id="思路">思路&lt;/h3>
+&lt;p>在逆向中有个说法叫*“关键跳转”*，如分析固定密码，字符串比较后跳转成功或跳转失败就是关键跳。对于简单的问题，找到关键跳即可破局。&lt;/p>
+&lt;h3 id="反汇编---easy">反汇编 - Easy&lt;/h3>
+&lt;p>Easy难度下，&lt;code>-O0&lt;/code>参数关闭了编译器优化，生成的汇编代码非常死板，基本能直接对照到C源码上。&lt;/p>
+&lt;p>直接拿IDA打开。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-1.png" alt="image-20210912172521751" />&lt;/p>
+&lt;p>直接跳到了&lt;code>main&lt;/code>函数。接着看IDA汇编窗口中的的细节。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-2.png" alt="image-20210912173539972" />&lt;/p>
+&lt;p>IDA反汇编界面是包含一些伪代码的，有助于分析。&lt;/p>
+&lt;p>左侧有长条和箭头的部分是控制流示意，箭头指的就是跳转方向。&lt;/p>
+&lt;p>越过伪代码的部分，就能看到函数体开头例行公事的部分了。随后的便是函数体代码。&lt;/p>
+&lt;p>具体看函数体前，先了解下IDA还提供了另一种控制流可视化的视图，可以极大帮助对函数逻辑的分析。&lt;/p>
+&lt;p>在汇编视图里右键，选择 Graph View，即可进入控制流视图。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-3.png" alt="image-20210912174233891" />&lt;/p>
+&lt;p>在图片左下角的是视图的全览，原本的汇编文本变成了图中箭头连接的小汇编代码块，箭头指示了跳转的方向。&lt;/p>
+&lt;p>在这个视图可以很清楚地看到所谓的关键跳：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-4.png" alt="image-20210912174738919" />&lt;/p>
+&lt;p>&lt;code>_strncmp&lt;/code>是经过了 name mangling 的 c 标准库函数&lt;code>strncmp&lt;/code>，函数如名字所示，用途就是比较字符串。&lt;/p>
+&lt;p>又根据&lt;code>cdecl&lt;/code>调用约定，函数参数通过栈传递，参数从右往左压栈。我们看这个&lt;code>call&lt;/code>指令前的三句&lt;code>mov&lt;/code>。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">mov&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">esp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">24&lt;/span>&lt;span class="no">h&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="no">Ix&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="no">ecx&lt;/span> &lt;span class="c">; Str1
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">esp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">24&lt;/span>&lt;span class="no">h&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="no">Str2&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="no">eax&lt;/span> &lt;span class="c">; Str2
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">esp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">24&lt;/span>&lt;span class="no">h&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="no">MaxCount&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="mi">6&lt;/span> &lt;span class="c">; MaxCount
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>需要注意的是没有用&lt;code>push&lt;/code>指令，所以三个&lt;code>mov&lt;/code>在栈上的顺序要根据偏移算。我们偷个懒直接看&lt;code>strncmp&lt;/code>函数的签名就行，IDA也分析出了压栈的地址在注释里。往上看，看看&lt;code>ecx&lt;/code>和&lt;code>eax&lt;/code>又是哪儿来的。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">mov&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="no">var_8&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nf">mov&lt;/span> &lt;span class="no">ecx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="no">Str1&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>再看&lt;code>ebp+var_8&lt;/code>和&lt;code>ebp+str1&lt;/code>又是什么。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">lea&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">aSecret&lt;/span> &lt;span class="c">; &amp;#34;secret&amp;#34;
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="no">var_8&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="no">eax&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>所以有一个参数是字符串 &lt;code>&amp;quot;secret&amp;quot;&lt;/code>，作为关键跳前 &lt;code>_strncmp&lt;/code> 的参数。&lt;/p>
+&lt;p>让我们尝试一下。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-7.png" alt="image-20210912181959230" />&lt;/p>
+&lt;p>成功完成。&lt;/p>
+&lt;h3 id="反汇编---normal">反汇编 - Normal&lt;/h3>
+&lt;p>接下来看使用&lt;code>-O1&lt;/code>编译，开启了部分编译器优化的版本。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-normal-1.png" alt="image-20210912183427553" />&lt;/p>
+&lt;p>可以看到，因为编译器优化的缘故，原本清晰的分支变成了一个仅有一个循环。&lt;/p>
+&lt;p>还是先找到关键跳，肉眼过一遍循环中的函数调用，&lt;code>sub_401180&lt;/code>从参数看应该是一个往终端打印字符串的函数，忽略。&lt;code>___acrt_iob_func&lt;/code>意义不明也忽略。下一个&lt;code>sub_401000&lt;/code>依然有点意义不明，先跳过。再往下就看到了老熟人了，&lt;code>_strncmp&lt;/code>，&lt;code>&amp;quot;secret&amp;quot;&lt;/code>参数更是直接用一个push给压栈了，分析到此结束？&lt;/p>
+&lt;p>不过还有一个问题没解决：失败的提示我们看到了，成功的跳转在哪儿呢？&lt;/p>
+&lt;p>从&lt;code>call _strncmp&lt;/code>开始往下看。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">call&lt;/span> &lt;span class="no">_strncmp&lt;/span> &lt;span class="c">; 调用，cdecl约定下，返回值在 eax
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">add&lt;/span> &lt;span class="no">esp&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="no">Ch&lt;/span> &lt;span class="c">; 清栈
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="no">esi&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">eax&lt;/span> &lt;span class="c">; 函数返回值存入 esi
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">test&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">eax&lt;/span> &lt;span class="c">; TEST 指令把操作数按位与并设置标志位，如果 eax 是 0 则 ZF 会设置成 1，否则就是 0。
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">offset&lt;/span> &lt;span class="no">aWrongPwd&lt;/span> &lt;span class="c">; eax = &amp;#34;wrong pwd!\n&amp;#34;
+&lt;/span>&lt;span class="c">; ebp 被设置为了字符串 &amp;#34;Good job!\n&amp;#34;
+&lt;/span>&lt;span class="c">; cmovz 或者说 cmov* 系列的函数用后缀的单个字符表示用哪个标志位来决定是否mov，比如cmovz就是用ZF标志位决定是否执行mov。
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">cmovz&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">ebp&lt;/span>
+&lt;span class="no">push&lt;/span> &lt;span class="no">eax&lt;/span> &lt;span class="c">; 如果 strncmp 返回 0 则是 Good job!\n ，反则 wrong pwd!\n
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">call&lt;/span> &lt;span class="no">sub_401180&lt;/span> &lt;span class="c">; 调用一个输出字符串的函数
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>用伪代码来表示，就是&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;Good job!&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="n">compare_result&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="s2">&amp;#34;wrong pwd!&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="反汇编---hard">反汇编 - Hard&lt;/h3>
+&lt;p>Hard启用了&lt;code>-O2&lt;/code>，也就是开启了大部分编译器优化。用IDA打开。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-1.png" alt="image-20210912185949657" />&lt;/p>
+&lt;p>因为编译器十分聪明地把一些函数给内联编译进了 main 函数，现在 main 函数的控制流已经乱的一批。挨个读下去虽然还可行，但实在费神费力。&lt;/p>
+&lt;p>不过在这个条件下依然还有解决办法：我们可以通过错误或成功的提示字符串找关键跳。&lt;/p>
+&lt;p>已知错误时会输出&amp;quot;wrong pwd!&amp;quot;，我们在IDA找到字符串视图。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-2.png" alt="image-20210912190657661" />&lt;/p>
+&lt;p>然后在视图中找到字符串。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-3.png" alt="image-20210912190827657" />&lt;/p>
+&lt;p>其实就是在内存数据段（Data Segment）或者PE的数据节（Data Section）中的字符串啦，一般手写的字符串字面量都会直接编译到这里。&lt;/p>
+&lt;p>在我们要找的字符串上双击，就会跳到汇编视图中的字符串位置。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-4.png" alt="image-20210912191125747" />&lt;/p>
+&lt;p>然后再双击图中位置。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-5.png" alt="image-20210912191344967" />&lt;/p>
+&lt;p>即可跳转到引用。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-6.png" alt="image-20210912191435672" />&lt;/p>
+&lt;p>接着看跳转到的上下文，又变成了十分熟悉的正确错误分支。往前找到 &lt;code>_strncmp&lt;/code>的参数。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">push&lt;/span> &lt;span class="mi">6&lt;/span>
+&lt;span class="nf">push&lt;/span> &lt;span class="no">offset&lt;/span> &lt;span class="no">Str2&lt;/span> &lt;span class="c">; &amp;#34;secret&amp;#34;
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">push&lt;/span> &lt;span class="no">edx&lt;/span> &lt;span class="c">; Str1
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="no">ebp&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">edx&lt;/span>
+&lt;span class="nf">call&lt;/span> &lt;span class="no">_strncmp&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>也就是 &lt;code>strncmp(edx,&amp;quot;secret&amp;quot;,6)&lt;/code>，密钥就是 &lt;code>&amp;quot;secret&amp;quot;&lt;/code>没错了。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>这个 CrackMe （以后也许还有）的主要用途是学习逆向和汇编的基础知识，巩固记忆，学习和熟悉工具。所以尽可能去除干扰项，只保留想要巩固学习的部分，看起来很傻，基本没啥挑战性。&lt;/p>
+&lt;p>目前能找到很多 Delphi 和 VB 编写的 CrackMe，Delphi 现在搜搜还能看到些 &lt;em>Delphi still alive&lt;/em> 的文章，不过确实比较少见了吧。提到学 GUI 编程，不是推荐 C++/Qt 就是 .Net 全家桶。VB 更是早已完蛋（不是VB.Net），老实说这些 CrackMe 不知道转了几手，还能玩是还能玩，虽然但是吧，总之对我还是略难，看别人的 CrackMe 题解也挺迷茫。&lt;/p>
+&lt;p>不过自己会编程就好了嘛！&lt;/p></description></item><item><title>32位 Windows x86 汇编语言学习</title><link>https://nnnewb.github.io/blog/p/assembly-learning-note/</link><pubDate>Thu, 09 Sep 2021 16:14:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/assembly-learning-note/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>最近迷上了 Crack Me，入门无果。老是看到有大佬发52pojie又有哪个佬把什么黄油给手撕了，心痒痒。干脆也正正经经地去学一下好了。&lt;/p>
 &lt;p>这当然也算是程序员本职的正经知识（心虚而且超大声）。&lt;/p>
 &lt;h2 id="常规知识和速记">常规知识和速记&lt;/h2>
