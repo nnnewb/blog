@@ -284,6 +284,8 @@ call    _strncmp
 
 这个 CrackMe （以后也许还有）的主要用途是学习逆向和汇编的基础知识，巩固记忆，学习和熟悉工具。所以尽可能去除干扰项，只保留想要巩固学习的部分，看起来很傻，基本没啥挑战性。
 
+有些公共的前置知识（比如寄存器和栈，调用约定，内存模型）我做了个笔记，大概是入不了大佬的眼的。可以在[这里]([32位 Windows x86 汇编语言学习 (nnnewb.github.io)](https://nnnewb.github.io/blog/p/assembly-learning-note/))看看。
+
 目前能找到很多 Delphi 和 VB 编写的 CrackMe，Delphi 现在搜搜还能看到些 *Delphi still alive* 的文章，不过确实比较少见了吧。提到学 GUI 编程，不是推荐 C++/Qt 就是 .Net 全家桶。VB 更是早已完蛋（不是VB.Net），老实说这些 CrackMe 不知道转了几手，还能玩是还能玩，虽然但是吧，总之对我还是略难，看别人的 CrackMe 题解也挺迷茫。
 
 不过自己会编程就好了嘛！
