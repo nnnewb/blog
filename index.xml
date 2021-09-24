@@ -1,4 +1,180 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 15 Sep 2021 15:43:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>自娱自乐 crackme-02</title><link>https://nnnewb.github.io/blog/p/crackme-02/</link><pubDate>Wed, 15 Sep 2021 15:43:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/crackme-02/</guid><description>&lt;h2 id="得有个前言">得有个前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 24 Sep 2021 16:58:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>自娱自乐 crackme-03</title><link>https://nnnewb.github.io/blog/p/crackme-03/</link><pubDate>Fri, 24 Sep 2021 16:58:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/crackme-03/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>总得有个前言。&lt;/p>
+&lt;p>一直玩命令行 crackme 看着就没啥意思，来点带界面的。依然是学习用，目标是把汇编和底层和内存这套东西读熟。这次是用 wxwidgets 做的简单 crackme，为了在 CrackME-02 基础上再增加点难度但又不至于太难，这次是 OTP 生成序列号，要求解出生成 OTP 的 SECRET。&lt;/p>
+&lt;h2 id="源码">源码&lt;/h2>
+&lt;p>越来越长了，贴上来没法看。现在托管到GitHub，包括前面的两个cm。&lt;/p>
+&lt;p>前两个cm托管的代码编译参数有一点修改，可能造成结果和文章不一致，但大体是一样的，别在意。&lt;/p>
+&lt;p>源码托管地址：&lt;a class="link" href="https://github.com/nnnewb/crackmes/" target="_blank" rel="noopener"
+>github.com/nnnewb/crackmes&lt;/a>&lt;/p>
+&lt;p>挑战一下C++代码开启优化的Hard模式。&lt;/p>
+&lt;h2 id="观察">观察&lt;/h2>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/01.png" alt="image-20210923104439284" />&lt;/p>
+&lt;p>一个输入框，点击try it尝试。失败时提示Wrong，没有别的信息。&lt;/p>
+&lt;h2 id="静态分析">静态分析&lt;/h2>
+&lt;p>老规矩先静态分析一波，粗略扫一眼，捋一捋逻辑。用你喜欢的反汇编工具打开，我用Cutter先试试。&lt;/p>
+&lt;p>因为是GUI程序，直接跳&lt;code>main&lt;/code>肯定是不行的。Win32 GUI程序的入口点（程序员视角）在&lt;code>WinMain&lt;/code>这个特殊函数，不过真拿Win32API手撸界面我是真没见过了，Win32 GUI程序设计也是玩的事件响应，找到主函数的意义不大。&lt;/p>
+&lt;p>所以找关键跳这一步只能是从数据段找字符串查引用，或者调试器下合适的访问断点了。&lt;/p>
+&lt;p>这里直接从数据段找到了字符串，定位到弹出错误对话框的逻辑。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/02.png" alt="image-20210923105415082" />&lt;/p>
+&lt;p>这里有个姿势点是&lt;code>__thiscall&lt;/code>，这是个微软自定义的调用约定，点这里看&lt;a class="link" href="https://docs.microsoft.com/zh-cn/cpp/cpp/thiscall?view=msvc-160" target="_blank" rel="noopener"
+>微软的文档&lt;/a>。&lt;/p>
+&lt;h3 id="__thiscall">__thiscall&lt;/h3>
+&lt;p>&lt;code>__thiscall&lt;/code>的特点是被调用方清栈，&lt;code>this&lt;/code>指针通过&lt;code>ecx&lt;/code>寄存器传递，其他参数右至左压栈。对于可变长度参数（VAARG）的成员函数会特殊处理，采用&lt;code>cdecl&lt;/code>调用约定，&lt;code>this&lt;/code>指针最后压栈。&lt;/p>
+&lt;p>这里简单读一下定位到的几句代码，分析下意图。&lt;/p>
+&lt;pre>&lt;code>
+0x004064dc 68 34 e8 40 00 push str.Try_again ; 0x40e834
+0x004064e1 8d 4d d0 lea ecx, [ebp - 0x30]
+0x004064e4 ff 15 e0 33 41 00 call dword [public: void __thiscall wxString::constructor(char const *)] ; 0x4133e0
+0x004064ea 68 44 e8 40 00 push str.Wrong ; 0x40e844
+0x004064ef 8d 4d b0 lea ecx, [ebp - 0x50]
+0x004064f2 c6 45 fc 07 mov byte [ebp - 4], 7
+0x004064f6 ff 15 e0 33 41 00 call dword [public: void __thiscall wxString::constructor(char const *)] ; 0x4133e0
+0x004064fc 6a ff push 0xffffffffffffffff
+0x004064fe 6a ff push 0xffffffffffffffff
+0x00406500 6a 00 push 0
+0x00406502 6a 05 push 5 ; 5
+0x00406504 8d 45 d0 lea eax, [ebp - 0x30]
+0x00406507 c6 45 fc 08 mov byte [ebp - 4], 8
+0x0040650b 50 push eax
+0x0040650c 8d 45 b0 lea eax, [ebp - 0x50]
+0x0040650f 50 push eax
+0x00406510 ff 15 d4 3c 41 00 call dword [int __cdecl wxMessageBox(class wxString const &amp;amp;, class wxString const &amp;amp;, long int, class wxWindow *, int, int)] ; 0x413cd4
+&lt;/code>&lt;/pre>&lt;p>反编译器对调用的第三方库的函数分析极大降低了肉眼判读的难度。可以看到前三步&lt;code>push&lt;/code>、&lt;code>lea ecx,...&lt;/code>、&lt;code>call&lt;/code> 是典型的 &lt;code>__thiscall&lt;/code> 调用，调用对象是&lt;code>wxString&lt;/code>的构造器，所以可以知道&lt;code>ecx&lt;/code>地址保存的是一个&lt;code>wxString&lt;/code>对象的指针。&lt;/p>
+&lt;pre>&lt;code>0x004064ea 68 44 e8 40 00 push str.Wrong ; 0x40e844
+0x004064ef 8d 4d b0 lea ecx, [ebp - 0x50]
+0x004064f2 c6 45 fc 07 mov byte [ebp - 4], 7
+0x004064f6 ff 15 e0 33 41 00 call dword [public: void __thiscall wxString::constructor(char const *)] ; 0x4133e0
+&lt;/code>&lt;/pre>&lt;p>这是另一个&lt;code>wxString&lt;/code>的构造。&lt;/p>
+&lt;pre>&lt;code>0x004064fc 6a ff push 0xffffffffffffffff
+0x004064fe 6a ff push 0xffffffffffffffff
+0x00406500 6a 00 push 0
+0x00406502 6a 05 push 5 ; 5
+0x00406504 8d 45 d0 lea eax, [ebp - 0x30]
+0x00406507 c6 45 fc 08 mov byte [ebp - 4], 8
+0x0040650b 50 push eax
+0x0040650c 8d 45 b0 lea eax, [ebp - 0x50]
+0x0040650f 50 push eax
+0x00406510 ff 15 d4 3c 41 00 call dword [int __cdecl wxMessageBox(class wxString const &amp;amp;, class wxString const &amp;amp;, long int, class wxWindow *, int, int)] ; 0x413cd4
+&lt;/code>&lt;/pre>&lt;p>连续推入多个参数后，调用了&lt;code>wxMessageBox&lt;/code>函数。我们知道&lt;code>[ebp-0x30]&lt;/code>是&lt;code>Try again&lt;/code>，&lt;code>[ebp-0x50]&lt;/code> 是 &lt;code>Wrong!&lt;/code>，这个调用用伪代码表示就是 &lt;code>wxMessageBox(&amp;quot;Wrong!&amp;quot;, &amp;quot;Try again!&amp;quot;, 5, 0, -1, -1)&lt;/code>。注意忽略中间的&lt;code>mov byte [ebp - 4], 8&lt;/code>，&lt;code>ebp-4&lt;/code>这个偏移显然不大可能是参数。&lt;/p>
+&lt;h3 id="关键跳">关键跳&lt;/h3>
+&lt;p>回到这段代码的开头，顺着界面上的绿色箭头找到关键跳。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/03.png" alt="image-20210923111554787" />&lt;/p>
+&lt;p>一个&lt;code>je&lt;/code>跳转，&lt;code>je&lt;/code>指令检查&lt;code>ZF&lt;/code>，向上一行就是&lt;code>test&lt;/code>，&lt;code>test bl,bl&lt;/code>自己对自己逻辑与，其实就是求&lt;code>bl&lt;/code>是不是0。&lt;/p>
+&lt;p>bl又来自前面的&lt;code>mov bl,al&lt;/code>，&lt;code>al&lt;/code>寄存器是&lt;code>eax&lt;/code>寄存器的低8位，再者大家也知道&lt;code>eax&lt;/code>寄存器是函数返回值保存的寄存器，而离这个&lt;code>mov&lt;/code>指令最近的&lt;code>call&lt;/code>就是截图上方的&lt;code>IsSameAs&lt;/code>函数了。&lt;/p>
+&lt;p>到了这一步，改指令跳过验证已经接近成功了，但这要是做 keygen 的话还不行。&lt;/p>
+&lt;p>继续往回翻，寻找密码生成的代码。&lt;/p>
+&lt;h3 id="寻找密码生成算法">寻找密码生成算法&lt;/h3>
+&lt;p>先一路回到关键跳所处的代码块顶部，挨个往下看有哪些函数调用。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/04.png" alt="image-20210923113330184" />&lt;/p>
+&lt;p>还是那句话，感谢分析出了库函数，不然一堆未知函数看得满头雾水。&lt;/p>
+&lt;ol>
+&lt;li>
+&lt;p>调用是 &lt;code>wxString.AsWChar(void)&lt;/code>，顾名思义是取宽字符，返回指针。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>调用是&lt;code>wxString.DoFormatWchar(wchar_t*)&lt;/code>，查询文档可知是个类似&lt;code>sprintf&lt;/code>的字符串格式化函数。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>调用是析构函数，怀疑上面的两个调用其实是内联了什么wxwidgets库的代码。因为直觉告诉我如果还没离开作用域，编译器应该不会这么着急插入析构函数调用，这听起来就没什么好处，还违背码农直觉。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>函数就比较迷惑了，一路看上去的话会发现这个偏移值经过了多次计算，目前看不出用意，但还挺可疑的。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>函数顾名思义，比较字符串相等。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>又是析构函数。&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;p>重点看字符串比较函数的参数：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="err">0&lt;/span>&lt;span class="nf">x0040646c&lt;/span> &lt;span class="mi">6&lt;/span>&lt;span class="no">a&lt;/span> &lt;span class="mi">01&lt;/span> &lt;span class="no">push&lt;/span> &lt;span class="mi">1&lt;/span> &lt;span class="c">; 1
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="mi">0x0040646e&lt;/span> &lt;span class="mi">8&lt;/span>&lt;span class="no">d&lt;/span> &lt;span class="mi">4&lt;/span>&lt;span class="no">d&lt;/span> &lt;span class="mi">90&lt;/span> &lt;span class="no">lea&lt;/span> &lt;span class="no">ecx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp&lt;/span> &lt;span class="p">-&lt;/span> &lt;span class="mi">0x70&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="err">0&lt;/span>&lt;span class="nf">x00406471&lt;/span> &lt;span class="no">c6&lt;/span> &lt;span class="mi">45&lt;/span> &lt;span class="no">fc&lt;/span> &lt;span class="mi">04&lt;/span> &lt;span class="no">mov&lt;/span> &lt;span class="no">byte&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp&lt;/span> &lt;span class="p">-&lt;/span> &lt;span class="mi">4&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="mi">4&lt;/span>
+&lt;span class="err">0&lt;/span>&lt;span class="nf">x00406475&lt;/span> &lt;span class="mi">51&lt;/span> &lt;span class="no">push&lt;/span> &lt;span class="no">ecx&lt;/span>
+&lt;span class="err">0&lt;/span>&lt;span class="nf">x00406476&lt;/span> &lt;span class="mi">8&lt;/span>&lt;span class="no">b&lt;/span> &lt;span class="no">c8&lt;/span> &lt;span class="no">mov&lt;/span> &lt;span class="no">ecx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">eax&lt;/span>
+&lt;span class="err">0&lt;/span>&lt;span class="nf">x00406478&lt;/span> &lt;span class="no">ff&lt;/span> &lt;span class="mi">15&lt;/span> &lt;span class="no">d4&lt;/span> &lt;span class="mi">33&lt;/span> &lt;span class="mi">41&lt;/span> &lt;span class="mi">00&lt;/span> &lt;span class="no">call&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">public&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="no">bool&lt;/span> &lt;span class="no">__thiscall&lt;/span> &lt;span class="no">wxString&lt;/span>&lt;span class="p">::&lt;/span>&lt;span class="no">IsSameAs&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">class&lt;/span> &lt;span class="no">wxString&lt;/span> &lt;span class="no">const&lt;/span> &lt;span class="err">&amp;amp;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">bool&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="no">const&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="c">; 0x4133d4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>把&lt;code>eax&lt;/code>当成了&lt;code>this&lt;/code>，暂且不看栈上的&lt;code>ebp-0x70&lt;/code>，看到&lt;code>eax&lt;/code>立刻就发现是来自第四个比较迷惑的函数调用，实锤这函数就是生成密码的函数。&lt;/p>
+&lt;h2 id="动态调试">动态调试&lt;/h2>
+&lt;p>水平有限，静态分析很快遇到了瓶颈，找不出这个偏移值算出来的函数到底在哪儿。&lt;/p>
+&lt;p>于是启动调试器，先跟到我们定位到的这个特殊函数。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/05.png" alt="image-20210923140108796" />&lt;/p>
+&lt;p>惊喜地发现胡乱分析出现了错误，&lt;code>eax+0x40&lt;/code>其实是获取输入框值的函数。。所以另一个参数，&lt;code>ebp-0x70&lt;/code>才是密码。&lt;/p>
+&lt;p>往回看&lt;code>ebp-0x70&lt;/code>在&lt;code>DoFormatWchar&lt;/code>被当参数传递了进去，要注意的是&lt;code>DoFormatWchar&lt;/code>是一个有变长参数的函数，这意味着你没法得知传了几个参数（前面push的内容不一定是当参数传了），分析更困难。&lt;/p>
+&lt;p>看一下&lt;code>DoFormatWchar&lt;/code>这段汇编。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="err">0&lt;/span>&lt;span class="nf">x0040642c&lt;/span> &lt;span class="mi">8&lt;/span>&lt;span class="no">d&lt;/span> &lt;span class="mi">8&lt;/span>&lt;span class="no">d&lt;/span> &lt;span class="mi">70&lt;/span> &lt;span class="no">ff&lt;/span> &lt;span class="no">ff&lt;/span> &lt;span class="no">ff&lt;/span> &lt;span class="no">lea&lt;/span> &lt;span class="no">ecx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp&lt;/span> &lt;span class="p">-&lt;/span> &lt;span class="mi">0x90&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="err">0&lt;/span>&lt;span class="nf">x00406432&lt;/span> &lt;span class="no">ff&lt;/span> &lt;span class="mi">15&lt;/span> &lt;span class="no">e8&lt;/span> &lt;span class="mi">33&lt;/span> &lt;span class="mi">41&lt;/span> &lt;span class="mi">00&lt;/span> &lt;span class="no">call&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">private&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="no">wchar_t&lt;/span> &lt;span class="no">const&lt;/span> &lt;span class="p">*&lt;/span> &lt;span class="no">__thiscall&lt;/span> &lt;span class="no">wxFormatString&lt;/span>&lt;span class="p">::&lt;/span>&lt;span class="no">AsWChar&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">void&lt;/span>&lt;span class="p">)]&lt;/span> &lt;span class="c">; 0x4133e8
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="mi">0x00406438&lt;/span> &lt;span class="mi">56&lt;/span> &lt;span class="no">push&lt;/span> &lt;span class="no">esi&lt;/span>
+&lt;span class="err">0&lt;/span>&lt;span class="nf">x00406439&lt;/span> &lt;span class="mi">50&lt;/span> &lt;span class="no">push&lt;/span> &lt;span class="no">eax&lt;/span>
+&lt;span class="err">0&lt;/span>&lt;span class="nf">x0040643a&lt;/span> &lt;span class="mi">8&lt;/span>&lt;span class="no">d&lt;/span> &lt;span class="mi">45&lt;/span> &lt;span class="mi">90&lt;/span> &lt;span class="no">lea&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp&lt;/span> &lt;span class="p">-&lt;/span> &lt;span class="mi">0x70&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="err">0&lt;/span>&lt;span class="nf">x0040643d&lt;/span> &lt;span class="mi">50&lt;/span> &lt;span class="no">push&lt;/span> &lt;span class="no">eax&lt;/span>
+&lt;span class="err">0&lt;/span>&lt;span class="nf">x0040643e&lt;/span> &lt;span class="no">ff&lt;/span> &lt;span class="mi">15&lt;/span> &lt;span class="no">d0&lt;/span> &lt;span class="mi">33&lt;/span> &lt;span class="mi">41&lt;/span> &lt;span class="mi">00&lt;/span> &lt;span class="no">call&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">private&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="no">static&lt;/span> &lt;span class="no">class&lt;/span> &lt;span class="no">wxString&lt;/span> &lt;span class="no">__cdecl&lt;/span> &lt;span class="no">wxString&lt;/span>&lt;span class="p">::&lt;/span>&lt;span class="no">DoFormatWchar&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">wchar_t&lt;/span> &lt;span class="no">const&lt;/span> &lt;span class="p">*)]&lt;/span> &lt;span class="c">; 0x4133d0
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>一共推了三个东西入栈，esi、eax（上一个调用的返回值）、还有&lt;code>[ebp-0x70]&lt;/code>。&lt;/p>
+&lt;p>继续调试器跟一遍看看。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/06.png" alt="image-20210923142010900" />&lt;/p>
+&lt;p>&lt;code>esi&lt;/code>的值比较怪，先忽略。&lt;/p>
+&lt;p>&lt;code>eax&lt;/code>比较清楚，宽字符串&lt;code>%06d&lt;/code>，按压栈顺序，&lt;code>esi&lt;/code>的值是紧跟在格式化字符串后面的参数。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/07.png" alt="image-20210923142347785" />&lt;/p>
+&lt;p>最后压栈的eax，也就是ebp-0x70的地址，用伪代码表示就是：&lt;code>DoFormatWchar(&amp;amp;var_70, L&amp;quot;%06d&amp;quot;, 0x000F18D8)&lt;/code>。PS：有点怪，函数签名最左侧是format也就是格式化字符串，最后压栈这个ebp-0x70就有点莫名其妙。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/08.png" alt="image-20210923143534148" />&lt;/p>
+&lt;p>不过用调试器单步步过后就知道用途了，和猜测的一样，存放的是格式化的结果，也就是正确的密码。&lt;/p>
+&lt;p>既然如此，往回找esi是哪儿赋值的，因为inline了一大堆东西，Cutter连函数都认不出来了，控制流视图也挂了。。一直往上翻，找到&lt;code>0xcc&lt;/code>或者&lt;code>push ebp; mov ebp, esp&lt;/code>为止。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/09.png" alt="image-20210923145922049" />&lt;/p>
+&lt;p>右键选择在此处定义函数，随便给个名字，然后等Cutter分析好函数体。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/10.png" alt="image-20210923150100196" />&lt;/p>
+&lt;p>这样一来至少图形视图就能看了。粗略扫一眼，在底下找到&lt;code>IsSameAs&lt;/code>这个调用，再往回翻哪儿动了&lt;code>esi&lt;/code>这个寄存器，很快找到这两段。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/11.png" alt="image-20210923150438821" />&lt;/p>
+&lt;p>有点杂，先看看。还是粗略按意图把指令分下段。&lt;code>esi&lt;/code>来源涉及&lt;code>eax&lt;/code>和&lt;code>ecx&lt;/code>，一路跟着赋值路径往回翻到第一个块，找到&lt;code>ecx&lt;/code>的赋值。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="err">0&lt;/span>&lt;span class="nf">x004062f1&lt;/span> &lt;span class="no">e8&lt;/span> &lt;span class="mi">68&lt;/span> &lt;span class="no">b3&lt;/span> &lt;span class="no">ff&lt;/span> &lt;span class="no">ff&lt;/span> &lt;span class="no">call&lt;/span> &lt;span class="no">fcn.0040165e&lt;/span>
+&lt;span class="err">0&lt;/span>&lt;span class="nf">x004062f6&lt;/span> &lt;span class="mi">8&lt;/span>&lt;span class="no">b&lt;/span> &lt;span class="mi">08&lt;/span> &lt;span class="no">mov&lt;/span> &lt;span class="no">ecx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">eax&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>一个未知函数，ctrl+左键点击跟进去后发现疑似是 libcrypto 内联的函数，调用了 HMAC-SHA1 算法。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/12.png" alt="image-20210924092624224" />&lt;/p>
+&lt;p>先做个标记，猜测假设这个函数正确返回（下面的je跳转走到最后一个块），那返回结果应该是HMAC-SHA1的结果。这里通过调试器单步验证。&lt;/p>
+&lt;p>因为 ASLR 的缘故，可执行文件 .text 段映射的地址不是 0x00401000，调试器没法直接转到静态分析工具中的地址，ASLR 确实折磨人&amp;hellip;&lt;/p>
+&lt;p>anyway&amp;hellip;&lt;/p>
+&lt;p>我投翔，特立独行是没好结果的，跑去下载了一个 IDA Free ，打开x32dbg确认 .text 段映射的基址后再到 IDA 的菜单 &lt;code>Edit&lt;/code> -&amp;gt; &lt;code>Segments&lt;/code> -&amp;gt; &lt;code>rebase program ...&lt;/code> 重新设定镜像基址，这样在反汇编界面看到的地址就能和调试器对上了。缺陷是每次打开调试器都要对一次镜像基址，比较麻烦。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/image-20210924154631893.png" alt="image-20210924154631893" />&lt;/p>
+&lt;p>对好镜像基址后，把之前想调试的函数调用地址找到（0x003B62F1），下个断点，看调用后的&lt;code>eax&lt;/code>值，发现并不像纯c编译出来的结果，&lt;code>eax&lt;/code>并没有什么卵用。&lt;/p>
+&lt;p>稍微往上瞟了一眼，很容易看到一个&lt;code>mov ecx,esi&lt;/code>，但没什么卵用。&lt;/p>
+&lt;p>碰壁几次后决定跟进这个函数看看。无果。恼，作弊之（读过RFC可能注意到几个特殊常量，比如取哈希结果下标19，与0xf，作为偏移值向后再取4字节，作为bin code。跳过这个函数调用，直接看接下来的内容的话，会发现哈希值其实就存在&lt;code>ecx&lt;/code>保存的地址上了。）&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/image-20210924162043275.png" alt="image-20210924162043275" />&lt;/p>
+&lt;p>只是这里的HMAC_SHA1值因为不是我们熟悉的ASCII表示，所以一眼有点难看出来。&lt;/p>
+&lt;p>那么直接跳过上面不清不楚的地方，直接看取哈希后的做法。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B6307&lt;/span> &lt;span class="no">movzx&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">byte&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ecx&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">13&lt;/span>&lt;span class="no">h&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B630B&lt;/span> &lt;span class="no">and&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="no">Fh&lt;/span> &lt;span class="c">; 取 hash[19] &amp;amp; 0xf 作为初始偏移
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">.text&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="mi">003&lt;/span>&lt;span class="no">B630E&lt;/span> &lt;span class="no">add&lt;/span> &lt;span class="no">ecx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">eax&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B6310&lt;/span> &lt;span class="no">movzx&lt;/span> &lt;span class="no">esi&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">byte&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ecx&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="c">; 取偏移处第一个字节，无符号
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">.text&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="mi">003&lt;/span>&lt;span class="no">B6313&lt;/span> &lt;span class="no">movzx&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">byte&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ecx&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="c">; 取偏移处第二个字节，无符号
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">.text&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="mi">003&lt;/span>&lt;span class="no">B6317&lt;/span> &lt;span class="no">and&lt;/span> &lt;span class="no">esi&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">7&lt;/span>&lt;span class="no">Fh&lt;/span> &lt;span class="c">; 偏移处第一个字节 &amp;amp; 0x7f ，确保符号位归零
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">.text&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="mi">003&lt;/span>&lt;span class="no">B631A&lt;/span> &lt;span class="no">shl&lt;/span> &lt;span class="no">esi&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">8&lt;/span> &lt;span class="c">; 第一个字节左移8位后 | 第二个字节，就是把四个字节按顺序填进esi
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">.text&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="mi">003&lt;/span>&lt;span class="no">B631D&lt;/span> &lt;span class="no">or&lt;/span> &lt;span class="no">esi&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">eax&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B631F&lt;/span> &lt;span class="no">movzx&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">byte&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ecx&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B6323&lt;/span> &lt;span class="no">shl&lt;/span> &lt;span class="no">esi&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">8&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B6326&lt;/span> &lt;span class="no">or&lt;/span> &lt;span class="no">esi&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">eax&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B6328&lt;/span> &lt;span class="no">movzx&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">byte&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ecx&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B632C&lt;/span> &lt;span class="no">shl&lt;/span> &lt;span class="no">esi&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">8&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>取得的就是4字节正整数了，按RFC的例子，接下来应该取模得到最大6位整数。看下一块汇编。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B6331&lt;/span> &lt;span class="no">mov&lt;/span> &lt;span class="no">ecx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="no">Block&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B6334&lt;/span> &lt;span class="no">mov&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">431&lt;/span>&lt;span class="no">BDE83h&lt;/span> &lt;span class="c">; magic ?
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">.text&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="mi">003&lt;/span>&lt;span class="no">B6339&lt;/span> &lt;span class="no">imul&lt;/span> &lt;span class="no">esi&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B633B&lt;/span> &lt;span class="no">sar&lt;/span> &lt;span class="no">edx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">12&lt;/span>&lt;span class="no">h&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B633E&lt;/span> &lt;span class="no">mov&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">edx&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B6340&lt;/span> &lt;span class="no">shr&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="no">Fh&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B6343&lt;/span> &lt;span class="no">add&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">edx&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B6345&lt;/span> &lt;span class="no">imul&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="no">F4240h&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B634B&lt;/span> &lt;span class="no">sub&lt;/span> &lt;span class="no">esi&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">eax&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B634D&lt;/span> &lt;span class="no">test&lt;/span> &lt;span class="no">ecx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">ecx&lt;/span>
+&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B634F&lt;/span> &lt;span class="no">jz&lt;/span> &lt;span class="no">short&lt;/span> &lt;span class="no">loc_3B638F&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>431BDE83h&lt;/code> 这个魔术常量吓到我了。搜了一下找到篇&lt;a class="link" href="https://bbs.pediy.com/thread-100189.htm" target="_blank" rel="noopener"
+>看雪的帖子&lt;/a>，看起来是编译器把一句&lt;code>%1000000&lt;/code>取模给编译成了上面这一串满是魔数的汇编。尝试跟到 &lt;code>sub esi,eax&lt;/code> 后，&lt;code>esi&lt;/code> 寄存器的结果的确变成了6位以内的整数。&lt;/p>
+&lt;p>这玩意儿有什么特征吗？总不至于多做几次取模，生成的汇编就完全没法看了吧。。。&lt;/p>
+&lt;h2 id="keygen">keygen？&lt;/h2>
+&lt;p>实力有限，尽管亲手写下的C++代码真的很简单，但编译后的结果成了无法承受之重&amp;hellip;&lt;/p>
+&lt;p>上面分析的内容，其实仔细对着RFC推敲（首先，你得知道是照着RFC写的，不然就多读几遍汇编&amp;hellip;），才能很勉强得到个粗糙的算法，至于能不能写出 keygen，我没啥信心。&lt;/p>
+&lt;h2 id="结论">结论&lt;/h2>
+&lt;p>很难。&lt;/p>
+&lt;p>如果说前面的 C 代码是小游戏的话，那 cm03 就是地球online。开启优化的C++无间地狱。&lt;/p>
+&lt;p>完全溃败。&lt;/p></description></item><item><title>自娱自乐 crackme-02</title><link>https://nnnewb.github.io/blog/p/crackme-02/</link><pubDate>Wed, 15 Sep 2021 15:43:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/crackme-02/</guid><description>&lt;h2 id="得有个前言">得有个前言&lt;/h2>
 &lt;p>总之上一个 crackme-01 还过得去，稍微加强一点，把密码隐藏起来，不要随便被看到。&lt;/p>
 &lt;h2 id="0x01-源码">0x01 源码&lt;/h2>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
