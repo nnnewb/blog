@@ -1,4 +1,785 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 24 Sep 2021 16:58:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>自娱自乐 crackme-03</title><link>https://nnnewb.github.io/blog/p/crackme-03/</link><pubDate>Fri, 24 Sep 2021 16:58:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/crackme-03/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 27 Sep 2021 14:51:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>加壳原理01 - Windows 程序的加载和运行</title><link>https://nnnewb.github.io/blog/p/learning-packer-01-windows-program-load-and-execution/</link><pubDate>Mon, 27 Sep 2021 14:51:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-01-windows-program-load-and-execution/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>本文由多篇相关文章翻译整合得来，参考文章和书目文末给出。&lt;/p>
+&lt;h2 id="0x01-pe文件结构">0x01 PE文件结构&lt;/h2>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/learning-packer-01-windows-program-load-and-execution/PE_Format.png" alt="PE_Format" />&lt;/p>
+&lt;h3 id="11-从-pe-coff-格式说起">1.1 从 PE-COFF 格式说起&lt;/h3>
+&lt;blockquote>
+&lt;p>&amp;hellip; 现在PC平台流行的 &lt;strong>可执行文件格式（Executable）&lt;/strong> 主要是 Windows 下的 PE （Portable Executable） 和 Linux 的 ELF （Executable Linkable Format），它们都是 COFF（Common Object File Format）格式的变种。目标文件就是源代码编译后但未进行链接的那些中间文件（Windows 的 .obj 和 Linux 下的 .o），它和可执行文件的内容和结构很相似，所以一般跟可执行文件一起采用一种格式存储。从广义上看，目标文件与可执行文件的格式其实几乎是一样的，所以我们可以广义地将目标文件与可执行文件看成是同一种类型的文件，在 Windows 下，我们可以统称它们为 PE-COFF 文件格式。在 Linux 下，我们可以将它们统称为 ELF 文件。&lt;/p>
+&lt;p>&amp;hellip; 不光是 &lt;strong>可执行文件&lt;/strong> （Windows 的 .exe 和 Linux 下的 ELF 可执行文件）按照可执行文件格式存储。&lt;strong>动态链接库（DLL，Dynamic Linking Library）&lt;/strong> （Windows 的 DLL 和 Linux 下的 .so ）以及&lt;strong>静态链接库 （Static Linking Library）&lt;/strong> （Windows 的 .lib 和 Linux 下的 .a）文件都按照可执行文件格式存储。它们在 Windows 下都按照 PE-COFF 格式存储，Linux 下按照 ELF 格式存储。静态链接库稍有不同，它是把很多目标文件捆绑在一起形成一个文件，再加上一些索引，可以简单理解为一个包含很多目标文件的文件包。&lt;/p>
+&lt;p>&amp;hellip; COFF 的主要贡献是在目标文件引入了“段”的机制，不同的目标文件可以拥有不同数量及不同类型的“段”。另外，它还定义了调试数据的格式。&lt;/p>
+&lt;p>——《程序员的自我修养——链接、装载与库》&lt;/p>
+&lt;/blockquote>
+&lt;p>这里讨论可执行文件格式，目标文件、静态库、动态库都先暂时不考虑。btw，引文中的“段”其实说的既是Section也是Segment，根据上下文自己理解。&lt;/p>
+&lt;h3 id="12-pe-文件头一览">1.2 PE 文件头一览&lt;/h3>
+&lt;p>PE格式在 Wiki 上有张挺漂亮的图。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/learning-packer-01-windows-program-load-and-execution/Portable_Executable_32_bit_Structure_in_SVG_fixed.svg" alt="Portable_Executable_32_bit_Structure_in_SVG_fixed" />&lt;/p>
+&lt;p>图中可以看到，微软的兼容包袱是真的重（不是）。&lt;/p>
+&lt;p>PE文件头已经包含了海量的信息，大部分我们不关注（或者说很少关注？），从做个简单壳的目的出发，了解了PE-COFF格式的一点通识和历史后就可以继续了。&lt;/p>
+&lt;p>读懂这图需要了解下关于PE文件中几种“地址”的概念：&lt;/p>
+&lt;ul>
+&lt;li>&lt;em>raw addresses&lt;/em>，或者文件偏移 &lt;em>file offset&lt;/em>，这种地址指的是 &lt;strong>PE 文件中的偏移&lt;/strong>。&lt;/li>
+&lt;li>&lt;em>virtual addresses&lt;/em>，虚拟地址，指在 RAM 中的地址，就是一般常说的进程地址空间里的地址。&lt;/li>
+&lt;li>&lt;em>relative virtual addresses&lt;/em>，相对镜像基址（Image Base）的虚拟地址，不考虑 ASLR 的情况下，相对地址计算就是基址+RVA。&lt;/li>
+&lt;/ul>
+&lt;p>可以理解成，VA 就是基址+RVA，RVA就是VA-基址。&lt;/p>
+&lt;p>VA/RVA 转文件偏移就麻烦很多，要根据节表 &lt;em>Section Table&lt;/em> 计算。&lt;/p>
+&lt;p>上述镜像基址 &lt;em>Image Base&lt;/em> 和节表 &lt;em>Section Table&lt;/em> 都可以在图里找到。&lt;/p>
+&lt;h3 id="13-dos-文件头">1.3 DOS 文件头&lt;/h3>
+&lt;p>我们可以用在 Python REPL 中用 &lt;a class="link" href="https://pypi.org/project/pefile" target="_blank" rel="noopener"
+>pefile&lt;/a> 来快速分析和查看PE文件。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="kn">import&lt;/span> &lt;span class="nn">pefile&lt;/span>
+&lt;span class="n">pe&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">pefile&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">PE&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;cm04.exe&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="c1"># cm04 是C++写的带界面 Hello world，你也可以用计算器，C:\Windows\System32\calc.exe&lt;/span>
+&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">pe&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">DOS_HEADERS&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>结果如下&lt;/p>
+&lt;pre>&lt;code>[IMAGE_DOS_HEADER]
+0x0 0x0 e_magic: 0x5A4D
+0x2 0x2 e_cblp: 0x90
+0x4 0x4 e_cp: 0x3
+0x6 0x6 e_crlc: 0x0
+0x8 0x8 e_cparhdr: 0x4
+0xA 0xA e_minalloc: 0x0
+0xC 0xC e_maxalloc: 0xFFFF
+0xE 0xE e_ss: 0x0
+0x10 0x10 e_sp: 0xB8
+0x12 0x12 e_csum: 0x0
+0x14 0x14 e_ip: 0x0
+0x16 0x16 e_cs: 0x0
+0x18 0x18 e_lfarlc: 0x40
+0x1A 0x1A e_ovno: 0x0
+0x1C 0x1C e_res:
+0x24 0x24 e_oemid: 0x0
+0x26 0x26 e_oeminfo: 0x0
+0x28 0x28 e_res2:
+0x3C 0x3C e_lfanew: 0x108
+&lt;/code>&lt;/pre>&lt;p>第一列是文件偏移，第二列是结构内的相对偏移，第三列是字段名，第四列是值。&lt;/p>
+&lt;p>DOS文件头里基本都是为兼容保留的字段，没有我们需要的信息。需要关注的主要是开头的&lt;code>e_magic&lt;/code>，固定为&lt;code>0x5A4D&lt;/code>，也就是ASCII编码的&lt;code>MZ&lt;/code>；还有末尾的&lt;code>e_lfanew&lt;/code>，这个字段保存的是NT文件头的文件偏移，对照上文的图片，就是绿色 COFF Header 开头的 Signature。&lt;/p>
+&lt;h3 id="14-ntfilecoff-文件头">1.4 NT/File/COFF 文件头&lt;/h3>
+&lt;p>这部分开始，数据结构定义和上文中的PE文件头图有点差异（主要是字段划分归类上），编程的时候按实际数据结构写，看理论的时候遵照文档说法来灵活理解吧。之后C结构定义在字段归类上也有点差别的。总之，参考字段大小顺序，别太在意结构怎么写的。&lt;/p>
+&lt;p>用 &lt;code>print(pe.NT_HEADERS)&lt;/code> 可以看到只输出了一个 Signature。剩余的 COFF Header 可以用 &lt;code>pe.FILE_HEADER&lt;/code> 查看（在微软 &lt;a class="link" href="https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#file-headers" target="_blank" rel="noopener"
+>PE Format 文档&lt;/a>中，Signature 不是 COFF File Header 的组成部分，和 Wiki 的图不一致）。&lt;/p>
+&lt;pre>&lt;code>In [4]: print(pe.FILE_HEADER)
+[IMAGE_FILE_HEADER]
+0x10C 0x0 Machine: 0x14C
+0x10E 0x2 NumberOfSections: 0x7
+0x110 0x4 TimeDateStamp: 0x61501513 [Sun Sep 26 06:37:07 2021 UTC]
+0x114 0x8 PointerToSymbolTable: 0x0
+0x118 0xC NumberOfSymbols: 0x0
+0x11C 0x10 SizeOfOptionalHeader: 0xE0
+0x11E 0x12 Characteristics: 0x102
+&lt;/code>&lt;/pre>&lt;p>在这部分文件头中有几个重要字段：&lt;code>NumberOfSections&lt;/code>，PE文件中节的数量；以及 &lt;code>Characteristics&lt;/code>，16比特标志位字段，标识PE文件的一些基本属性。&lt;a class="link" href="https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#characteristics" target="_blank" rel="noopener"
+>可用的属性清单链接&lt;/a>。&lt;/p>
+&lt;h3 id="15-可选文件头">1.5 可选文件头&lt;/h3>
+&lt;p>虽然叫可选文件头（Optional Header），但并不可选。可以照例输出看看。&lt;/p>
+&lt;pre>&lt;code>In [5]: print(pe.OPTIONAL_HEADER)
+[IMAGE_OPTIONAL_HEADER]
+0x120 0x0 Magic: 0x10B
+0x122 0x2 MajorLinkerVersion: 0xE
+0x123 0x3 MinorLinkerVersion: 0x1D
+0x124 0x4 SizeOfCode: 0x6800
+0x128 0x8 SizeOfInitializedData: 0xD000
+0x12C 0xC SizeOfUninitializedData: 0x0
+0x130 0x10 AddressOfEntryPoint: 0x1005
+0x134 0x14 BaseOfCode: 0x1000
+0x138 0x18 BaseOfData: 0x8000
+0x13C 0x1C ImageBase: 0x400000
+0x140 0x20 SectionAlignment: 0x1000
+0x144 0x24 FileAlignment: 0x200
+0x148 0x28 MajorOperatingSystemVersion: 0x6
+0x14A 0x2A MinorOperatingSystemVersion: 0x0
+0x14C 0x2C MajorImageVersion: 0x0
+0x14E 0x2E MinorImageVersion: 0x0
+0x150 0x30 MajorSubsystemVersion: 0x6
+0x152 0x32 MinorSubsystemVersion: 0x0
+0x154 0x34 Reserved1: 0x0
+0x158 0x38 SizeOfImage: 0x19000
+0x15C 0x3C SizeOfHeaders: 0x400
+0x160 0x40 CheckSum: 0x0
+0x164 0x44 Subsystem: 0x2
+0x166 0x46 DllCharacteristics: 0x8140
+0x168 0x48 SizeOfStackReserve: 0x100000
+0x16C 0x4C SizeOfStackCommit: 0x1000
+0x170 0x50 SizeOfHeapReserve: 0x100000
+0x174 0x54 SizeOfHeapCommit: 0x1000
+0x178 0x58 LoaderFlags: 0x0
+0x17C 0x5C NumberOfRvaAndSizes: 0x10
+&lt;/code>&lt;/pre>&lt;p>其中大部分字段要不然是没用到，要不然就是固定值不变。几个值得关注的字段如下。&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>Magic&lt;/code>，区分 PE32/PE64 格式。微软文档给出的是 &lt;code>0x10b&lt;/code> 对应 &lt;code>PE32&lt;/code>，&lt;code>0x20b&lt;/code> 对应 &lt;code>PE32+&lt;/code>。&lt;/li>
+&lt;li>&lt;code>AddressOfEntryPoint&lt;/code>，二进制文件加载后要执行的第一条指令的地址，程序的入口点，&lt;strong>注意是RVA&lt;/strong>。&lt;/li>
+&lt;li>&lt;code>ImageBase&lt;/code>，偏好的镜像基址。RVA和这个基址相加得到VA。注意因为ASLR的存在，真实基址在运行前并不确定。&lt;/li>
+&lt;li>&lt;code>SizeOfImage&lt;/code>，镜像的 &lt;em>虚拟大小&lt;/em> ，是加载可执行文件到内存时需要申请的内存大小。&lt;/li>
+&lt;li>&lt;code>SizeOfHeaders&lt;/code>，所有文件头（DOS、NT、COFF、Optional &amp;hellip;）的总大小。&lt;/li>
+&lt;li>&lt;code>DLLCharacteristics&lt;/code>，各种标志位，最有用的是&lt;code>IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE&lt;/code> ，指定镜像基址是否可移动（也就是能不能开启ASLR 基址随机化）。&lt;/li>
+&lt;/ul>
+&lt;h2 id="0x02-加载pe">0x02 加载PE&lt;/h2>
+&lt;p>对PE格式有了基本了解后，就可以开始尝试加载 PE 文件到内存里了。&lt;/p>
+&lt;h3 id="21-加载和内存初始化">2.1 加载和内存初始化&lt;/h3>
+&lt;p>PE文件头总是加载到镜像基址处。先写一个简单的C程序，把 PE 文件读取。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;Windows.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;winnt.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">argc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="k">const&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[])&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">argc&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;missing path argument&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">FILE&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">exe_file&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fopen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="s">&amp;#34;rb&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">!&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;error opening file&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// Get file size : put pointer at the end
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">fseek&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0L&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">SEEK_END&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// and read its position
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">long&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">file_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ftell&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// put the pointer back at the beginning
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">fseek&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0L&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">SEEK_SET&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// allocate memory and read the whole file
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">exe_file_data&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">malloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">file_size&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// read whole file
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">size_t&lt;/span> &lt;span class="n">n_read&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file_data&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">file_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">exe_file&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">n_read&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="n">file_size&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;reading error (%d)&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n_read&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// load the PE in memory
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;[+] Loading PE file&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>先写这么多，内容只有简单地文件IO，读取PE文件到内存，接下来写一个 &lt;code>void* load_PE(char* PE_data)&lt;/code> 函数，加载PE文件内容到内存空间，返回加载后的镜像基址。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nf">load_PE&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">PE_data&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">IMAGE_DOS_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_DOS_header&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_DOS_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">PE_data&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_NT_headers&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">PE_data&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">p_DOS_header&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">e_lfanew&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// extract information from PE header
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">size_of_image&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">SizeOfImage&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">entry_point_RVA&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">AddressOfEntryPoint&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">size_of_headers&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">SizeOfHeaders&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// allocate memory
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">VirtualAlloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_of_image&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MEM_RESERVE&lt;/span> &lt;span class="o">|&lt;/span> &lt;span class="n">MEM_COMMIT&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PAGE_READWRITE&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// copy PE headers in memory
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">memcpy&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PE_data&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_of_headers&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// Section headers starts right after the IMAGE_NT_HEADERS struct, so we do some pointer arithmetic-fu here.
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_SECTION_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">sections&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_SECTION_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_NT_headers&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">FileHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">NumberOfSections&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// calculate the VA we need to copy the content, from the RVA
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// section[i].VirtualAddress is a RVA, mind it
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">dest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// check if there is Raw data to copy
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">SizeOfRawData&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// We copy SizeOfRaw data bytes, from the offset PointerToRawData in the file
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">memcpy&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PE_data&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">PointerToRawData&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">SizeOfRawData&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">memset&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Misc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">VirtualSize&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">p_image_base&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>前几句赋值都是在用指针运算取PE文件头里的字段。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c"> &lt;span class="n">IMAGE_DOS_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_DOS_header&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_DOS_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">PE_data&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_NT_headers&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">PE_data&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">p_DOS_header&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">e_lfanew&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// extract information from PE header
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">size_of_image&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">SizeOfImage&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">entry_point_RVA&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">AddressOfEntryPoint&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">size_of_headers&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">SizeOfHeaders&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>先提取了 DOS 文件头和 NT 文件头（注意， File Header 和 Optional Header 都嵌在 NT 文件头结构里，这就是为啥我说结构定义会和上面的 wiki 图不大一样）。接着从文件头结构里取镜像大小、入口点RVA、文件头总大小，用于后续分配内存和指针运算。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c"> &lt;span class="c1">// allocate memory
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">VirtualAlloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_of_image&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MEM_RESERVE&lt;/span> &lt;span class="o">|&lt;/span> &lt;span class="n">MEM_COMMIT&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PAGE_READWRITE&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>紧接着用 Win32 API 分配了一片内存空间，大小由 PE 文件头的镜像大小指定。用这个API的原因是之后我们需要设置这片内存为可执行。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c"> &lt;span class="c1">// copy PE headers in memory
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">memcpy&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PE_data&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_of_headers&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>PE文件头总是在镜像基址开始的位置，直接复制过去。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c"> &lt;span class="c1">// Section headers starts right after the IMAGE_NT_HEADERS struct, so we do some pointer arithmetic-fu here.
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_SECTION_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">sections&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_SECTION_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_NT_headers&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>取巧的方式获得节表指针。这是个简单的c指针运算，&lt;code>p_NT_headers+1&lt;/code>其实就是&lt;code>(char*)p_NT_headers + sizeof(IMAGE_NT_HEADERS)&lt;/code>，也就是NT_HEADERS 结构紧邻的下一个字节。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c"> &lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">FileHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">NumberOfSections&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// calculate the VA we need to copy the content, from the RVA
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// section[i].VirtualAddress is a RVA, mind it
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">dest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// check if there is Raw data to copy
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">SizeOfRawData&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// We copy SizeOfRaw data bytes, from the offset PointerToRawData in the file
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">memcpy&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PE_data&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">PointerToRawData&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">SizeOfRawData&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">memset&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Misc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">VirtualSize&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>接着就是遍历节表，取节的基地址，PE文件中节包含数据的话，就复制节数据到内存，否则把节初始化为0。&lt;/p>
+&lt;p>接着补充可执行权限。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c"> &lt;span class="c1">// Set permission for the PE hader to read only
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">oldProtect&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">VirtualProtect&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">SizeOfHeaders&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PAGE_READONLY&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">oldProtect&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">FileHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">NumberOfSections&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">dest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">s_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Characteristics&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">v_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// flags are not the same between virtal protect and the section header
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">s_perm&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_SCN_MEM_EXECUTE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">v_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">s_perm&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_SCN_MEM_WRITE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="nl">PAGE_EXECUTE_READWRITE&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">PAGE_EXECUTE_READ&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">v_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">s_perm&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_SCN_MEM_WRITE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="nl">PAGE_READWRITE&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">PAGE_READONLY&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">VirtualProtect&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Misc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">VirtualSize&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v_perm&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">oldProtect&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>先把整个PE头设置为只读，然后遍历节表，取节基地址和标志位。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">s_perm&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_SCN_MEM_EXECUTE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">v_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">s_perm&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_SCN_MEM_WRITE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="nl">PAGE_EXECUTE_READWRITE&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">PAGE_EXECUTE_READ&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>根据PE头中节的可写、可执行标志位，设置内存空间保护方式。&lt;/p>
+&lt;p>最后返回入口点地址，在 main 函数里跳转。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c"> &lt;span class="k">return&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">entry_point_RVA&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>完整代码如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;Windows.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;winnt.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">argc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="k">const&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[])&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">argc&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;missing path argument&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">FILE&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">exe_file&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fopen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="s">&amp;#34;rb&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">!&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;error opening file&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// Get file size : put pointer at the end
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">fseek&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0L&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">SEEK_END&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// and read its position
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">long&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">file_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ftell&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// put the pointer back at the beginning
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">fseek&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0L&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">SEEK_SET&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// allocate memory and read the whole file
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">exe_file_data&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">malloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">file_size&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// read whole file
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">size_t&lt;/span> &lt;span class="n">n_read&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file_data&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">file_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">exe_file&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">n_read&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="n">file_size&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;reading error (%d)&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n_read&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// load the PE in memory
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;[+] Loading PE file&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nf">load_PE&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">PE_data&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">IMAGE_DOS_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_DOS_header&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_DOS_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">PE_data&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_NT_headers&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">PE_data&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">p_DOS_header&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">e_lfanew&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// extract information from PE header
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">size_of_image&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">SizeOfImage&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">entry_point_RVA&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">AddressOfEntryPoint&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">size_of_headers&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">SizeOfHeaders&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// allocate memory
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">VirtualAlloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_of_image&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MEM_RESERVE&lt;/span> &lt;span class="o">|&lt;/span> &lt;span class="n">MEM_COMMIT&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PAGE_READWRITE&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// copy PE headers in memory
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">memcpy&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PE_data&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_of_headers&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// Section headers starts right after the IMAGE_NT_HEADERS struct, so we do some pointer arithmetic-fu here.
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_SECTION_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">sections&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_SECTION_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_NT_headers&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">FileHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">NumberOfSections&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// calculate the VA we need to copy the content, from the RVA
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// section[i].VirtualAddress is a RVA, mind it
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">dest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// check if there is Raw data to copy
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">SizeOfRawData&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// We copy SizeOfRaw data bytes, from the offset PointerToRawData in the file
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">memcpy&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PE_data&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">PointerToRawData&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">SizeOfRawData&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">memset&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Misc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">VirtualSize&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// Set permission for the PE hader to read only
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">oldProtect&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">VirtualProtect&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">SizeOfHeaders&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PAGE_READONLY&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">oldProtect&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">FileHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">NumberOfSections&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">dest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">s_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Characteristics&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">v_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// flags are not the same between virtal protect and the section header
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">s_perm&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_SCN_MEM_EXECUTE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">v_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">s_perm&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_SCN_MEM_WRITE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="nl">PAGE_EXECUTE_READWRITE&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">PAGE_EXECUTE_READ&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">v_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">s_perm&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_SCN_MEM_WRITE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="nl">PAGE_READWRITE&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">PAGE_READONLY&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">VirtualProtect&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Misc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">VirtualSize&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v_perm&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">oldProtect&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">entry_point_RVA&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>到此，看起来这个加载其他程序运行的程序可以运行了，但其实还不行。其主要原因之一就是缺乏必要的导入信息。下文详述。&lt;/p>
+&lt;h2 id="0x03-导入表">0x03 导入表&lt;/h2>
+&lt;h3 id="31-导入表介绍">3.1 导入表介绍&lt;/h3>
+&lt;p>在Windows上，每个可执行文件（.exe）都需要一些外部函数来支持其正常运作。这些外部函数通常在我们熟悉的&lt;code>.dll&lt;/code>文件里。举例来说，&lt;code>calc.exe&lt;/code>（计算器程序）需要外部函数来支持打开窗口、显示按钮等。&lt;/p>
+&lt;p>以&lt;code>ShellExecuteW&lt;/code>为例（在&lt;code>calc.exe&lt;/code>计算器中被导入），&lt;code>calc.exe&lt;/code>需要这个函数来支持它正常工作（当然，&lt;code>calc.exe&lt;/code>需要不止这一个外部函数），所以&lt;code>calc.exe&lt;/code>需要知道&lt;code>ShellExecuteW&lt;/code>这个函数的代码（机器码）在哪儿。&lt;/p>
+&lt;p>但事实上，&lt;code>.dll&lt;/code> 只会在运行时被加载，而且加载后在内存中的位置并不确定。这意味着编译器编译时无从得知&lt;code>ShellExecuteW&lt;/code>的地址（开启ASLR的话就更不可能了），也就无法给调用该函数的&lt;code>call&lt;/code>指令提供正确的立即数地址。&lt;/p>
+&lt;p>这就是为什么编译器要创建导入表，因为它期望一旦动态链接库加载完成，它就可以查找到&lt;code>ShellExecuteW&lt;/code>的地址，并在需要的时候调用。&lt;/p>
+&lt;p>在调试器里，我们可以看到这样的汇编指令。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/learning-packer-01-windows-program-load-and-execution/call_IAT.jpg" alt="import address table" />&lt;/p>
+&lt;p>第一条&lt;code>call&lt;/code>指令是内部调用，调用对象是同一个模块内的函数。编译器知道被调用函数的地址，并使用&lt;code>E8&lt;/code> opcode 。这表示 &lt;em>relative call&lt;/em> 。当调用外部模块时，它调用了从IAT读取的地址，也就是图中&lt;code>ds:[&amp;lt;&amp;amp;ShellExecuteW&amp;gt;]&lt;/code>。&lt;/p>
+&lt;p>x86 的 call 分 4 类。&lt;/p>
+&lt;ul>
+&lt;li>Near, relative (opcode E8) (&lt;code>call func&lt;/code>)&lt;/li>
+&lt;li>Far, absolute (opcode 9A) (&lt;code>call 0x12:0x12345678&lt;/code>)&lt;/li>
+&lt;li>Near, absolute, indirect (opcode FF /2) (&lt;code>call [edi]&lt;/code>)&lt;/li>
+&lt;li>Far, absolute, indirect (opcode FF /3) (&lt;code>call far [edi]&lt;/code>)&lt;/li>
+&lt;/ul>
+&lt;p>具体问搜索引擎。&lt;/p>
+&lt;p>补充，函数可以通过名字（ASCII编码的C字符串）或DLL导出表中的序号 &lt;em>ordinal&lt;/em> 导入。&lt;/p>
+&lt;h3 id="32-data-directory-和-idt">3.2 Data Directory 和 IDT&lt;/h3>
+&lt;p>说了这么多IAT，那么IAT到底在哪儿？以什么形式保存？还是用&lt;code>pefile&lt;/code>，先看看 PE 文件头中的 &lt;code>OPTIONAL_HEADER .DATA_DIRECTORY&lt;/code>。&lt;/p>
+&lt;pre>&lt;code>In [10]: pe.OPTIONAL_HEADER.DATA_DIRECTORY
+Out[10]:
+[&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_EXPORT] 0x180 0x0 VirtualAddress: 0x0 0x184 0x4 Size: 0x0&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_IMPORT] 0x188 0x0 VirtualAddress: 0xDAA0 0x18C 0x4 Size: 0xC8&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_RESOURCE] 0x190 0x0 VirtualAddress: 0x16000 0x194 0x4 Size: 0x5D0&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_EXCEPTION] 0x198 0x0 VirtualAddress: 0x0 0x19C 0x4 Size: 0x0&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_SECURITY] 0x1A0 0x0 VirtualAddress: 0x0 0x1A4 0x4 Size: 0x0&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_BASERELOC] 0x1A8 0x0 VirtualAddress: 0x17000 0x1AC 0x4 Size: 0xE0C&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_DEBUG] 0x1B0 0x0 VirtualAddress: 0x98E0 0x1B4 0x4 Size: 0x38&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_COPYRIGHT] 0x1B8 0x0 VirtualAddress: 0x0 0x1BC 0x4 Size: 0x0&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_GLOBALPTR] 0x1C0 0x0 VirtualAddress: 0x0 0x1C4 0x4 Size: 0x0&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_TLS] 0x1C8 0x0 VirtualAddress: 0x0 0x1CC 0x4 Size: 0x0&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG] 0x1D0 0x0 VirtualAddress: 0x9918 0x1D4 0x4 Size: 0x40&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT] 0x1D8 0x0 VirtualAddress: 0x0 0x1DC 0x4 Size: 0x0&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_IAT] 0x1E0 0x0 VirtualAddress: 0xD000 0x1E4 0x4 Size: 0xAA0&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT] 0x1E8 0x0 VirtualAddress: 0x0 0x1EC 0x4 Size: 0x0&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR] 0x1F0 0x0 VirtualAddress: 0x0 0x1F4 0x4 Size: 0x0&amp;gt;,
+&amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_RESERVED] 0x1F8 0x0 VirtualAddress: 0x0 0x1FC 0x4 Size: 0x0&amp;gt;]
+&lt;/code>&lt;/pre>&lt;p>&lt;code>Data directory&lt;/code> 实际就是15个结构组成的数组（忽略最后一个reserved），每个结构包含对应的RVA地址和大小（RVA和大小的具体含义之后讨论）。这个结构里我们关注的有&lt;code>IMAGE_DIRECTORY_ENTRY_IMPORT&lt;/code>和&lt;code>IMAGE_DIRECTORY_ENTRY_IAT&lt;/code>，分别指向的是 &lt;em>Import Directory Table&lt;/em> ，&lt;em>IDT&lt;/em> ，和 &lt;em>Import Address Table&lt;/em> ， &lt;em>IAT&lt;/em> 。&lt;/p>
+&lt;p>基本是，我们可以这么说， &lt;em>IDT&lt;/em> 指示需要导入哪些函数，这些函数导入后，地址存入 &lt;em>IAT&lt;/em> 。 &lt;em>IDT&lt;/em> 是我们要导入什么， &lt;em>IAT&lt;/em> 是我们导入后把地址放在哪儿。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/learning-packer-01-windows-program-load-and-execution/IDT-IAT.drawio.png" alt="IDT-IAT" />&lt;/p>
+&lt;p>&lt;em>Import Directory&lt;/em> 指向的是一个 &lt;code>NULL&lt;/code> 结尾的&lt;code>IMAGE_IMPORT_DESCRIPTOR&lt;/code>结构数组。之后在代码里会用到。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="k">typedef&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="n">_IMAGE_IMPORT_DESCRIPTOR&lt;/span>
+&lt;span class="p">{&lt;/span> &lt;span class="n">_ANONYMOUS_UNION&lt;/span> &lt;span class="k">union&lt;/span>
+&lt;span class="p">{&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">Characteristics&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">OriginalFirstThunk&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// pointer to dword[]
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="p">}&lt;/span> &lt;span class="n">DUMMYUNIONNAME&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">TimeDateStamp&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">ForwarderChain&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">Name&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// pointer to dll name
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">FirstThunk&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// pointer to dword[]
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="p">}&lt;/span> &lt;span class="n">IMAGE_IMPORT_DESCRIPTOR&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">PIMAGE_IMPORT_DESCRIPTOR&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>OriginalFirstThunk&lt;/code> 和 &lt;code>FirstThunk&lt;/code> 都是指向一个 NULL 结尾的 DWORD 数组。&lt;code>OriginalFirstThunk&lt;/code> 是指向 &lt;em>IDT&lt;/em> &lt;code>DWORD&lt;/code> 数组的 RVA 指针。&lt;/p>
+&lt;p>其中数组元素：&lt;/p>
+&lt;ul>
+&lt;li>如果首比特是1，则这个DWORD是 &lt;em>ordinal&lt;/em> ，函数的导出表序号。&lt;/li>
+&lt;li>否则是指向 &lt;code>IMAGE_IMPORT_BY_NAME&lt;/code> 结构的 RVA 地址。&lt;/li>
+&lt;/ul>
+&lt;p>&lt;code>FirstThunk&lt;/code>指向的是 &lt;em>IAT&lt;/em> ，和 &lt;em>IDT&lt;/em> 结构相同，当我们得到导入函数的地址后，需要把地址放进 &lt;em>IDT&lt;/em> 对应的 &lt;em>IAT&lt;/em> 中。&lt;/p>
+&lt;h3 id="33--填充导入表">3.3 填充导入表&lt;/h3>
+&lt;p>下面实际编写一下填充 &lt;em>IAT&lt;/em> 的代码。要注意填充 IAT 的代码必须在加载 PE 头和 Sections 之后，早于设置内存保护执行。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c"> &lt;span class="n">IMAGE_DATA_DIRECTORY&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data_directory&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">DataDirectory&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// load the address of the import descriptors array
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_IMPORT_DESCRIPTOR&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">import_descriptors&lt;/span> &lt;span class="o">=&lt;/span>
+&lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_IMPORT_DESCRIPTOR&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">data_directory&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">IMAGE_DIRECTORY_ENTRY_IMPORT&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>从文件头提取到 Import Directory 的地址（RVA）后，和镜像基址相加算出实际结构地址。接下来开始遍历这个结构。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c"> &lt;span class="c1">// this array is null terminated
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">OriginalFirstThunk&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意此处所说的 &lt;em>null terminated&lt;/em> 指的是最后一个数组元素填充了0，故用 &lt;code>OriginalFirstThunk&lt;/code> 判断。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="c1">// Get the name of the dll, and import it
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">module_name&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Name&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">HMODULE&lt;/span> &lt;span class="n">import_module&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">LoadLibraryA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">module_name&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">import_module&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;import module is null&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>import_descriptors[i].Name&lt;/code> 依然是一个 RVA，指向常量字符串。在这一步之前必须先完成 section 加载，不然取不到字符串。这里用 &lt;code>LoadLibraryA&lt;/code> 加载了 DLL 到内存。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="c1">// the lookup table points to function names or ordinals =&amp;gt; it is the IDT
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">lookup_table&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">OriginalFirstThunk&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>接着取 &lt;code>OriginalFirstThunk&lt;/code> 转为 &lt;code>IMAGE_THUNK_DATA&lt;/code> 指针，这就是 &lt;em>IDT&lt;/em> 了。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="c1">// the address table is a copy of the lookup table at first
+&lt;/span>&lt;span class="c1">// but we put the addresses of the loaded function inside =&amp;gt; that&amp;#39;s the IAT
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">address_table&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">FirstThunk&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>再取 &lt;code>FirstThunk&lt;/code> 转为 &lt;code>IMAGE_THUNK_DATA&lt;/code> 指针，这是 &lt;em>IAT&lt;/em>，之后加载的函数地址会存放到这里。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="c1">// null terminated array, again
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">lookup_table&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">u1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">AddressOfData&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后遍历 &lt;em>IDT&lt;/em> ，和遍历 &lt;code>import_descriptors&lt;/code> 时一样，注意 &lt;code>null terminated&lt;/code> 指的是最后一个元素用0填充。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">function_handle&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// Check the lookup table for the adresse of the function name to import
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">DWORD&lt;/span> &lt;span class="n">lookup_addr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">lookup_table&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">u1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">AddressOfData&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">((&lt;/span>&lt;span class="n">lookup_addr&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_ORDINAL_FLAG&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="c1">// if first bit is not 1
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// import by name : get the IMAGE_IMPORT_BY_NAME struct
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_IMPORT_BY_NAME&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">image_import&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_IMPORT_BY_NAME&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">lookup_addr&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// this struct points to the ASCII function name
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">funct_name&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">image_import&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">Name&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// get that function address from it&amp;#39;s module and name
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">function_handle&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">import_module&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">funct_name&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// import by ordinal, directly
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">function_handle&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">import_module&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">LPSTR&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">lookup_addr&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">function_handle&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;function handle is null&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// change the IAT, and put the function address inside.
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">address_table&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">u1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">Function&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">DWORD&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">function_handle&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>对每个 &lt;em>IDT&lt;/em> 元素，根据 &lt;em>IDT&lt;/em> 中保存的元素确定加载方式（字符串或者 &lt;em>ordinal&lt;/em>），调用 &lt;code>GetProcAddress&lt;/code> 加载后的地址存入 &lt;em>IAT&lt;/em> 。&lt;/p>
+&lt;p>至此，&lt;em>IAT&lt;/em> 填充完成。&lt;/p>
+&lt;p>完整代码如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">fix_iat&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_NT_headers&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">IMAGE_DATA_DIRECTORY&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data_directory&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">DataDirectory&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// load the address of the import descriptors array
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_IMPORT_DESCRIPTOR&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">import_descriptors&lt;/span> &lt;span class="o">=&lt;/span>
+&lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_IMPORT_DESCRIPTOR&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">data_directory&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">IMAGE_DIRECTORY_ENTRY_IMPORT&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// this array is null terminated
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">OriginalFirstThunk&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// Get the name of the dll, and import it
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">module_name&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Name&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">HMODULE&lt;/span> &lt;span class="n">import_module&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">LoadLibraryA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">module_name&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">import_module&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;import module is null&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// the lookup table points to function names or ordinals =&amp;gt; it is the IDT
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">lookup_table&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">OriginalFirstThunk&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// the address table is a copy of the lookup table at first
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// but we put the addresses of the loaded function inside =&amp;gt; that&amp;#39;s the IAT
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">address_table&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">FirstThunk&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// null terminated array, again
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">lookup_table&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">u1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">AddressOfData&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">function_handle&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// Check the lookup table for the adresse of the function name to import
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">lookup_addr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">lookup_table&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">u1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">AddressOfData&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">((&lt;/span>&lt;span class="n">lookup_addr&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_ORDINAL_FLAG&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="c1">// if first bit is not 1
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// import by name : get the IMAGE_IMPORT_BY_NAME struct
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_IMPORT_BY_NAME&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">image_import&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_IMPORT_BY_NAME&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">lookup_addr&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// this struct points to the ASCII function name
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">funct_name&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">image_import&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">Name&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// get that function address from it&amp;#39;s module and name
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">function_handle&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">import_module&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">funct_name&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// import by ordinal, directly
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">function_handle&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">import_module&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">LPSTR&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">lookup_addr&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">function_handle&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;function handle is null&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// change the IAT, and put the function address inside.
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">address_table&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">u1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">Function&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">DWORD&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">function_handle&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="0x04-重定位">0x04 重定位&lt;/h2>
+&lt;h3 id="41-重定位介绍">4.1 重定位介绍&lt;/h3>
+&lt;p>回顾下前文我们做的事情：&lt;/p>
+&lt;ol>
+&lt;li>打开 calc.exe ，读取它的文件头。&lt;/li>
+&lt;li>calc.exe 文件头中有一个 &lt;code>ImageBase&lt;/code> ，保存它倾向于使用的内存基址。&lt;/li>
+&lt;li>calc.exe 启用了 ASLR 技术，所以理论上我们可以把它放到内存中任意位置。&lt;/li>
+&lt;li>我们用 &lt;code>VirtualAlloc&lt;/code> 分配了内存，以&lt;code>NULL&lt;/code>作为首参数，让操作系统决定在哪儿分配，结果用作镜像基址。&lt;/li>
+&lt;li>我们导入了必要的函数并把地址存放在 IAT 里。&lt;/li>
+&lt;/ol>
+&lt;p>然后现在，某时某刻，calc.exe 需要调用被导入的函数，用我们之前提过的方法。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/learning-packer-01-windows-program-load-and-execution/call_IAT.jpg" alt="call_IAT" />&lt;/p>
+&lt;p>仔细观察图中的 opcode：&lt;code>FF15&lt;/code>，紧跟着的是小端序的&lt;code>0x004b3038&lt;/code>，一个绝对地址（前文所述的VA），指向 &lt;em>IAT&lt;/em> 中 &lt;code>ShellExecuteW&lt;/code> 函数的地址。这对于一个预期自己会被映射到随机基址上的PE文件来说，是一个巨大的问题。&lt;/p>
+&lt;p>比如说，我们把 calc.exe 放置在 &lt;code>0x00500000&lt;/code> 而不是文件头中”偏好“的镜像基址 &lt;code>0x00400000&lt;/code>，这条 &lt;code>call&lt;/code> 指令还保持不变的话，它会尝试去访问地址 &lt;code>0x004b3038&lt;/code> ——但这不是 calc.exe 的内存空间！那儿可能有任何东西，也可能什么也没有。&lt;/p>
+&lt;p>我们这里看到的是，当我们移动了 PE 文件在内存中的基址，汇编代码也需要在运行时修补，来响应基址的变化。这就是重定位所关注的事情。&lt;/p>
+&lt;h3 id="42-pe重定位结构">4.2 PE重定位结构&lt;/h3>
+&lt;p>重定位结构比导入表简单得多。&lt;/p>
+&lt;p>同样的，在 Data Directory 里有一个重定位表，结构和导入表类似，看图。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/learning-packer-01-windows-program-load-and-execution/basereloc.png" alt="image-20210927134554770" />&lt;/p>
+&lt;p>实际上每个&lt;code>IMAGE_BASE_RELOCATION&lt;/code>反应的就是一个 Windows 页（因为每个&lt;code>fixup&lt;/code>的偏移最大取值只有 12bits，0x1000，4KB）。&lt;/p>
+&lt;p>其中每个 &lt;code>fixup&lt;/code> 都是一个 &lt;code>WORD&lt;/code> ，前 4bits 表示重定位类型，后 12bits 表示相对 &lt;code>IMAGE_BASE_RELOCATION.VirtualAddress&lt;/code> 的偏移值，偏移处需要应用重定位（就是加上真实基地址和PE头中基地址的差）。&lt;/p>
+&lt;h3 id="43-修复重定位">4.3 修复重定位&lt;/h3>
+&lt;p>修复重定位必须在PE头和Sections加载到内存之后，设置内存保护之前进行。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="n">IMAGE_DATA_DIRECTORY&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data_directory&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">DataDirectory&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// this is how much we shifted the ImageBase
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">DWORD&lt;/span> &lt;span class="n">delta_VA_reloc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">((&lt;/span>&lt;span class="n">DWORD&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">ImageBase&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// if there is a relocation table, and we actually shitfted the ImageBase
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">data_directory&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">IMAGE_DIRECTORY_ENTRY_BASERELOC&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="n">delta_VA_reloc&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>在代码的开始，需要确认是不是有必要做重定位。如果基地址和PE文件头中给出的基地址相同，那就不用考虑重定位了。判断方式是拿真实基地址减去文件头里给出的基地址，非0则说明基地址需要重定位。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="c1">// calculate the relocation table address
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_reloc&lt;/span> &lt;span class="o">=&lt;/span>
+&lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">data_directory&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">IMAGE_DIRECTORY_ENTRY_BASERELOC&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>从RVA得到重定位表指针，然后就是遍历。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="c1">// once again, a null terminated array
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="k">while&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">VirtualAddress&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// ...
+&lt;/span>&lt;span class="c1">&lt;/span>
+&lt;span class="c1">// switch to the next relocation block, based on the size
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">p_reloc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(((&lt;/span>&lt;span class="n">DWORD&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">p_reloc&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">SizeOfBlock&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>SizeOfBlock&lt;/code>其实是包括&lt;code>IMAGE_BASE_RELOCATION&lt;/code>（Header）和属于这个块的所有 &lt;em>fixup&lt;/em> 组成的总大小，这里强制转换成 DWORD 后相加就得到了下一个 &lt;code>IMAGE_BASE_RELOCATION&lt;/code> 结构的地址。&lt;/p>
+&lt;p>同样的，这也是前文所述的 &lt;code>null terminated array&lt;/code> 。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="c1">// how any relocation in this block
+&lt;/span>&lt;span class="c1">// ie the total size, minus the size of the &amp;#34;header&amp;#34;, divided by 2 (those are words, so 2 bytes for each)
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">DWORD&lt;/span> &lt;span class="n">size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">SizeOfBlock&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// the first relocation element in the block, right after the header (using pointer arithmetic again)
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">WORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">fixups&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">WORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_reloc&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>在循环体内，先计算出了元素总数（(总大小(字节) - &lt;code>IMAGE_BASE_RELOCATION&lt;/code> 结构大小(字节)) / 2 ），然后用指针算术取得第一个元素的地址。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">size&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// type is the first 4 bits of the relocation word
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">type&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fixups&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">&amp;gt;&amp;gt;&lt;/span> &lt;span class="mi">12&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// offset is the last 12 bits
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">offset&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fixups&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="mh">0x0fff&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// this is the address we are going to change
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">change_addr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">DWORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">VirtualAddress&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">offset&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// there is only one type used that needs to make a change
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">switch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">type&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nl">IMAGE_REL_BASED_HIGHLOW&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">change_addr&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">delta_VA_reloc&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>遍历所有元素。如上文所述的，把每个 &lt;code>fixup&lt;/code> 取高位4比特和低位12比特，计算出要修补的地址。再根据修补的类型来应用。&lt;/p>
+&lt;p>参考&lt;a class="link" href="https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#base-relocation-types" target="_blank" rel="noopener"
+>微软文档的Base Relocation Types&lt;/a>。值得注意 type 就两个：&lt;code>IMAGE_REL_BASED_HIGHLOW&lt;/code> 和 &lt;code>IMAGE_REL_BASED_DIR64&lt;/code> ，分别是 32位和64位的重定向。其他16位重定向不多说了。&lt;/p>
+&lt;p>完整代码如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">fix_base_reloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_NT_headers&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">IMAGE_DATA_DIRECTORY&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data_directory&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">DataDirectory&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// this is how much we shifted the ImageBase
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">delta_VA_reloc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">((&lt;/span>&lt;span class="n">DWORD&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">ImageBase&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// if there is a relocation table, and we actually shitfted the ImageBase
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">data_directory&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">IMAGE_DIRECTORY_ENTRY_BASERELOC&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="n">delta_VA_reloc&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// calculate the relocation table address
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_reloc&lt;/span> &lt;span class="o">=&lt;/span>
+&lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">data_directory&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">IMAGE_DIRECTORY_ENTRY_BASERELOC&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// once again, a null terminated array
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">while&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">VirtualAddress&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// how any relocation in this block
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// ie the total size, minus the size of the &amp;#34;header&amp;#34;, divided by 2 (those are words, so 2 bytes for each)
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">SizeOfBlock&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// the first relocation element in the block, right after the header (using pointer arithmetic again)
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">WORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">fixups&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">WORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_reloc&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">size&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// type is the first 4 bits of the relocation word
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">type&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fixups&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">&amp;gt;&amp;gt;&lt;/span> &lt;span class="mi">12&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// offset is the last 12 bits
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">offset&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fixups&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="mh">0x0fff&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// this is the address we are going to change
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">change_addr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">DWORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">VirtualAddress&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">offset&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// there is only one type used that needs to make a change
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">switch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">type&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nl">IMAGE_REL_BASED_HIGHLOW&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">change_addr&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">delta_VA_reloc&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// switch to the next relocation block, based on the size
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">p_reloc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(((&lt;/span>&lt;span class="n">DWORD&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">p_reloc&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">SizeOfBlock&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="0x05-完整-loader-程序">0x05 完整 Loader 程序&lt;/h2>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;Windows.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;winnt.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nf">load_PE&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">PE_data&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">fix_iat&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">fix_base_reloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_NT_headers&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">argc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="k">const&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[])&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">argc&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;missing path argument&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">FILE&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">exe_file&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fopen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">argv&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="s">&amp;#34;rb&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">!&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;error opening file&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// Get file size : put pointer at the end
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">fseek&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0L&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">SEEK_END&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// and read its position
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">long&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">file_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ftell&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// put the pointer back at the beginning
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">fseek&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0L&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">SEEK_SET&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// allocate memory and read the whole file
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">exe_file_data&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">malloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">file_size&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// read whole file
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">size_t&lt;/span> &lt;span class="n">n_read&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file_data&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">file_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">exe_file&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">n_read&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="n">file_size&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;reading error (%d)&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n_read&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// load the PE in memory
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;[+] Loading PE file&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">entry&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">load_PE&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">exe_file_data&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">entry&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// call its entrypoint
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="p">((&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">))&lt;/span>&lt;span class="n">entry&lt;/span>&lt;span class="p">)();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nf">load_PE&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">PE_data&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">IMAGE_DOS_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_DOS_header&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_DOS_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">PE_data&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_NT_headers&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">PE_data&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">p_DOS_header&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">e_lfanew&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// extract information from PE header
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">size_of_image&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">SizeOfImage&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">entry_point_RVA&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">AddressOfEntryPoint&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">size_of_headers&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">SizeOfHeaders&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// allocate memory
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">VirtualAlloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_of_image&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MEM_RESERVE&lt;/span> &lt;span class="o">|&lt;/span> &lt;span class="n">MEM_COMMIT&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PAGE_READWRITE&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// copy PE headers in memory
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">memcpy&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PE_data&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_of_headers&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// Section headers starts right after the IMAGE_NT_HEADERS struct, so we do some pointer arithmetic-fu here.
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_SECTION_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">sections&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_SECTION_HEADER&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_NT_headers&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">FileHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">NumberOfSections&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// calculate the VA we need to copy the content, from the RVA
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// section[i].VirtualAddress is a RVA, mind it
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">dest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// check if there is Raw data to copy
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">SizeOfRawData&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// We copy SizeOfRaw data bytes, from the offset PointerToRawData in the file
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">memcpy&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PE_data&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">PointerToRawData&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">SizeOfRawData&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">memset&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Misc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">VirtualSize&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">fix_iat&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">fix_base_reloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// Set permission for the PE header to read only
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">oldProtect&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">VirtualProtect&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">SizeOfHeaders&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PAGE_READONLY&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">oldProtect&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">FileHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">NumberOfSections&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">dest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">s_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Characteristics&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">v_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// flags are not the same between virtal protect and the section header
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">s_perm&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_SCN_MEM_EXECUTE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">v_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">s_perm&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_SCN_MEM_WRITE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="nl">PAGE_EXECUTE_READWRITE&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">PAGE_EXECUTE_READ&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">v_perm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">s_perm&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_SCN_MEM_WRITE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="nl">PAGE_READWRITE&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">PAGE_READONLY&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">VirtualProtect&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sections&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Misc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">VirtualSize&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v_perm&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">oldProtect&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">entry_point_RVA&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">fix_iat&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_NT_headers&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">IMAGE_DATA_DIRECTORY&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data_directory&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">DataDirectory&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// load the address of the import descriptors array
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_IMPORT_DESCRIPTOR&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">import_descriptors&lt;/span> &lt;span class="o">=&lt;/span>
+&lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_IMPORT_DESCRIPTOR&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">data_directory&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">IMAGE_DIRECTORY_ENTRY_IMPORT&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// this array is null terminated
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">OriginalFirstThunk&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// Get the name of the dll, and import it
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">module_name&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">Name&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">HMODULE&lt;/span> &lt;span class="n">import_module&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">LoadLibraryA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">module_name&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">import_module&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;import module is null&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// the lookup table points to function names or ordinals =&amp;gt; it is the IDT
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">lookup_table&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">OriginalFirstThunk&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// the address table is a copy of the lookup table at first
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// but we put the addresses of the loaded function inside =&amp;gt; that&amp;#39;s the IAT
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">address_table&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_THUNK_DATA&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">import_descriptors&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">FirstThunk&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// null terminated array, again
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">lookup_table&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">u1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">AddressOfData&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">function_handle&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// Check the lookup table for the adresse of the function name to import
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">lookup_addr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">lookup_table&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">u1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">AddressOfData&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">((&lt;/span>&lt;span class="n">lookup_addr&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">IMAGE_ORDINAL_FLAG&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="c1">// if first bit is not 1
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// import by name : get the IMAGE_IMPORT_BY_NAME struct
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_IMPORT_BY_NAME&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">image_import&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_IMPORT_BY_NAME&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">lookup_addr&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// this struct points to the ASCII function name
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">funct_name&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">image_import&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">Name&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// get that function address from it&amp;#39;s module and name
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">function_handle&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">import_module&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">funct_name&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// import by ordinal, directly
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">function_handle&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">import_module&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">LPSTR&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">lookup_addr&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">function_handle&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;function handle is null&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// change the IAT, and put the function address inside.
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">address_table&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">u1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">Function&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">DWORD&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">function_handle&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">fix_base_reloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">IMAGE_NT_HEADERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_NT_headers&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">IMAGE_DATA_DIRECTORY&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data_directory&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">DataDirectory&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// this is how much we shifted the ImageBase
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">delta_VA_reloc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">((&lt;/span>&lt;span class="n">DWORD&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">p_image_base&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">p_NT_headers&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">OptionalHeader&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">ImageBase&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// if there is a relocation table, and we actually shitfted the ImageBase
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">data_directory&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">IMAGE_DIRECTORY_ENTRY_BASERELOC&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="n">delta_VA_reloc&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// calculate the relocation table address
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">p_reloc&lt;/span> &lt;span class="o">=&lt;/span>
+&lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">data_directory&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">IMAGE_DIRECTORY_ENTRY_BASERELOC&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">VirtualAddress&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// once again, a null terminated array
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">while&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">VirtualAddress&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// how any relocation in this block
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// ie the total size, minus the size of the &amp;#34;header&amp;#34;, divided by 2 (those are words, so 2 bytes for each)
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">SizeOfBlock&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// the first relocation element in the block, right after the header (using pointer arithmetic again)
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">WORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">fixups&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">WORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_reloc&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">size&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="o">++&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// type is the first 4 bits of the relocation word
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">type&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fixups&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">&amp;gt;&amp;gt;&lt;/span> &lt;span class="mi">12&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// offset is the last 12 bits
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">offset&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">fixups&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="mh">0x0fff&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// this is the address we are going to change
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">change_addr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">DWORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">p_image_base&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">VirtualAddress&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">offset&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// there is only one type used that needs to make a change
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">switch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">type&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nl">IMAGE_REL_BASED_HIGHLOW&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">change_addr&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">delta_VA_reloc&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// switch to the next relocation block, based on the size
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">p_reloc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IMAGE_BASE_RELOCATION&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(((&lt;/span>&lt;span class="n">DWORD&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">p_reloc&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">p_reloc&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">SizeOfBlock&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="0x06-结论">0x06 结论&lt;/h2>
+&lt;p>本文的背景知识基本是参考相关书籍，编写 Loader 的部分则来自 &lt;a class="link" href="https://bidouillesecurity.com/" target="_blank" rel="noopener"
+>BidouilleSecurity&lt;/a> 。关于加壳脱壳原理，不乏形象直观的描述，也有很多脱壳相关文章，但适合萌新上手、能照着撸出代码的文章就很少，甚至可以说没地方找。抛开加壳脱壳这些特定领域话题不谈，程序的加载到执行本身对有好奇心的码农也是很值得一聊的内容。&lt;/p>
+&lt;p>目前讨论的范围包括了如何加载并运行一个Windows程序（32位），大致流程如下：&lt;/p>
+&lt;ul>
+&lt;li>读取文件到内存&lt;/li>
+&lt;li>映射文件头到基地址&lt;/li>
+&lt;li>映射Sections&lt;/li>
+&lt;li>填充IAT&lt;/li>
+&lt;li>重定位&lt;/li>
+&lt;li>跳转到入口点开始执行。&lt;/li>
+&lt;/ul>
+&lt;p>在对这些知识有了足够了解后，已经能写出基本的壳程序了。也许下一篇文章会谈。&lt;/p>
+&lt;p>参考资料：&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>&lt;a class="link" href="https://bidouillesecurity.com/tutorial-writing-a-pe-packer-part-1/" target="_blank" rel="noopener"
+>writing a PE packer - Part 1 : Load a PE in memory&lt;/a>&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;a class="link" href="https://bidouillesecurity.com/tutorial-writing-a-pe-packer-part-2/" target="_blank" rel="noopener"
+>writing a PE packer - Part 2 : Imports and relocations&lt;/a>&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;a class="link" href="https://book.douban.com/subject/3652388/" target="_blank" rel="noopener"
+>《程序员的自我修养——链接、装载与库》&lt;/a>&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;a class="link" href="https://docs.microsoft.com/en-us/windows/win32/debug/pe-format" target="_blank" rel="noopener"
+>微软文档 - PE Format&lt;/a>&lt;/p>
+&lt;/li>
+&lt;/ul></description></item><item><title>自娱自乐 crackme-03</title><link>https://nnnewb.github.io/blog/p/crackme-03/</link><pubDate>Fri, 24 Sep 2021 16:58:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/crackme-03/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>总得有个前言。&lt;/p>
 &lt;p>一直玩命令行 crackme 看着就没啥意思，来点带界面的。依然是学习用，目标是把汇编和底层和内存这套东西读熟。这次是用 wxwidgets 做的简单 crackme，为了在 CrackME-02 基础上再增加点难度但又不至于太难，这次是 OTP 生成序列号，要求解出生成 OTP 的 SECRET。&lt;/p>
 &lt;h2 id="源码">源码&lt;/h2>
