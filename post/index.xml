@@ -1,4 +1,14 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/post/</link><description>Recent content in Posts on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 14 Oct 2021 16:31:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/post/index.xml" rel="self" type="application/rss+xml"/><item><title>关于在内存里找kernel32这件事</title><link>https://nnnewb.github.io/blog/p/find-kernel32-in-memory/</link><pubDate>Thu, 14 Oct 2021 16:31:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/find-kernel32-in-memory/</guid><description>前言 总得有个前言。
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/post/</link><description>Recent content in Posts on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 20 Oct 2021 10:25:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/post/index.xml" rel="self" type="application/rss+xml"/><item><title>加壳原理03 - 支持没有重定位的程序</title><link>https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/</link><pubDate>Wed, 20 Oct 2021 10:25:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/</guid><description>前言 距离上一篇加壳原理已经过去挺久了，这段时间稍微折腾了一下 nasm，尝试手工制作了 PE32 文件，积累了一些基本的知识吧。
+所以现在继续学习加壳——如何对不支持 ASLR 的 PE32 程序进行加壳？
+0x01 关于ASLR ASLR是一项内存保护技术，用于防范内存损坏漏洞，比如缓冲区溢出。需要注意的是 ASLR 并不是 解决 了相关威胁，而是让利用相关的漏洞变得更加困难和具有挑战性。
+ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机化技术。一个典型的 PE32 程序在没有 ASLR 支持的情况下， 地址空间布局是确定的：程序镜像总会加载到固定的地址。这个地址会在文件头里指定。攻击者可以利用这一特点来构造恶意数据，让存在内存损坏漏洞的程序按攻击者意图跳过或执行特定逻辑，造成安全威胁。
+对应 ASLR 的地址空间布局随机化，程序需要再次编译来支持重定位 Relocation ，别无他法（大概）。
+0x02 思路 对于加壳一个没有重定位，不支持 ASLR 的 PE32 程序，假设这个程序的基址是 0x04000000，原先的 VirtualAlloc 方式分配内存是行不通的。加壳后程序若开启 ASLR，则 0x04000000 可能已经存在其他模块，并不能保证这个基址可用。所以加壳后的程序必须也使用 0x04000000 这个基址，而且标记为不支持 ASLR，避免基址已经被其他模块使用造成加载器无法工作。
+将加壳后程序的基址设置为固定的 0x04000000 又会产生新的问题：加载器的代码段不能放在 0x04000000 ，否则加载器运行时就会出现被被加载的代码覆盖的情况，导致程序跑飞。所以编译后的加载器所有 Section 都必须有一定的偏移，这个偏移值就是被加载程序的 Section 大小之和（对齐后）。而因此多出来的空间单独分成一个 Section ，正好用来放要加载的程序。
+另外，还必须确认文件头大小是否一致，因为我们需要将被加载程序的文件头覆盖加载器的文件头。而最开始预留的空间必须分配为一个 Section，让 Windows 的加载器能顺利加载程序而不报“不是有效的Win32程序”错误。
+内存布局示意图如下：
+所以加载器的加载步骤如下：
+寻找被加载的 Section 。 复制文件头覆盖自己的文件头。 以自己的基址为被加载程序的基址，完成加载。 加壳机的加壳步骤如下：</description></item><item><title>关于在内存里找kernel32这件事</title><link>https://nnnewb.github.io/blog/p/find-kernel32-in-memory/</link><pubDate>Thu, 14 Oct 2021 16:31:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/find-kernel32-in-memory/</guid><description>前言 总得有个前言。
 用 nasm 手工打造了一个 PE 文件后，这个 PE 文件还没什么卵用。如果要动 IAT，又嫌麻烦。网上冲浪找到一篇关于 shellcode 的文章，讲如何在内存里找到 kernel32.dll 并调用 WinExec 函数，于是就想实践一下看看，实际抄代码碰到不少坑。对汇编又熟悉了一点。
 0x01 寻找 kernel32 微软有一篇很简短的文章。
 The Thread Environment Block (TEB structure) holds context information for a thread.
