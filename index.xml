@@ -1,4 +1,132 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 20 Oct 2021 10:25:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>加壳原理03 - 支持没有重定位的程序</title><link>https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/</link><pubDate>Wed, 20 Oct 2021 10:25:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 20 Oct 2021 16:07:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>加壳原理04 - zlib压缩壳案例</title><link>https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/</link><pubDate>Wed, 20 Oct 2021 16:07:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。&lt;/p>
+&lt;h2 id="0x01-zlib-解压">0x01 zlib 解压&lt;/h2>
+&lt;h3 id="11-概述">1.1 概述&lt;/h3>
+&lt;p>关于 zlib 的用法找了这些参考资料：&lt;/p>
+&lt;ul>
+&lt;li>&lt;a class="link" href="https://zlib.net/zpipe.c" target="_blank" rel="noopener"
+>zlib.net/zpipe.c&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://zlib.net/zlib_how.html" target="_blank" rel="noopener"
+>zlib Usage Example&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://gist.github.com/arq5x/5315739" target="_blank" rel="noopener"
+>Compress and Decompress a string with zlib&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;p>尝试了 zlib、lzo、Windows Compression API，对压缩和解压 API 的基本模式的基本认识大概是这样：&lt;/p>
+&lt;ul>
+&lt;li>首先，你得有被压缩数据的大小（要么分块压缩，要么有整个压缩后的大小）&lt;/li>
+&lt;li>然后得有解压后的预期大小，这个能通过 &lt;em>尝试解压&lt;/em> 的操作来实现。比如 Windows Compression API 和 lzo 都可以在解压 buffer 传 NULL，尝试取得解压后的大小，再分配好内存解压。&lt;/li>
+&lt;li>zlib 这样的流式压缩、解压处理文件比较友好，但全程在内存里进行的话，流式解压就会导致大量内存分配 =。= 除非一开始就分配足够的空间，不然一个一个内存块申请和合并会很蛋疼。&lt;/li>
+&lt;/ul>
+&lt;h3 id="12-内存布局">1.2 内存布局&lt;/h3>
+&lt;p>压缩后的 &lt;code>.packed&lt;/code> 节在头部留出 8 个字节，分别保存压缩后大小和压缩前大小，以便一次分配好内存完成解压。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>偏移&lt;/th>
+&lt;th>大小&lt;/th>
+&lt;th>内容&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>0&lt;/td>
+&lt;td>DWORD&lt;/td>
+&lt;td>小端序，压缩后大小&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>4&lt;/td>
+&lt;td>DWORD&lt;/td>
+&lt;td>小端序，压缩前大小&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>8&lt;/td>
+&lt;td>可变&lt;/td>
+&lt;td>压缩后的数据&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="13-解压代码">1.3 解压代码&lt;/h3>
+&lt;p>解压过程在加载 PE 之前，找到 &lt;code>.packed&lt;/code> 节后，开始读取头部大小，并调用解压代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">packed&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">compressed_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">((&lt;/span>&lt;span class="n">DWORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">packed&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="c1">// compressed size little-endian
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">DWORD&lt;/span> &lt;span class="n">decompressed_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">((&lt;/span>&lt;span class="n">DWORD&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">packed&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">4&lt;/span>&lt;span class="p">));&lt;/span> &lt;span class="c1">// decompressed size little-endian
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">compressed&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">packed&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">8&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="c1">// compressed buffer
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">decompressed&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">malloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">decompressed_size&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="c1">// decompressed buffer
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">decompressed&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;memory allocate failed&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;malloc&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">decompress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">compressed&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">compressed_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">decompressed&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">decompressed_size&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">entrypoint&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">))&lt;/span>&lt;span class="n">load_PE&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">decompressed&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">entrypoint&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>应该没有太多疑问。接下来的是解压代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">decompress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">compressed&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_t&lt;/span> &lt;span class="n">length&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">decompressed&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_t&lt;/span> &lt;span class="n">decompressed_length&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">z_stream&lt;/span> &lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">zalloc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Z_NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">zfree&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Z_NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">opaque&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Z_NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">avail_in&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">uInt&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">length&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">next_in&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">Bytef&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">compressed&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">avail_out&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">uInt&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">decompressed_length&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">next_out&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">Bytef&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">decompressed&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">inflateInit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">err&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">inflate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">Z_NO_FLUSH&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="n">Z_STREAM_END&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">inflateEnd&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;zlib decompression failed&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;zlib&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">inflateEnd&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">inflate_stream&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>定义 inflate 流：&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>avail_in&lt;/code> 是可用的输入 buffer 大小&lt;/li>
+&lt;li>&lt;code>avail_out&lt;/code> 是可用的输出 buffer 大小&lt;/li>
+&lt;li>&lt;code>next_in&lt;/code> 是输入 buffer 的指针&lt;/li>
+&lt;li>&lt;code>next_out&lt;/code> 是输出 buffer 的指针&lt;/li>
+&lt;li>&lt;code>zalloc&lt;/code>、&lt;code>zfree&lt;/code>、&lt;code>opaque&lt;/code> 初始化成 NULL&lt;/li>
+&lt;/ul>
+&lt;p>使用 &lt;code>inflateInit()&lt;/code> 初始化流，然后调用 &lt;code>inflate()&lt;/code> 解压。&lt;code>inflate()&lt;/code> 会返回错误码，如果长度正好，会返回 &lt;code>Z_STREAM_END&lt;/code>。如果输出 buffer 长度不足，但解压成功，会返回 &lt;code>Z_OK&lt;/code>。其他情况会返回错误码。因为这里很清楚给定的压缩前长度，解压必定返回 &lt;code>Z_STREAM_END&lt;/code>，其他情况都有问题，所以只做了一个判断。&lt;/p>
+&lt;p>对于其他情况，错误码可以用 &lt;code>zError&lt;/code> 获取错误描述。&lt;/p>
+&lt;p>解压结束后要使用 &lt;code>inflateEnd()&lt;/code> 关闭流。&lt;/p>
+&lt;h2 id="0x02-zlib压缩">0x02 zlib压缩&lt;/h2>
+&lt;p>因为使用 python 写加壳机，就不用这么麻烦了。&lt;/p>
+&lt;p>在处理 &lt;code>.packed&lt;/code> 节的时候，使用 &lt;code>struct&lt;/code> 和 &lt;code>zlib&lt;/code> 两个 python 自带的库就能完成压缩和填充头。&lt;/p>
+&lt;p>在脚本头部添加两句 &lt;code>import&lt;/code>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="kn">import&lt;/span> &lt;span class="nn">struct&lt;/span>
+&lt;span class="kn">import&lt;/span> &lt;span class="nn">zlib&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后修改加壳代码中，添加 &lt;code>.packed&lt;/code> 节的代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="c1"># add packed section&lt;/span>
+&lt;span class="k">with&lt;/span> &lt;span class="nb">open&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;example.exe&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s1">&amp;#39;rb&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="n">f&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">file_content&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">f&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">read&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="n">origin_length&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">file_content&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">compressed&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">zlib&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">compress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">file_content&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">9&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">compressed_length&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">compressed&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">section_content&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">struct&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">pack&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;&amp;lt;II&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">compressed_length&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">origin_length&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">section_content&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">compressed&lt;/span>
+&lt;span class="n">packed_section&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">lief&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">PE&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Section&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;.packed&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">packed_section&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">content&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">list&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">section_content&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">packed_section&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">characteristics&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">lief&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">PE&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">SECTION_CHARACTERISTICS&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">MEM_READ&lt;/span> &lt;span class="o">|&lt;/span>
+&lt;span class="n">lief&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">PE&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">SECTION_CHARACTERISTICS&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">CNT_INITIALIZED_DATA&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">output&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">add_section&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">packed_section&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以看到使用 &lt;code>zlib.compress&lt;/code> 就完成了压缩，不用原始 zlib 流那么麻烦。&lt;/p>
+&lt;p>&lt;code>struct.pack&lt;/code> 指定了小端序，两个4字节int，分别填写压缩后大小和原始大小，连接压缩后的数据，填充进&lt;code>.packed&lt;/code> 节。&lt;/p>
+&lt;p>就这样，压缩功能成功完成。&lt;/p>
+&lt;h2 id="0x03-成果展示">0x03 成果展示&lt;/h2>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%8a%a0%e5%a3%b3%e5%8e%9f%e7%90%864/compression-packer.gif" alt="compression-packer" />&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%8a%a0%e5%a3%b3%e5%8e%9f%e7%90%864/image-20211020154513713.png" alt="image-20211020154513713" />&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%8a%a0%e5%a3%b3%e5%8e%9f%e7%90%864/image-20211020154539546.png" alt="image-20211020154539546" />&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>偷懒了，用了一些 msvcrt 的函数，比如 malloc，要加个 &lt;code>-lmsvcrt&lt;/code> 链接选项。最终成品压缩率还可以，从107KB 压缩到了 49KB，zlib 不负期望。&lt;/p>
+&lt;p>写好壳程序之后，不管是加密还是压缩都是很容易的事情（指单纯做个简单实现），但问题依然存在：&lt;/p>
+&lt;ul>
+&lt;li>64位程序——我觉得可以以后再说吧？我连64位汇编都还不会（泪）。&lt;/li>
+&lt;li>脱壳跟玩一样——现在看 .packed 已经没有 MZ 这个摆明了是原始程序的标志了，但并没有卵用。壳程序也没混淆和反调试，节表也是清晰可见，根本不用分析。&lt;/li>
+&lt;/ul>
+&lt;p>下一篇还没想好做什么，得先继续学习充实下自己，找个方向。&lt;/p></description></item><item><title>加壳原理03 - 支持没有重定位的程序</title><link>https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/</link><pubDate>Wed, 20 Oct 2021 10:25:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>距离上一篇加壳原理已经过去挺久了，这段时间稍微折腾了一下 nasm，尝试手工制作了 PE32 文件，积累了一些基本的知识吧。&lt;/p>
 &lt;p>所以现在继续学习加壳——如何对不支持 ASLR 的 PE32 程序进行加壳？&lt;/p>
 &lt;h2 id="0x01-关于aslr">0x01 关于ASLR&lt;/h2>
