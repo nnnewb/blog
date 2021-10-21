@@ -1,4 +1,203 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 20 Oct 2021 16:07:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>加壳原理04 - zlib压缩壳案例</title><link>https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/</link><pubDate>Wed, 20 Oct 2021 16:07:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 21 Oct 2021 21:17:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>加壳原理05：利用图片隐藏</title><link>https://nnnewb.github.io/blog/p/learning-packer-05/</link><pubDate>Thu, 21 Oct 2021 21:17:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-05/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>完成了简单的压缩壳之后放松下，在52论坛病毒分析区看到过几次把代码隐藏到图片里的做法，也看到过把程序转成图片后训练神经网络来判断有没有恶意的，于是就想，淦，这不是挺好玩的嘛。&lt;/p>
+&lt;h2 id="0x01-思路">0x01 思路&lt;/h2>
+&lt;p>用图片保存程序最简单的做法就是直接把程序每个字节都转成像素，然后输出成灰度图。比较进阶的做法就像是二维码了，大色块，容错校验，图片被压到包浆也能扫出来。但那个有点点难（我菜）最终成果也大到不现实，而且实话说打包到程序里就不用考虑被二次压缩的情况了。所以简单的8bit灰度图就刑。&lt;/p>
+&lt;p>说到位图肯定有人想到了 BMP ，我记得上学那会儿还跟着网上哪儿找的教程，学着用 ffmpeg 把 &lt;em>Bad Apple&lt;/em> 转成位图序列，再转成字符图合并成 HTML，用 js 播放。说起来都是泪。&lt;/p>
+&lt;p>现在已经成了正经的码农，再折腾 BMP 就没意思了，PNG 就挺好的。&lt;/p>
+&lt;p>图片可以放到 Section 里——但并没有意义，所以我选择放到资源里。写一个 &lt;code>.rc&lt;/code> 文件用 &lt;code>windres&lt;/code> 编译出目标文件，再拿 &lt;code>gcc&lt;/code> 链接就行了。如此一来并没有 lief 出场的机会，编译好的加载器就是加完壳的程序。&lt;/p>
+&lt;p>加载器则采用开启 ASLR 的模式，这样程序的节表会比较干净，没有明显特征（虽然也没什么卵用）。&lt;/p>
+&lt;h2 id="0x02-加载器">0x02 加载器&lt;/h2>
+&lt;h3 id="21-资源介绍">2.1 资源介绍&lt;/h3>
+&lt;p>参考微软的文档 &lt;a class="link" href="https://docs.microsoft.com/en-us/windows/win32/menurc/using-resources" target="_blank" rel="noopener"
+>Using Resources&lt;/a>、&lt;a class="link" href="https://docs.microsoft.com/en-us/windows/win32/menurc/resources" target="_blank" rel="noopener"
+>Menu and Other Resources&lt;/a>。&lt;/p>
+&lt;blockquote>
+&lt;p>A &lt;em>resource&lt;/em> is binary data that you can add to the executable file of a Windows-based application. A resource can be either standard or defined. The data in a &lt;em>standard resource&lt;/em> describes an icon, cursor, menu, dialog box, bitmap, enhanced metafile, font, accelerator table, message-table entry, string-table entry, or version information. An &lt;em>application-defined resource&lt;/em>, also called a &lt;em>custom resource&lt;/em>, contains any data required by a specific application.&lt;/p>
+&lt;/blockquote>
+&lt;p>资源就是一堆打包进可执行文件里的二进制数据，有标准资源类型和自定义的资源类型，标准的回头看就全是微软的历史包袱了，自定义的就是随便什么东西。&lt;/p>
+&lt;p>资源本身是有结构的，大体上分三层：&lt;/p>
+&lt;ol>
+&lt;li>类型；比如图标、对话框、位图、Manifest等等。&lt;/li>
+&lt;li>ID；资源的标识符，可以是数字或字符串。&lt;/li>
+&lt;li>语言；英语法语等等..&lt;/li>
+&lt;/ol>
+&lt;p>经过这样三层索引就能找到对应资源的原始数据了。&lt;/p>
+&lt;p>如图：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%8a%a0%e5%a3%b3%e5%8e%9f%e7%90%865/07_resource_tree.png" alt="07_resource_tree.png" />&lt;/p>
+&lt;h3 id="22-查找并加载资源">2.2 查找并加载资源&lt;/h3>
+&lt;p>步骤很简单：&lt;/p>
+&lt;ol>
+&lt;li>&lt;code>FindResource&lt;/code> 找到你要的资源&lt;/li>
+&lt;li>&lt;code>SizeofResource&lt;/code> 确定你要的资源大小&lt;/li>
+&lt;li>&lt;code>LoadResource&lt;/code> 加载资源，得到 HANDLE&lt;/li>
+&lt;li>&lt;code>LockResource&lt;/code> 锁定资源，得到资源首字节指针&lt;/li>
+&lt;/ol>
+&lt;p>实现比较啰嗦，主要是错误检查很啰嗦。我这返回值都是随便 return 的，更好的做法应该是 &lt;code>GetLastError&lt;/code> 去拿错误码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">int&lt;/span> &lt;span class="nf">get_resource&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">**&lt;/span>&lt;span class="n">buffer&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_t&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">length&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">HRSRC&lt;/span> &lt;span class="n">res_found&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">FindResourceA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;BEAUTIFUL.PNG&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">RT_RCDATA&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">res_found&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;find resource failed&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;FindResourceA&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">sizeof_res&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">SizeofResource&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">res_found&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">sizeof_res&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;sizeof resource failed&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;SizeofResource&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">HGLOBAL&lt;/span> &lt;span class="n">res_loaded&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">LoadResource&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">res_found&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">res_loaded&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;load resource failed&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;LoadResource&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">LPVOID&lt;/span> &lt;span class="n">res_acquired&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">LockResource&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">res_loaded&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">res_acquired&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;lock resource failed&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;LockResource&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">buffer&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">malloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">sizeof_res&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">length&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">sizeof_res&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">memcpy&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">buffer&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">res_acquired&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sizeof_res&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">UnlockResource&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">res_loaded&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">FreeResource&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">res_loaded&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>得到数据后复制到新分配的内存里返回出去就完事了。&lt;/p>
+&lt;h3 id="23-解析图片">2.3 解析图片&lt;/h3>
+&lt;p>得到了资源图片的内容之后，下一步就是把图片解码成像素，还原到程序本身了。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;#34;png.h&amp;#34;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stddef.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdint.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdio.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;string.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">typedef&lt;/span> &lt;span class="kt">uint8_t&lt;/span> &lt;span class="n">u8&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">u8p&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">typedef&lt;/span> &lt;span class="kt">uint32_t&lt;/span> &lt;span class="n">u32&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">u32p&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// decode PNG in memory
+&lt;/span>&lt;span class="c1">// https://stackoverflow.com/questions/53237065/using-libpng-1-2-to-write-rgb-image-buffer-to-png-buffer-in-memory-causing-segme
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">u8p&lt;/span> &lt;span class="nf">read_program_from_png&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">u8p&lt;/span> &lt;span class="n">data&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">size_t&lt;/span> &lt;span class="n">length&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">png_image&lt;/span> &lt;span class="n">image&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">memset&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">image&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">image&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="n">image&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">version&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">PNG_IMAGE_VERSION&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">png_image_begin_read_from_memory&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">image&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">data&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">length&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">png_bytep&lt;/span> &lt;span class="n">buffer&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">image&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">format&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">PNG_FORMAT_GRAY&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">size_t&lt;/span> &lt;span class="n">input_data_length&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">PNG_IMAGE_SIZE&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">image&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">buffer&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">png_bytep&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">malloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">input_data_length&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">memset&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">buffer&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">input_data_length&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">png_image_finish_read&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">image&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">buffer&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">u32&lt;/span> &lt;span class="n">actual_len&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">((&lt;/span>&lt;span class="n">u32&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">buffer&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">program&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">malloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">actual_len&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">memcpy&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">program&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">buffer&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">actual_len&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">free&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">buffer&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">u8p&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">program&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>面向 stackoverflow 编程，照着抄一个 libpng 的解码实现。不同的是把解码后的头4个字节作为小端序无符号整型，认为是程序的实际大小。因为程序的大小可能并不正好是图片的像素数量（width*height）。&lt;/p>
+&lt;p>最后是把解码后的内容复制到新分配的内存里返回。现在返回的指针应该就指向我们的 PE 文件内容了。&lt;/p>
+&lt;h3 id="24-入口点">2.4 入口点&lt;/h3>
+&lt;p>在入口点，调用加载资源函数获得资源数据的指针，传给解码的函数，得到解码后的PE文件指针，然后加载并跳转到被加载程序的入口点，就这么简单。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">int&lt;/span> &lt;span class="nf">_start&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">buffer&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">size_t&lt;/span> &lt;span class="n">length&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">get_resource&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;BEAUTIFUL.PNG&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">buffer&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">length&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">u8p&lt;/span> &lt;span class="n">program&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">read_program_from_png&lt;/span>&lt;span class="p">((&lt;/span>&lt;span class="n">u8p&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">buffer&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">length&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">free&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">buffer&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">program&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">entrypoint&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">))&lt;/span>&lt;span class="n">load_PE&lt;/span>&lt;span class="p">((&lt;/span>&lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">program&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">entrypoint&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">free&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">program&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;.packed section not found&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;loader error&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="0x03-加壳机">0x03 加壳机&lt;/h2>
+&lt;h3 id="31-程序转图片">3.1 程序转图片&lt;/h3>
+&lt;p>使用 &lt;code>pypng&lt;/code> 这个包实现把二进制程序转图片。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="n">IMG_PATH&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s1">&amp;#39;packer5-packed.png&amp;#39;&lt;/span>
+&lt;span class="n">ROW_LEN&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">256&lt;/span>
+&lt;span class="k">with&lt;/span> &lt;span class="nb">open&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;example.exe&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s1">&amp;#39;rb&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="n">f&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">arr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[]&lt;/span>
+&lt;span class="n">content&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">f&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">read&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="n">content&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">struct&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">pack&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;&amp;lt;I&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">content&lt;/span>&lt;span class="p">))&lt;/span>&lt;span class="o">+&lt;/span>&lt;span class="n">content&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">content&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">//&lt;/span>&lt;span class="n">ROW_LEN&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">t&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">content&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">ROW_LEN&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">ROW_LEN&lt;/span>&lt;span class="o">+&lt;/span>&lt;span class="n">ROW_LEN&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="n">arr&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">t&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">png&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">from_array&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">arr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s1">&amp;#39;L&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">save&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">IMG_PATH&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>非常简单的一段脚本。把内容长度和内容拼接后，以 &lt;code>ROW_LEN&lt;/code> 每行，拆成一个二维数组，然后用 pypng 编码并保存。&lt;/p>
+&lt;h3 id="32-编译资源">3.2 编译资源&lt;/h3>
+&lt;p>随便新建一个 &lt;code>rsrc.rc&lt;/code> 。&lt;/p>
+&lt;p>别问 &lt;code>.rc&lt;/code> 怎么写，不知道，问就是面向谷歌编程抄的。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plain" data-lang="plain">beautiful.png RCDATA &amp;#34;packer5-packed.png&amp;#34;
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后在脚本里调用 &lt;code>windres&lt;/code> 编译。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">def&lt;/span> &lt;span class="nf">windres&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">sources&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">output&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">executable&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s1">&amp;#39;windres&amp;#39;&lt;/span>
+&lt;span class="n">args&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s1">&amp;#39;&amp;#39;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">isinstance&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">sources&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">bytes&lt;/span>&lt;span class="p">)):&lt;/span>
+&lt;span class="n">args&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">sources&lt;/span>
+&lt;span class="k">elif&lt;/span> &lt;span class="nb">isinstance&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">sources&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nb">list&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">tuple&lt;/span>&lt;span class="p">)):&lt;/span>
+&lt;span class="n">args&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="s1">&amp;#39; &amp;#39;&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">join&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">sources&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">cmd&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sa">f&lt;/span>&lt;span class="s1">&amp;#39;&lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">executable&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s1"> &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s1"> -o &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">output&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s1">&amp;#39;&lt;/span>
+&lt;span class="n">proc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">run&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">cmd&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">shell&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">True&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">stderr&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">STDOUT&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">proc&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">returncode&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">raise&lt;/span> &lt;span class="n">CompilationError&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">proc&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">returncode&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">proc&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stdout&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">windres&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">path&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">join&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">src_dir&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s1">&amp;#39;rsrc.rc&amp;#39;&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">path&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">join&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">src_dir&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s1">&amp;#39;rsrc.o&amp;#39;&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>就得到了 &lt;code>rsrc.o&lt;/code> 。&lt;/p>
+&lt;h3 id="33-编译加载器">3.3 编译加载器&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="c1"># compile shifted loader program&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">compile&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">sources&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">flags&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">args&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s1">&amp;#39;&amp;#39;&lt;/span>
+&lt;span class="n">compiler&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s1">&amp;#39;gcc&amp;#39;&lt;/span>
+&lt;span class="n">args&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="s1">&amp;#39;&amp;#39;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">isinstance&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">sources&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">bytes&lt;/span>&lt;span class="p">)):&lt;/span>
+&lt;span class="n">args&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">sources&lt;/span>
+&lt;span class="k">elif&lt;/span> &lt;span class="nb">isinstance&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">sources&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nb">list&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">tuple&lt;/span>&lt;span class="p">)):&lt;/span>
+&lt;span class="n">args&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="s1">&amp;#39; &amp;#39;&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">join&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">sources&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">args&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="s1">&amp;#39; &amp;#39;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">isinstance&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">flags&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">bytes&lt;/span>&lt;span class="p">)):&lt;/span>
+&lt;span class="n">args&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">flags&lt;/span>
+&lt;span class="k">elif&lt;/span> &lt;span class="nb">isinstance&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">flags&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nb">list&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">tuple&lt;/span>&lt;span class="p">)):&lt;/span>
+&lt;span class="n">args&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="s1">&amp;#39; &amp;#39;&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">join&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">flags&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">cmd&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sa">f&lt;/span>&lt;span class="s1">&amp;#39;&lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">compiler&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s1"> &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s1">&amp;#39;&lt;/span>
+&lt;span class="n">proc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">run&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">cmd&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">shell&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">True&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">stderr&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">STDOUT&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">proc&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">returncode&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">raise&lt;/span> &lt;span class="n">CompilationError&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">proc&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">returncode&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">proc&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stdout&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">cflags&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>
+&lt;span class="s1">&amp;#39;-m32&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;-O2&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;-Wall&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;-I.&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;-Wl,--entry=__start&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;-nodefaultlibs&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;-nostartfiles&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;-lkernel32&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;-luser32&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;-lmsvcrt&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;-lpng&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;-o&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s1">&amp;#39;packed.exe&amp;#39;&lt;/span>
+&lt;span class="p">]&lt;/span>
+&lt;span class="nb">compile&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="n">path&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">join&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">src_dir&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">src&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">src&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="s1">&amp;#39;loader.c&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s1">&amp;#39;png_decode.c&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s1">&amp;#39;rsrc.o&amp;#39;&lt;/span>&lt;span class="p">]],&lt;/span> &lt;span class="n">cflags&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;[+] compile loader with resource success.&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>主要是加上 &lt;code>-lpng&lt;/code> 链接参数，链接 &lt;code>libpng&lt;/code> 。输入文件里加上 &lt;code>png_decode.c&lt;/code> 这个里面实现了 &lt;code>read_program_from_png&lt;/code>，还有编译好的资源 &lt;code>rsrc.o&lt;/code>。&lt;/p>
+&lt;h2 id="0x04-成果展示">0x04 成果展示&lt;/h2>
+&lt;h3 id="41-完整代码">4.1 完整代码&lt;/h3>
+&lt;p>&lt;a class="link" href="https://github.com/nnnewb/learning-packer/tree/main/packer5" target="_blank" rel="noopener"
+>github.com - packer05&lt;/a>&lt;/p>
+&lt;h3 id="42-成果">4.2 成果&lt;/h3>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%8a%a0%e5%a3%b3%e5%8e%9f%e7%90%865/png-packer.gif" alt="png-packer" />&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%8a%a0%e5%a3%b3%e5%8e%9f%e7%90%865/image-20211021172402101.png" alt="image-20211021172402101" />&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%8a%a0%e5%a3%b3%e5%8e%9f%e7%90%865/image-20211021172445654.png" alt="image-20211021172445654" />&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%8a%a0%e5%a3%b3%e5%8e%9f%e7%90%865/image-20211021172504888.png" alt="image-20211021172504888" />&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>这次实验主要是验证了从资源加载程序，本质和之前的其他加壳方式没有区别。把应用程序转换成图片后看到的效果确实比较有趣，我想如果用一张普通的图片或者其他文件类型，藏起来可能更隐蔽。&lt;/p>
+&lt;p>但到这里还是有明显的问题：壳和被加载的程序还是泾渭分明。&lt;/p></description></item><item><title>加壳原理04 - zlib压缩壳案例</title><link>https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/</link><pubDate>Wed, 20 Oct 2021 16:07:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。&lt;/p>
 &lt;h2 id="0x01-zlib-解压">0x01 zlib 解压&lt;/h2>
 &lt;h3 id="11-概述">1.1 概述&lt;/h3>
