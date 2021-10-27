@@ -1,4 +1,451 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 21 Oct 2021 21:17:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>加壳原理05：利用图片隐藏</title><link>https://nnnewb.github.io/blog/p/learning-packer-05/</link><pubDate>Thu, 21 Oct 2021 21:17:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-05/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 27 Oct 2021 19:50:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>加壳原理06：反调试技术入门</title><link>https://nnnewb.github.io/blog/p/learning-packer-06/</link><pubDate>Wed, 27 Oct 2021 19:50:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-06/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>反调试技术，往大了说是用尽一切手段防止运行时对程序的非法篡改和窥视，往小了说就是防调试器。反正反调试这件事和各种技术都能搭点边，什么HOOK啦DLL注入啦。真要给涉及到的各方面都说得头头是道，那我这个菜鸡就不叫菜鸡了。&lt;/p>
+&lt;p>反正涉及的各种技术细节吧，将来都会慢慢学到的。也不急于一时。本篇关注的重点还是在导，引入，了解个大概。看看有什么反调试思路，对付这些反调试技术又有什么 bypass 的手段。&lt;/p>
+&lt;p>说这么多，其实还是找了篇写得不错的外文文章，抄了然后调试了下案例。&lt;/p>
+&lt;h2 id="0x01-反调试思路">0x01 反调试思路&lt;/h2>
+&lt;p>首先概述一下本篇主要的反调试思路。&lt;/p>
+&lt;h3 id="11-系统api或数据结构">1.1 系统API或数据结构&lt;/h3>
+&lt;p>操作系统提供了一些调试标志位，调试器启动的进程会有标识。调试器也可能会为了提供更好的调试体验，修改一些参数，让我们有迹可循。&lt;/p>
+&lt;ol>
+&lt;li>&lt;code>PEB-&amp;gt;BeingDebugged&lt;/code>和&lt;code>IsDebuggerPresent&lt;/code>&lt;/li>
+&lt;li>&lt;code>PEB-&amp;gt;NtGlobalFlag&lt;/code>&lt;/li>
+&lt;li>&lt;code>PEB-&amp;gt;HEAP-&amp;gt;Flags&lt;/code>和&lt;code>PEB-&amp;gt;HEAP-&amp;gt;ForceFlags&lt;/code>&lt;/li>
+&lt;li>&lt;code>CheckRemoteDebuggerPresent&lt;/code>&lt;/li>
+&lt;li>&lt;code>NtQueryInformationProcess&lt;/code>
+&lt;ol>
+&lt;li>&lt;code>ProcessDebugPort&lt;/code>&lt;/li>
+&lt;li>&lt;code>ProcessDebugObjectHandle&lt;/code>&lt;/li>
+&lt;li>&lt;code>ProcessDebugFlags&lt;/code>&lt;/li>
+&lt;li>&lt;code>ProcessBasicInformation&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;li>&lt;code>NtSetInformationThread&lt;/code>和&lt;code>NtCreateThreadEx&lt;/code>
+&lt;ol>
+&lt;li>利用 &lt;code>HideFromDebugger&lt;/code> 标志位来对调试器隐藏自身。&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;/ol>
+&lt;h3 id="12-sehveh">1.2 SEH、VEH&lt;/h3>
+&lt;p>总的来说，利用 SEH 和 VEH 机制，尝试抛出一些会被调试器处理的中断或异常，同时自己挂一个处理函数，如果异常被调试器捕获了，那自己挂的异常处理函数就不会被调用，借此判断是否有调试器正在调试程序。&lt;/p>
+&lt;ol>
+&lt;li>&lt;code>TF&lt;/code>标志位和&lt;code>INT 1&lt;/code>中断&lt;/li>
+&lt;li>&lt;code>INT 3&lt;/code> 中断和 SEH 处理函数，&lt;code>__try __except&lt;/code> 或 MinGW 的 &lt;code>__try1 __except1&lt;/code>，顺便一提我的SEH实验没成功。但是 VEH 基本没问题。&lt;/li>
+&lt;li>&lt;code>DBG_PRINTEXCEPTION_WIDE_C&lt;/code>和&lt;code>DBG_PRINTEXCEPTION_W&lt;/code>，Windows 10 &lt;code>OutputDebugString&lt;/code> 利用了这个 Exception 来抛出调试字符串。&lt;/li>
+&lt;li>&lt;code>EXCEPTION_INVALID_HANDLE&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;h3 id="13-调试寄存器">1.3 调试寄存器&lt;/h3>
+&lt;p>&lt;code>GetThreadContext&lt;/code> 获取当前上下文，判断 &lt;code>Dr0&lt;/code>-&lt;code>Dr3&lt;/code>寄存器的值。&lt;/p>
+&lt;h3 id="14-完整性校验">1.4 完整性校验&lt;/h3>
+&lt;p>原理是调试器通过临时修改断点处指令为中断来取得程序控制权，可以用CRC校验，或者更简单点，直接逐字节求和，判断代码是否被篡改。&lt;/p>
+&lt;h2 id="0x02-系统api方式">0x02 系统API方式&lt;/h2>
+&lt;h3 id="21-isdebuggerpresent">2.1 IsDebuggerPresent&lt;/h3>
+&lt;p>首先出场的就是 &lt;code>IsDebuggerPresent&lt;/code> 这个 API 了，文档&lt;a class="link" href="https://docs.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-isdebuggerpresent" target="_blank" rel="noopener"
+>可以在这里&lt;/a>找到。简要概述一下这个接口，微软的描述是此函数允许应用程序确定自己是否正在被调试，并依此改变行为。例如通过&lt;code>OutputDebugString&lt;/code>函数提供更多调试信息。&lt;/p>
+&lt;p>微软的本意应该是一个调试开关式的东西，正经写过工作代码应该知道代码里加个调试开关方便在出问题的时候拿详细日志是很有用很方便的，同时也能在不需要调试的时候也不会让程序不会损失太多性能。比起编译期的调试开关&lt;code>_DEBUG&lt;/code>宏之类的会更灵活一些。&lt;/p>
+&lt;p>扯远了。总之，这个函数没参数，返回&lt;code>BOOL&lt;/code>，案例很好写。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;debugapi.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_isDebuggerPresent&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">IsDebuggerPresent&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">TRUE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;IsDebuggerPresent&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>就是这样。&lt;/p>
+&lt;p>&lt;code>IsDebuggerPresent&lt;/code> 这个 API 的实现方式是从 PEB &lt;em>Process Environment Block&lt;/em> 读取 &lt;code>BeingDebugged&lt;/code> 字段。随便什么调试器跳转过去就能看到这样的实现代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">mov&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="no">fs&lt;/span>&lt;span class="p">:[&lt;/span>&lt;span class="mi">0x30&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nf">movzx&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">byte&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="no">ds&lt;/span>&lt;span class="p">:[&lt;/span>&lt;span class="no">eax&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0x2&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nf">ret&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>fs:[0]&lt;/code>是 TEB &lt;em>Thread Environment Block&lt;/em> 结构的地址，其中&lt;code>fs:[0x30]&lt;/code> 这个偏移是 PEB 指针，第一行的意思是将 PEB 指针赋值给 eax 寄存器。&lt;/p>
+&lt;p>第二行就是从 PEB 结构的 0x2 偏移处，也就是 &lt;code>BeingDebugged&lt;/code> 字段，取 1 字节，赋值到 eax 。&lt;/p>
+&lt;p>第三行就是返回了，没有参数和局部变量所以也没平栈，无论 &lt;code>__cdecl&lt;/code> 还是 &lt;code>__stdcall&lt;/code> 都是在 &lt;code>eax&lt;/code> 寄存器保存返回值。&lt;/p>
+&lt;p>从&lt;a class="link" href="https://en.wikipedia.org/wiki/Win32_Thread_Information_Block" target="_blank" rel="noopener"
+>wiki&lt;/a> 和 &lt;a class="link" href="http://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FNT%20Objects%2FThread%2FTEB.html" target="_blank" rel="noopener"
+>NTAPI UNDOCUMENTED FUNCTIONS&lt;/a> 查询到的文档都能看到 PEB 结构的内存布局。&lt;/p>
+&lt;p>想要 bypass 这种检查就非常容易，修改 PEB 结构中的 &lt;code>BeingDebugged&lt;/code> 字段值为 0 就完事了。&lt;/p>
+&lt;h3 id="22-ntglobalflag">2.2 NtGlobalFlag&lt;/h3>
+&lt;p>&lt;code>NtGlobalFlag&lt;/code> 也是一个 PEB 的字段，但是在微软官方的 PEB 结构文档和定义里没有给出这个字段（在 Reserved 里）。查阅上面提到的文档或者用 WinDbg 的 &lt;code>dt&lt;/code> 命令都可以查到。&lt;/p>
+&lt;p>当这个字段包含特定标志位（&lt;code>0x20 | 0x40&lt;/code>，分别是 &lt;strong>FLG_HEAP_ENABLE_TAIL_CHECK&lt;/strong> 和 &lt;strong>FLG_HEAP_ENABLE_FREE_CHECK&lt;/strong>）的时候提示有调试器存在（&lt;a class="link" href="https://www.geoffchappell.com/studies/windows/win32/ntdll/api/rtl/regutil/getntglobalflags.htm" target="_blank" rel="noopener"
+>Geoff Chappell, Software Analyst，RtlGetNtGlobalFlags()&lt;/a>，没微软的文档）。&lt;/p>
+&lt;p>这里给出 WinDbg 查到的字段偏移。微软商店里的 WinDbg Preview 也是一样的。关于 &lt;code>dt&lt;/code> 命令可以用 &lt;code>.hh dt&lt;/code> 来查阅命令的文档，&lt;code>?&lt;/code> 来查阅可用命令，或者直接点上面的帮助。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plain" data-lang="plain">0:000&amp;gt; dt _peb NtGlobalFlag @$peb
+ntdll!_PEB
++0x068 NtGlobalFlag : 0x70
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以看到偏移是 &lt;code>0x68&lt;/code>，WinDbg 中标志位的值是 &lt;code>x70&lt;/code>，符合上面所说的 &lt;code>0x20|0x40&lt;/code>。接下来尝试实现一下。首先因为我用的 MinGW 所以需要写两句汇编去取PEB指针。（用的 nasm，gcc 的内联汇编语法太怪了）&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">section&lt;/span> &lt;span class="no">.text&lt;/span>
+&lt;span class="nf">global&lt;/span> &lt;span class="no">_GetPEB&lt;/span>
+&lt;span class="nl">_GetPEB:&lt;/span>
+&lt;span class="nf">mov&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,[&lt;/span>&lt;span class="no">fs&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="mi">30&lt;/span>&lt;span class="no">h&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nf">retn&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>再具体实现。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_RtlGetNtGlobalFlags&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// 两种方式，直接读内存或者用undocumented接口
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">PPEB&lt;/span> &lt;span class="n">peb&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">GetPEB&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">PULONG&lt;/span>&lt;span class="p">)((&lt;/span>&lt;span class="n">PBYTE&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">peb&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mh">0x68&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="mh">0x20&lt;/span> &lt;span class="o">|&lt;/span> &lt;span class="mh">0x40&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;PEB-&amp;gt;NtGlobalFlag&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 或者...
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">HMODULE&lt;/span> &lt;span class="n">ntdll&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">LoadLibraryA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;ntdll.dll&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">FARPROC&lt;/span> &lt;span class="n">proc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">ntdll&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;RtlGetNtGlobalFlags&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">typedef&lt;/span> &lt;span class="n">ULONG&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">RtlGetNtGlobalFlags_t&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(((&lt;/span>&lt;span class="n">RtlGetNtGlobalFlags_t&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">proc&lt;/span>&lt;span class="p">)()&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="mh">0x20&lt;/span> &lt;span class="o">|&lt;/span> &lt;span class="mh">0x40&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;RtlGetNtGlobalFlags&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>差别不大，可以根据需要选择其一。编译后不使用调试器打开则不会触发反调试代码。&lt;/p>
+&lt;p>bypass 这个检查也很容易，因为标志位都在被调试进程的地址空间里，直接改掉就行了。&lt;/p>
+&lt;h3 id="23-heap-flags">2.3 HEAP-&amp;gt;Flags&lt;/h3>
+&lt;p>PEB 结构中还有个指向当前堆信息结构的指针，&lt;code>ProcessHeap&lt;/code>。可以用 WinDbg 的 &lt;code>dt&lt;/code> 命令查看。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plain" data-lang="plain">0:000&amp;gt; dt _peb processheap @$peb
+ntdll!_PEB
++0x018 ProcessHeap : 0x012d0000 Void
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>而这个 heap 结构的也同样可以用 &lt;code>dt&lt;/code> 命令查看。我们关注的是 heap 结构中的 &lt;code>Flags&lt;/code> 和 &lt;code>ForceFlags&lt;/code> 字段。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plain" data-lang="plain">0:000&amp;gt; dt _heap flags 0x012d0000
+ntdll!_HEAP
++0x040 Flags : 0x40000062
+0:000&amp;gt; dt _heap forceflags 0x012d0000
+ntdll!_HEAP
++0x044 ForceFlags : 0x40000060
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>当 Flags 没有 &lt;code>HEAP_GROWABLE&lt;/code> 标志位，或 &lt;code>ForceFlags&lt;/code> 不为零的时候，则可能存在调试器。同样的， 没有官方的文档，只能说逆向出这些东西的大佬真是太强啦。关于 Flags 谷歌了一下，发现在 &lt;a class="link" href="https://ctf-wiki.org/reverse/windows/anti-debug/heap-flags/#flags" target="_blank" rel="noopener"
+>CTF Wiki&lt;/a> 有比较详细的说明。我搬一部分过来。&lt;/p>
+&lt;blockquote>
+&lt;p>在所有版本的 Windows 中, &lt;code>Flags&lt;/code>字段的值正常情况都设为&lt;code>HEAP_GROWABLE(2)&lt;/code>, 而&lt;code>ForceFlags&lt;/code>字段正常情况都设为&lt;code>0&lt;/code>. 然而对于一个 32 位进程 (64 位程序不会有此困扰), 这两个默认值, 都取决于它的宿主进程(host process) 的 &lt;a class="link" href="https://msdn.microsoft.com/en-us/library/ms933120.aspx" target="_blank" rel="noopener"
+>&lt;code>subsystem&lt;/code>&lt;/a>版本 (这里不是指所说的比如 win10 的 linux 子系统). 只有当&lt;code>subsystem&lt;/code>在&lt;code>3.51&lt;/code>及更高的版本, 字段的默认值才如前所述. 如果是在&lt;code>3.10-3.50&lt;/code>版本之间, 则两个字段的&lt;code>HEAP_CREATE_ALIGN_16 (0x10000)&lt;/code>都会被设置. 如果版本低于&lt;code>3.10&lt;/code>, 那么这个程序文件就根本不会被运行.&lt;/p>
+&lt;p>如果某操作将&lt;code>Flags&lt;/code>和&lt;code>ForgeFlags&lt;/code>字段的值分别设为&lt;code>2&lt;/code>和&lt;code>0&lt;/code>, 但是却未对&lt;code>subsystem&lt;/code>版本进行检查, 那么就可以表明该动作是为了隐藏调试器而进行的.&lt;/p>
+&lt;/blockquote>
+&lt;p>接下来给出案例代码：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_PEB_HeapFlags&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">PPEB&lt;/span> &lt;span class="n">peb&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">GetPEB&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">PVOID&lt;/span> &lt;span class="n">heap&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">PDWORD&lt;/span>&lt;span class="p">)((&lt;/span>&lt;span class="n">PBYTE&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">peb&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mh">0x18&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">PDWORD&lt;/span> &lt;span class="n">heapFlags&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">PDWORD&lt;/span>&lt;span class="p">)((&lt;/span>&lt;span class="n">PBYTE&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">heap&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mh">0x40&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">PDWORD&lt;/span> &lt;span class="n">forceFlags&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">PDWORD&lt;/span>&lt;span class="p">)((&lt;/span>&lt;span class="n">PBYTE&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">heap&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mh">0x44&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">heapFlags&lt;/span> &lt;span class="o">&amp;amp;&lt;/span> &lt;span class="o">~&lt;/span>&lt;span class="n">HEAP_GROWABLE&lt;/span> &lt;span class="o">||&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">forceFlags&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;PEB-&amp;gt;_HEAP-&amp;gt;HeapFlags,ForceFlags&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>代码本身很简单，不多解释。在调试器启动时会触发反调试代码，正常运行则不会。这个检查比较粗陋，可以根据上面 CTF Wiki 摘录内容的说法，根据 PE 头中的 subsystem 来二次判断，来发现尝试 bypass 反调试代码的行为。&lt;/p>
+&lt;p>至于如何 bypass 这个反调试方案，按上面给出的原理来反向应用就好了。&lt;/p>
+&lt;h3 id="24-checkremotedebuggerpresent">2.4 CheckRemoteDebuggerPresent&lt;/h3>
+&lt;p>&lt;code>CheckRemoteDebuggerPresent&lt;/code> 的&lt;a class="link" href="https://docs.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-checkremotedebuggerpresent" target="_blank" rel="noopener"
+>微软文档&lt;/a>中这么描述：确定指定进程是否正在被调试。接受两个参数，一个是进程的 HANDLE，一个是 PBOOL。&lt;/p>
+&lt;p>应用方式可以有很多，可以在进程内自己检查自己有没有被调试；或者开新进程去监视原进程是否正在被调试；甚至注入正常进程，隐藏好自己，再去监视原进程是否被调试；甚至干脆潜伏下来开个后门，亲自人肉监视屏幕上有没有调试器&amp;hellip;&amp;hellip;越说越离谱了。&lt;/p>
+&lt;p>总之先给了案例。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_CheckRemoteDebuggerPresent&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">BOOL&lt;/span> &lt;span class="n">isRemoteDebuggerPresent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">FALSE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">CheckRemoteDebuggerPresent&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">GetCurrentProcess&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">isRemoteDebuggerPresent&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">isRemoteDebuggerPresent&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">TRUE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;CheckRemoteDebuggerPresent&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>代码很简单不多解释，不过从这里可以引出新的内容：&lt;code>CheckRemoteDebuggerPresent&lt;/code> 的实现方式是调用 &lt;code>NtQueryInformationProcess&lt;/code> ，一个没有文档的内核接口。&lt;/p>
+&lt;h3 id="25-ntqueryinformationprocess">2.5 NtQueryInformationProcess&lt;/h3>
+&lt;p>&lt;code>NtQueryInformationProcess&lt;/code> 同样没文档，这里给出比较清晰的 &lt;a class="link" href="https://ctf-wiki.org/reverse/windows/anti-debug/ntqueryinformationprocess/" target="_blank" rel="noopener"
+>CTF Wiki&lt;/a> 的说明链接。&lt;code>NtQueryInformationProcess&lt;/code> 是一个查询信息的接口，输入参数包括查询的信息类型、进程HANDLE、结果指针等。用法同样是简单的。&lt;/p>
+&lt;p>值得关注的查询信息类型包括：&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>ProcessDebugPort&lt;/code>&lt;/li>
+&lt;li>&lt;code>ProcessBasicInformation&lt;/code>&lt;/li>
+&lt;li>&lt;code>ProcessDebugObjectHandle&lt;/code>&lt;/li>
+&lt;li>&lt;code>ProcessDebugFlags&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>对于 &lt;code>ProcessDebugPort&lt;/code>，查询结果是一个 DWORD，当存在调试器时查询结果会是 &lt;code>0xffffffff&lt;/code>。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_NtQueryInformationProcess&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">HMODULE&lt;/span> &lt;span class="n">ntdll&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">LoadLibrary&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">TEXT&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;ntdll.dll&amp;#34;&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">ntdll&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">FARPROC&lt;/span> &lt;span class="n">ntQueryInfoProc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">ntdll&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;NtQueryInformationProcess&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">ntQueryInfoProc&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">DWORD&lt;/span> &lt;span class="n">isDebuggerPresent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">FALSE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">NTSTATUS&lt;/span> &lt;span class="n">status&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ntQueryInfoProc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">GetCurrentProcess&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="n">ProcessDebugPort&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">isDebuggerPresent&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">DWORD&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">status&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="n">isDebuggerPresent&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;NtQueryInformationProcess&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>对于 &lt;code>ProcessBasicInformation&lt;/code>，查询结果是 &lt;code>PROCESS_BASIC_INFORMATION&lt;/code> 结构，可以根据这个结构来进一步判断父进程是否是已知的调试器。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#ifdef UNICODE
+&lt;/span>&lt;span class="cp"># define MY_STRCMP wcscmp
+&lt;/span>&lt;span class="cp">#else
+&lt;/span>&lt;span class="cp"># define MY_STRCMP strcmp
+&lt;/span>&lt;span class="cp">#endif
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_NtQueryInformationProcess_BasicInformation&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">HMODULE&lt;/span> &lt;span class="n">ntdll&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">LoadLibrary&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">TEXT&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;ntdll.dll&amp;#34;&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">ntdll&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">FARPROC&lt;/span> &lt;span class="n">ntQueryInfoProc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">ntdll&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;NtQueryInformationProcess&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">ntQueryInfoProc&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">PROCESS_BASIC_INFORMATION&lt;/span> &lt;span class="n">info&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">NTSTATUS&lt;/span> &lt;span class="n">status&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ntQueryInfoProc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">GetCurrentProcess&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="n">ProcessBasicInformation&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">info&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">info&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">status&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">HANDLE&lt;/span> &lt;span class="n">hProcSnap&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">CreateToolhelp32Snapshot&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">TH32CS_SNAPPROCESS&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">hProcSnap&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">PROCESSENTRY32&lt;/span> &lt;span class="n">pe32&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">pe32&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">dwSize&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">PROCESSENTRY32&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">!&lt;/span>&lt;span class="n">Process32First&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">hProcSnap&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">pe32&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">do&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">pe32&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">th32ProcessID&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">info&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">InheritedFromUniqueProcessId&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">MY_STRCMP&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">TEXT&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;devenv.exe&amp;#34;&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">pe32&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">szExeFile&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">||&lt;/span> &lt;span class="n">MY_STRCMP&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">TEXT&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;x32dbg.exe&amp;#34;&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">pe32&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">szExeFile&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">||&lt;/span>
+&lt;span class="n">MY_STRCMP&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">TEXT&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;x64dbg.exe&amp;#34;&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">pe32&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">szExeFile&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">||&lt;/span> &lt;span class="n">MY_STRCMP&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">TEXT&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;ollydbg.exe&amp;#34;&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">pe32&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">szExeFile&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;BasicInformation&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">CloseHandle&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">hProcSnap&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">while&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">Process32Next&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">hProcSnap&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">pe32&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>ProcessObjectDebugHandle&lt;/code> 和 &lt;code>ProcessDebugFlags&lt;/code> 就不一一给案例了。检查方式也很简单，就是判断非零则存在调试器。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="n">ntQueryInfoProc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">GetCurrentProcess&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="n">ProcessObjectDebugHandle&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">handle&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">HANDLE&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">ntQueryInfoProc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">GetCurrentProcess&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="n">ProcessDebugFlags&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">flags&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">ULONG&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>因为 &lt;code>NtQueryInformationProcess&lt;/code> 是从内核查询消息，所以 bypass 会比较难——就是说需要 HOOK 。但我还不会 HOOK ，所以略过。&lt;/p>
+&lt;h3 id="26-ntsetinformationthread">2.6 NtSetInformationThread&lt;/h3>
+&lt;p>又是一个没有文档的API。&lt;code>NtSetInformationThread&lt;/code> 等同于 &lt;code>ZwSetInformationThread&lt;/code>，通过设置 &lt;code>ThreadHideFromDebugger&lt;/code> 标志位可以禁止线程产生调试事件。如果正处于调试状态执行了这个 API 则会导致程序立即退出。&lt;/p>
+&lt;p>案例如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="k">typedef&lt;/span> &lt;span class="nf">NTSTATUS&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">NTAPI&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">pfnNtSetInformationThread&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">_In_&lt;/span> &lt;span class="n">HANDLE&lt;/span> &lt;span class="n">ThreadHandle&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">_In_&lt;/span> &lt;span class="n">ULONG&lt;/span> &lt;span class="n">ThreadInformationClass&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="n">_In_&lt;/span> &lt;span class="n">PVOID&lt;/span> &lt;span class="n">ThreadInformation&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">_In_&lt;/span> &lt;span class="n">ULONG&lt;/span> &lt;span class="n">ThreadInformationLength&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_HideFromDebugger&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">HMODULE&lt;/span> &lt;span class="n">ntdll&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">LoadLibrary&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">TEXT&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;ntdll.dll&amp;#34;&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">ntdll&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">pfnNtSetInformationThread&lt;/span> &lt;span class="n">ntSetInfoThread&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">pfnNtSetInformationThread&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">ntdll&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;NtSetInformationThread&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">ntSetInfoThread&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">abort&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">ntSetInfoThread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">GetCurrentThread&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="n">ThreadHideFromDebugger&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// ... NtCreateThreadEx THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>同样因为这一方式是走内核接口，可以通过 HOOK 技术把相应的标志位拦截掉就行。&lt;/p>
+&lt;h3 id="27-setgetlasterror">2.7 Set/GetLastError&lt;/h3>
+&lt;p>对&lt;code>SetLastError&lt;/code>和&lt;code>GetLastError&lt;/code>的利用方式是结合 &lt;code>OutputDebugString&lt;/code> 失败时会修改 &lt;code>GetLastError()&lt;/code> 的错误码的行为，判断是否有调试器存在。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="c1">// TODO: somehow not work on windows 10, need more test.
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_SetLastError&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">SetLastError&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mh">0x1234&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">OutputDebugString&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">TEXT&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Hello Debugger!&amp;#34;&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">GetLastError&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mh">0x1234&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;Set/Get LastError&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>比较奇怪的是在我这无论在不在调试环境跑都会触发反调试，环境 Windows 10 + MinGW 。&lt;/p>
+&lt;h2 id="0x03-异常处理方式">0x03 异常处理方式&lt;/h2>
+&lt;p>异常处理方式的反调试，是通过触发会被调试器处理的中断或者异常，如果调试器拦截并处理了中断或异常，就会导致程序里注册的异常处理函数未被执行，进而发现正在被调试。&lt;/p>
+&lt;p>这个思路也可以用来构造特殊的控制流，比如把关键逻辑放在中断处理函数里，然后抛出 INT 1 中断（单步执行），如果被调试器命中，则我们构造的控制流就会被破坏，程序就会跑飞。&lt;/p>
+&lt;h3 id="31-int-1">3.1 INT 1&lt;/h3>
+&lt;p>INT 1 中断的含义是 SINGLE STEP，在调试器上的表现就是会让调试器断在中断的位置（反正在x32dbg上的表现是这样）。INT 1中断后，如果没有调试器，那么控制权会转交给调试器，SEH 不会执行，反之则 SEH 执行，用户程序保留控制权。&lt;/p>
+&lt;p>实际上发现 x32dbg 即使断到了也会把控制权转给 SEH，所以对关于 SEH 反调试是否可行、如何实现持疑问。但是经过一番搜索和研究发现 VEH 机制可以实现上述逻辑。案例代码如下。&lt;/p>
+&lt;p>用来抛出 INT 1 中断的汇编代码&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">section&lt;/span> &lt;span class="no">.text&lt;/span>
+&lt;span class="nf">global&lt;/span> &lt;span class="no">_RaiseInt1&lt;/span>
+&lt;span class="nl">_RaiseInt1:&lt;/span>
+&lt;span class="nf">pushfd&lt;/span>
+&lt;span class="nf">or&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">esp&lt;/span>&lt;span class="p">],&lt;/span>&lt;span class="no">dword&lt;/span> &lt;span class="mi">0x100&lt;/span>
+&lt;span class="nf">popfd&lt;/span>
+&lt;span class="nf">retn&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>检测调试器的函数如下&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="n">BOOL&lt;/span> &lt;span class="k">volatile&lt;/span> &lt;span class="n">VEH_INT1_isDebuggerPresent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">FALSE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">LONG&lt;/span> &lt;span class="n">CALLBACK&lt;/span> &lt;span class="nf">VEH_INT1_UnhandledExceptionFilter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">_In_&lt;/span> &lt;span class="n">EXCEPTION_POINTERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">lpEP&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">switch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">lpEP&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">ExceptionRecord&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">ExceptionCode&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nl">EXCEPTION_SINGLE_STEP&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="c1">// handle single step exception if not handled by debugger
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">VEH_INT1_isDebuggerPresent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">FALSE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">EXCEPTION_CONTINUE_EXECUTION&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">EXCEPTION_CONTINUE_SEARCH&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_VEH_INT1&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">VEH_INT1_isDebuggerPresent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">TRUE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-setunhandledexceptionfilter
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">SetUnhandledExceptionFilter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">VEH_INT1_UnhandledExceptionFilter&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// https://docs.microsoft.com/zh-cn/windows/win32/api/errhandlingapi/nf-errhandlingapi-addvectoredexceptionhandler?redirectedfrom=MSDN
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// https://docs.microsoft.com/en-us/windows/win32/api/winnt/nc-winnt-pvectored_exception_handler
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">RaiseInt1&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">VEH_INT1_isDebuggerPresent&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">TRUE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;VEH INT1&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>利用 &lt;code>SetUnhandledExceptionFilter&lt;/code> 实现，文档链接在注释里给出了。也可以再罗嗦一点，结合 &lt;code>AddVectoredExceptionHandler&lt;/code> 实现。但逻辑还是那样。&lt;/p>
+&lt;p>INT 1中断方式检测调试器后，可以恢复到正常控制流执行。但是 INT 3 会有所区别，INT 3 中断时 EIP 会停留在中断指令处，中断处理中需要修改 EIP 的值恢复控制流。&lt;/p>
+&lt;p>关于 SEH 中断反调试我留个链接：&lt;a class="link" href="https://bbs.pediy.com/thread-267324.htm" target="_blank" rel="noopener"
+>看雪论坛：基于SEH的静态反调试实例分析&lt;/a>，有空再分析看看。&lt;/p>
+&lt;h3 id="32-int-3">3.2 INT 3&lt;/h3>
+&lt;p>INT 3 中断就是 &lt;code>0xcc&lt;/code> 一字节中断指令，顺便一提啊，因为VC会用 0xcc 填充未初始化的栈，用C写过代码多少都见过的 &lt;em>烫烫烫&lt;/em> 错误就是来自于此。&lt;/p>
+&lt;p>参考 &lt;a class="link" href="https://ctf-wiki.org/reverse/windows/anti-debug/int-3/" target="_blank" rel="noopener"
+>CTF Wiki - Interrupt 3&lt;/a>。&lt;/p>
+&lt;blockquote>
+&lt;p>当&lt;code>EXCEPTION_BREAKPOINT(0x80000003)&lt;/code>异常触发时, Windows 会认定这是由单字节的 &amp;ldquo;&lt;code>CC&lt;/code>&amp;rdquo; 操作码 (也即&lt;code>Int 3&lt;/code>指令) 造成的. Windows 递减异常地址以指向所认定的 &amp;ldquo;&lt;code>CC&lt;/code>&amp;rdquo; 操作码, 随后传递该异常给异常处理句柄. 但是 EIP 寄存器的值并不会发生变化.&lt;/p>
+&lt;p>因此, 如果使用了 &lt;code>CD 03&lt;/code>（这是 &lt;code>Int 03&lt;/code> 的机器码表示），那么当异常处理句柄接受控制时, 异常地址是指向 &lt;code>03&lt;/code> 的位置.&lt;/p>
+&lt;/blockquote>
+&lt;p>这里有一个调试中发现的怪异问题：调试器内运行时会平栈错误，esp 会越过原本的返回地址，导致执行到 ret 时返回地址是0，产生异常。目前不确定是不是因为上面说的EIP没有+1导致的问题。&lt;/p>
+&lt;p>案例代码如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">section&lt;/span> &lt;span class="no">.text&lt;/span>
+&lt;span class="nf">global&lt;/span> &lt;span class="no">_RaiseInt3&lt;/span>
+&lt;span class="nl">_RaiseInt3:&lt;/span>
+&lt;span class="nf">int&lt;/span> &lt;span class="mi">3&lt;/span>
+&lt;span class="nf">retn&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="n">BOOL&lt;/span> &lt;span class="k">volatile&lt;/span> &lt;span class="n">VEH_INT3_isDebuggerPresent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">FALSE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">LONG&lt;/span> &lt;span class="n">CALLBACK&lt;/span> &lt;span class="nf">VEH_INT3_UnhandledExceptionFilter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">_In_&lt;/span> &lt;span class="n">EXCEPTION_POINTERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">lpEP&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">switch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">lpEP&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">ExceptionRecord&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">ExceptionCode&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nl">EXCEPTION_BREAKPOINT&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="c1">// handle single step exception if not handled by debugger
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">VEH_INT3_isDebuggerPresent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">FALSE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">lpEP&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">ContextRecord&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">Eip&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">EXCEPTION_CONTINUE_EXECUTION&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">EXCEPTION_CONTINUE_SEARCH&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_VEH_INT3&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">VEH_INT3_isDebuggerPresent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">TRUE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">SetUnhandledExceptionFilter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">VEH_INT3_UnhandledExceptionFilter&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">RaiseInt3&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">VEH_INT3_isDebuggerPresent&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">TRUE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;SEH INT3&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以看到和 INT1 的案例别无二致。这里再附带上汇编结果，大佬也可以看看上面说的平栈问题是怎么回事。编译好的案例会附在最末。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">sub&lt;/span> &lt;span class="no">esp&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0x1C&lt;/span>
+&lt;span class="nf">mov&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="no">ds&lt;/span>&lt;span class="p">:[&lt;/span>&lt;span class="mi">0x5B4000&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="mi">0x1&lt;/span>
+&lt;span class="nf">mov&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="no">ss&lt;/span>&lt;span class="p">:[&lt;/span>&lt;span class="no">esp&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="err">&amp;lt;&lt;/span>&lt;span class="no">packed.sub_5B1390&lt;/span>&lt;span class="err">&amp;gt;&lt;/span>
+&lt;span class="nf">call&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="no">ds&lt;/span>&lt;span class="p">:[&lt;/span>&lt;span class="err">&amp;lt;&amp;amp;&lt;/span>&lt;span class="no">_SetUnhandledExceptionFilterStub@4&lt;/span>&lt;span class="err">&amp;gt;&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nf">sub&lt;/span> &lt;span class="no">esp&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0x4&lt;/span>
+&lt;span class="nf">call&lt;/span> &lt;span class="no">packed.5B1AA1&lt;/span> &lt;span class="c">; int3, retn
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="no">ds&lt;/span>&lt;span class="p">:[&lt;/span>&lt;span class="mi">0x5B4000&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nf">cmp&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0x1&lt;/span>
+&lt;span class="nf">je&lt;/span> &lt;span class="no">packed.5B1650&lt;/span>
+&lt;span class="nf">add&lt;/span> &lt;span class="no">esp&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0x1C&lt;/span>
+&lt;span class="nf">ret&lt;/span>
+&lt;span class="no">mov&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="no">ss&lt;/span>&lt;span class="p">:[&lt;/span>&lt;span class="no">esp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0xC&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="mi">0x0&lt;/span>
+&lt;span class="nf">mov&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="no">ss&lt;/span>&lt;span class="p">:[&lt;/span>&lt;span class="no">esp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0x8&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="no">packed.5B20A1&lt;/span>
+&lt;span class="nf">mov&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="no">ss&lt;/span>&lt;span class="p">:[&lt;/span>&lt;span class="no">esp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0x4&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="no">packed.5B202A&lt;/span>
+&lt;span class="nf">mov&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="no">ss&lt;/span>&lt;span class="p">:[&lt;/span>&lt;span class="no">esp&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="mi">0x0&lt;/span>
+&lt;span class="nf">call&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="no">ds&lt;/span>&lt;span class="p">:[&lt;/span>&lt;span class="err">&amp;lt;&amp;amp;&lt;/span>&lt;span class="no">MessageBoxA&lt;/span>&lt;span class="err">&amp;gt;&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nf">sub&lt;/span> &lt;span class="no">esp&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0x10&lt;/span>
+&lt;span class="nf">add&lt;/span> &lt;span class="no">esp&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0x1C&lt;/span>
+&lt;span class="nf">ret&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="33-debugoutputstring">3.3 DebugOutputString&lt;/h3>
+&lt;p>利用方式和前面一样。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="c1">// TODO: NOT WORK
+&lt;/span>&lt;span class="c1">&lt;/span>
+&lt;span class="n">BOOL&lt;/span> &lt;span class="n">VEH_OutputDebugStringException_isDebugPresent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">FALSE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">LONG&lt;/span> &lt;span class="n">CALLBACK&lt;/span> &lt;span class="nf">VEH_OutputDebugStringException_UnhandledExceptionFilter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">_In_&lt;/span> &lt;span class="n">EXCEPTION_POINTERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">lpEP&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">switch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">lpEP&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">ExceptionRecord&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">ExceptionCode&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nl">EXCEPTION_BREAKPOINT&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="c1">// handle single step exception if not handled by debugger
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">VEH_INT3_isDebuggerPresent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">FALSE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">EXCEPTION_CONTINUE_EXECUTION&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">EXCEPTION_CONTINUE_SEARCH&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_VEH_OutputDebugException&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">ULONG_PTR&lt;/span> &lt;span class="n">args&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">};&lt;/span>
+&lt;span class="n">args&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">ULONG_PTR&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">wcslen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">L&lt;/span>&lt;span class="s">&amp;#34;debug&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">args&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">ULONG_PTR&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="sa">L&lt;/span>&lt;span class="s">&amp;#34;debug&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">AddVectoredExceptionHandler&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">VEH_OutputDebugStringException_UnhandledExceptionFilter&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">VEH_OutputDebugStringException_isDebugPresent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">TRUE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">RaiseException&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">DBG_PRINTEXCEPTION_WIDE_C&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">args&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">RemoveVectoredExceptionHandler&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">VEH_OutputDebugStringException_UnhandledExceptionFilter&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">VEH_OutputDebugStringException_isDebugPresent&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">TRUE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;OutputDebugString&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>实测发现 x32dbg 并不会处理 &lt;code>DBG_PRINTEXCEPTION_WIDE_C&lt;/code> ，所以这个反调试对 x32dbg 没用。&lt;/p>
+&lt;h3 id="34-invalid_handle">3.4 INVALID_HANDLE&lt;/h3>
+&lt;p>根据微软的文档 &lt;a class="link" href="https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle" target="_blank" rel="noopener"
+>CloseHandle function (handleapi.h)&lt;/a> 说明：&lt;/p>
+&lt;blockquote>
+&lt;p>If the application is running under a debugger, the function will throw an exception if it receives either a handle value that is not valid or a pseudo-handle value. This can happen if you close a handle twice, or if you call &lt;strong>CloseHandle&lt;/strong> on a handle returned by the &lt;a class="link" href="https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-findfirstfilea" target="_blank" rel="noopener"
+>FindFirstFile&lt;/a> function instead of calling the &lt;a class="link" href="https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-findclose" target="_blank" rel="noopener"
+>FindClose&lt;/a> function.&lt;/p>
+&lt;/blockquote>
+&lt;p>可以得知，在调试器启动时，&lt;code>CloseHandle&lt;/code> 关闭无效的 &lt;code>HANDLE&lt;/code> 时会出现 &lt;code>EXCEPTION_INVALID_HANDLE&lt;/code> 异常。所以只要故意关闭一个无效的 &lt;code>HANDLE&lt;/code>，抓住这个异常，就能确定调试器存在。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="n">LONG&lt;/span> &lt;span class="n">CALLBACK&lt;/span> &lt;span class="nf">VEH_INVALID_HANDLE_UnhandledExceptionFilter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">_In_&lt;/span> &lt;span class="n">EXCEPTION_POINTERS&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">lpEP&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">switch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">lpEP&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">ExceptionRecord&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">ExceptionCode&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nl">EXCEPTION_INVALID_HANDLE&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="c1">// if debug present
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;INVALID HANDLE&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">EXCEPTION_CONTINUE_EXECUTION&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">EXCEPTION_CONTINUE_SEARCH&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_VEH_INVALID_HANDLE&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">AddVectoredExceptionHandler&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">VEH_INVALID_HANDLE_UnhandledExceptionFilter&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">CloseHandle&lt;/span>&lt;span class="p">((&lt;/span>&lt;span class="n">HANDLE&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="mh">0xBAAD&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">RemoveVectoredExceptionHandler&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">VEH_INVALID_HANDLE_UnhandledExceptionFilter&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>和之前的检查不同，INVALID_HANDLE 是 &lt;strong>出现这个异常才存在调试器&lt;/strong>，之前的异常处理方式都是没出现异常才存在调试器。&lt;/p>
+&lt;h2 id="0x04-硬件断点">0x04 硬件断点&lt;/h2>
+&lt;p>&lt;a class="link" href="https://en.wikipedia.org/wiki/X86_debug_register" target="_blank" rel="noopener"
+>x86 体系上存在一套调试寄存器&lt;/a>，就是 &lt;code>dr0&lt;/code>-&lt;code>dr7&lt;/code>这8个寄存器。其中&lt;code>dr0&lt;/code>-&lt;code>dr3&lt;/code>保存的硬件断点的线性地址，断点条件保存在&lt;code>dr7&lt;/code>寄存器。&lt;code>dr6&lt;/code>寄存器保存的是调试状态，指示触发了哪个断点条件。&lt;/p>
+&lt;p>所以发现硬件断点的存在，就可以百分百确定正在被调试。&lt;/p>
+&lt;h3 id="41-硬件断点">4.1 硬件断点&lt;/h3>
+&lt;p>直接给案例代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="c1">// detect hardware breakpoint
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_DebugRegister&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">CONTEXT&lt;/span> &lt;span class="n">ctx&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">ctx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">ContextFlags&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">CONTEXT_DEBUG_REGISTERS&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">GetThreadContext&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">GetCurrentThread&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">ctx&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">ctx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">Dr0&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">||&lt;/span> &lt;span class="n">ctx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">Dr1&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">||&lt;/span> &lt;span class="n">ctx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">Dr2&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">||&lt;/span> &lt;span class="n">ctx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">Dr3&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;Dr0-Dr3&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>通过&lt;code>GetThreadContext&lt;/code>这个接口获得当前寄存器状态，当然也可以通过内联汇编来实现。当发现四个断点寄存器非零就可以确定正在被调试了。&lt;/p>
+&lt;h2 id="0x05-完整性校验">0x05 完整性校验&lt;/h2>
+&lt;p>完整性校验反调试的原理是检测 &lt;code>0xCC&lt;/code> 软件断点，当我们一般说的在程序里&lt;em>下断点&lt;/em>的时候下的是软件断点，实现的原理是调试器在这个内存位置上临时放一个&lt;code>0xcc&lt;/code>占位，当EIP走到这里时会触发一个INT 3中断，调试器趁机取得控制权。同时因为 INT 3 断点不会把 EIP + 1，所以调试器只需要把改成 &lt;code>0xcc&lt;/code> 的地方改回去，就可以让程序继续跑而无需去碰寄存器。&lt;/p>
+&lt;h3 id="51-softwarebreakpoint">5.1 SoftwareBreakpoint&lt;/h3>
+&lt;p>下面的案例给了一个简单的软件断点检测，只能检测到下在函数开头的软件断点。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="c1">// detect 0xcc interrupt code
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="nf">anti_debug_by_SoftwareBreakPoint&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">PBYTE&lt;/span> &lt;span class="n">addr&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">addr&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mh">0xcc&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">MessageBoxA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">NULL&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;debugger detected&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;SoftwareBreakpoint&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">MB_OK&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 在主函数里：
+&lt;/span>&lt;span class="c1">// anti_debug_by_SoftwareBreakPoint((PBYTE)&amp;amp;load_PE)
+&lt;/span>&lt;span class="c1">// 就能检测到在 load_PE 函数开头处下的断点
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>如果能以一定的方式确定一个函数的代码段大小，也可以做到对整个函数的完整性检测（通过计算 CRC 或者其他哈希算法，甚至就直接累加都行）。&lt;/p>
+&lt;p>确定函数代码段大小的方式我只想到一个利用栈上的返回地址=，=在函数开头和结尾部分调用一次获取栈上返回地址的函数就能拿到一个范围了，但感觉并不可靠，主要是编译器优化可能重排代码，而且不走到结尾部分也没法开始计算哈希=，=这都给人调试完了。&lt;/p>
+&lt;h2 id="结论">结论&lt;/h2>
+&lt;p>所有案例代码都在这里：[github.com/nnnewb/learning-packer](&lt;a class="link" href="https://github.com/nnnewb/learning-packer/tree/main/packer6" target="_blank" rel="noopener"
+>learning-packer/packer6 at main · nnnewb/learning-packer (github.com)&lt;/a>)&lt;/p>
+&lt;p>总结就是反调试主要靠 &lt;em>判断调试器特征&lt;/em> 来发现正在被调试。而这个判断方法就很多，从硬件到操作系统层面，再到软件层面，都有洞可以钻。&lt;/p>
+&lt;p>总结这篇里实践的反调试（或者说检测调试器）方式有这些：&lt;/p>
+&lt;ul>
+&lt;li>PEB和相关结构的各种标志位&lt;/li>
+&lt;li>内核接口，&lt;code>NtQueryInformationProcess&lt;/code>、&lt;code>NtSetInformationThread&lt;/code>等等&lt;/li>
+&lt;li>异常处理机制，&lt;code>SEH&lt;/code>，&lt;code>VEH&lt;/code>，触发会被调试器处理的异常（或者只在有调试器时才会触发的异常）来发现调试器&lt;/li>
+&lt;li>调试寄存器和硬件断点&lt;/li>
+&lt;li>代码完整性校验发现软件断点&lt;/li>
+&lt;/ul>
+&lt;p>以上就是本篇实验过的所有反调试思路了。原本应该有个通过 TLS 回调隐藏自身的案例，但是 MinGW 加不了 TLS 回调（可能还是我菜），谷歌搜到的做法都是要对编译好的二进制文件打补丁，太麻烦就没搞。&lt;/p>
+&lt;p>另外还有个利用执行时间做反调试，因为不知道现在都是怎么利用，然后是这个反调试原理感觉也是很简单=，=就是利用方法可能千奇百怪，单单写两次 time 调用感觉没啥意义就没写（偷懒了）。&lt;/p>
+&lt;p>总之就是隐藏好反调试的代码，然后发现调试器就悄悄施展迷惑手段或者干脆大搞破坏。&lt;/p>
+&lt;h2 id="参考资料">参考资料&lt;/h2>
+&lt;ul>
+&lt;li>&lt;a class="link" href="https://www.apriorit.com/dev-blog/367-anti-reverse-engineering-protection-techniques-to-use-before-releasing-software" target="_blank" rel="noopener"
+>Anti Debugging Protection Techniques With Examples&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://www.geoffchappell.com/" target="_blank" rel="noopener"
+>Geoff Chappell, Software Analyst&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://ctf-wiki.org/" target="_blank" rel="noopener"
+>CTF Wiki&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://book.douban.com/subject/25868289/" target="_blank" rel="noopener"
+>《恶意代码分析实战》&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;p>内容主要来自第一个链接，根据我的环境做了一些修改（比如有些SEH的我实测 x32dbg 不行就换成了VEH），结合参考了 CTF wiki 和 《恶意代码分析实战》这书。API 全是微软的文档和没有文档化的接口我不一个一个摆链接了。&lt;/p></description></item><item><title>加壳原理05：利用图片隐藏</title><link>https://nnnewb.github.io/blog/p/learning-packer-05/</link><pubDate>Thu, 21 Oct 2021 21:17:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-05/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>完成了简单的压缩壳之后放松下，在52论坛病毒分析区看到过几次把代码隐藏到图片里的做法，也看到过把程序转成图片后训练神经网络来判断有没有恶意的，于是就想，淦，这不是挺好玩的嘛。&lt;/p>
 &lt;h2 id="0x01-思路">0x01 思路&lt;/h2>
 &lt;p>用图片保存程序最简单的做法就是直接把程序每个字节都转成像素，然后输出成灰度图。比较进阶的做法就像是二维码了，大色块，容错校验，图片被压到包浆也能扫出来。但那个有点点难（我菜）最终成果也大到不现实，而且实话说打包到程序里就不用考虑被二次压缩的情况了。所以简单的8bit灰度图就刑。&lt;/p>
