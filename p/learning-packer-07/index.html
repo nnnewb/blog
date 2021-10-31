@@ -1,0 +1,379 @@
+<!doctype html><html lang=zh-cn>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 个人浅见，一般分析一个程序可以有动态和静态两条路，动态一般指的就是调试或者别的运行时跟踪程序行为的方式了，除了调试器外就是抓取事件、日志、API调用记录、看内存数据等，比如有 Frida，还有内存搜索如CE。静态则是用各种工具在不实际运行程序的前提下，从程序文件里提取有用的信息。
+对于运行时的对抗手段很多，毕竟程序都跑起来了，你来我往打擂台嘛。而且在Windows这个闭源平台上，还可以靠不大可能被动手脚的内核来保护自己，Linux上就可能内核都是被魔改过的。
+但是对静态分析就没有什么特别好的办法，又要人造的计算机能正确运行，又要人不能理解，就有点矛盾。
+广为人知的对抗静态分析的手段有这些：
+ 混淆，把程序逻辑转换成更晦涩但等价的形式。 加花，对抗反汇编引擎，利用反汇编工具的算法缺陷、漏洞来迫使分析者必须花费大量时间处理错误的反汇编结果，让诸如控制流视图之类的工具失效。  混淆和加花的主要区别 在我这 定义为 混淆是变换原程序逻辑，花指令不改变原程序逻辑 。
+这些对抗手段主要的目的都是 消磨耐心 和 拖延时间 ，抬高人肉分析的成本。但混淆加花这种手段是无法做到只让机器读懂代码而人读不懂这种效果的。这个结论忘了是哪篇论文里提到的了。
+本篇只讲如何对抗反汇编，也就是花指令技术。
+0x01 花指令原理 1.1 机器码指令格式 码农日常工作接触的是高级语言（这个概念可能有争议，反正相对汇编、机器码这个层级来说都是高级语言就对了），汇编和机器码这种满是历史尘埃的领域是绝无机会接触的。但要理解花指令，首先要理解汇编代码的二进制表示，才会明白为什么反汇编工具的力量是有极限的。
+ zHClf 
+这是 Intel 的 64-ia-32-architectures-software-developer-instruction-set-reference-manual 里的一张图，说明了汇编指令如何以二进制形式保存。可以简单看成3部分，1字节的可选前缀，1-3字节的opcode部分，剩余描述操作数的部分。
+几个要素：
+ 指令长度不固定，最短 1 字节，最长可能有 14 （图中全部相加，实际会不会有我就不知道了）。 一条汇编代码里的指令可能对应很多不同的 opcode ，简单到 add 这样的指令也会有很多种不同形式。  熟悉机器码格式在自己构造花指令的时候大概会有用，但实话说 Intel 这手册看得我头痛。所以还是直接快进到花指令原理。
+1.2 花指令原理 花指令的英文是 junk code ，也就是垃圾代码。实际上花指令的确是一些不影响程序逻辑的 垃圾 机器码，它存在的唯一意义就是干扰反汇编引擎和人肉分析。
+花指令有两种类型：
+ 不可执行的花指令 可执行的花指令  听起来像是废话但实际上构造这两种花指令的难度是完全不一样的。
+对于不可执行的花指令，本质上我们做的事情是在跳转指令之后插入一个多字节指令的字节，欺骗反汇编器将这个字节之后的几个字节当成一个多字节指令解释，进而造成后续指令反汇编出错。
+而可执行的花指令，本质是将指令的组成部分重新解释执行。像是一个2字节的跳转指令，第二个字节是操作数，但操作数可以是 0xff，也就是带符号的 -1，使 EIP 落在 0xff 这个字节上，将0xff作为指令继续执行。这个过程中0xff既可以被当成数字0xff解释，也被当成了指令来解释。"><title>加壳原理07 - 花指令入门</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-07/>
+<link rel=stylesheet href=/blog/scss/style.min.css><meta property="og:title" content="加壳原理07 - 花指令入门">
+<meta property="og:description" content="前言 个人浅见，一般分析一个程序可以有动态和静态两条路，动态一般指的就是调试或者别的运行时跟踪程序行为的方式了，除了调试器外就是抓取事件、日志、API调用记录、看内存数据等，比如有 Frida，还有内存搜索如CE。静态则是用各种工具在不实际运行程序的前提下，从程序文件里提取有用的信息。
+对于运行时的对抗手段很多，毕竟程序都跑起来了，你来我往打擂台嘛。而且在Windows这个闭源平台上，还可以靠不大可能被动手脚的内核来保护自己，Linux上就可能内核都是被魔改过的。
+但是对静态分析就没有什么特别好的办法，又要人造的计算机能正确运行，又要人不能理解，就有点矛盾。
+广为人知的对抗静态分析的手段有这些：
+ 混淆，把程序逻辑转换成更晦涩但等价的形式。 加花，对抗反汇编引擎，利用反汇编工具的算法缺陷、漏洞来迫使分析者必须花费大量时间处理错误的反汇编结果，让诸如控制流视图之类的工具失效。  混淆和加花的主要区别 在我这 定义为 混淆是变换原程序逻辑，花指令不改变原程序逻辑 。
+这些对抗手段主要的目的都是 消磨耐心 和 拖延时间 ，抬高人肉分析的成本。但混淆加花这种手段是无法做到只让机器读懂代码而人读不懂这种效果的。这个结论忘了是哪篇论文里提到的了。
+本篇只讲如何对抗反汇编，也就是花指令技术。
+0x01 花指令原理 1.1 机器码指令格式 码农日常工作接触的是高级语言（这个概念可能有争议，反正相对汇编、机器码这个层级来说都是高级语言就对了），汇编和机器码这种满是历史尘埃的领域是绝无机会接触的。但要理解花指令，首先要理解汇编代码的二进制表示，才会明白为什么反汇编工具的力量是有极限的。
+ zHClf 
+这是 Intel 的 64-ia-32-architectures-software-developer-instruction-set-reference-manual 里的一张图，说明了汇编指令如何以二进制形式保存。可以简单看成3部分，1字节的可选前缀，1-3字节的opcode部分，剩余描述操作数的部分。
+几个要素：
+ 指令长度不固定，最短 1 字节，最长可能有 14 （图中全部相加，实际会不会有我就不知道了）。 一条汇编代码里的指令可能对应很多不同的 opcode ，简单到 add 这样的指令也会有很多种不同形式。  熟悉机器码格式在自己构造花指令的时候大概会有用，但实话说 Intel 这手册看得我头痛。所以还是直接快进到花指令原理。
+1.2 花指令原理 花指令的英文是 junk code ，也就是垃圾代码。实际上花指令的确是一些不影响程序逻辑的 垃圾 机器码，它存在的唯一意义就是干扰反汇编引擎和人肉分析。
+花指令有两种类型：
+ 不可执行的花指令 可执行的花指令  听起来像是废话但实际上构造这两种花指令的难度是完全不一样的。
+对于不可执行的花指令，本质上我们做的事情是在跳转指令之后插入一个多字节指令的字节，欺骗反汇编器将这个字节之后的几个字节当成一个多字节指令解释，进而造成后续指令反汇编出错。
+而可执行的花指令，本质是将指令的组成部分重新解释执行。像是一个2字节的跳转指令，第二个字节是操作数，但操作数可以是 0xff，也就是带符号的 -1，使 EIP 落在 0xff 这个字节上，将0xff作为指令继续执行。这个过程中0xff既可以被当成数字0xff解释，也被当成了指令来解释。">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-07/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="windows"><meta property="article:tag" content="c++"><meta property="article:tag" content="汇编"><meta property="article:published_time" content="2021-10-31T17:14:00+08:00"><meta property="article:modified_time" content="2021-10-31T17:14:00+08:00">
+<meta name=twitter:title content="加壳原理07 - 花指令入门">
+<meta name=twitter:description content="前言 个人浅见，一般分析一个程序可以有动态和静态两条路，动态一般指的就是调试或者别的运行时跟踪程序行为的方式了，除了调试器外就是抓取事件、日志、API调用记录、看内存数据等，比如有 Frida，还有内存搜索如CE。静态则是用各种工具在不实际运行程序的前提下，从程序文件里提取有用的信息。
+对于运行时的对抗手段很多，毕竟程序都跑起来了，你来我往打擂台嘛。而且在Windows这个闭源平台上，还可以靠不大可能被动手脚的内核来保护自己，Linux上就可能内核都是被魔改过的。
+但是对静态分析就没有什么特别好的办法，又要人造的计算机能正确运行，又要人不能理解，就有点矛盾。
+广为人知的对抗静态分析的手段有这些：
+ 混淆，把程序逻辑转换成更晦涩但等价的形式。 加花，对抗反汇编引擎，利用反汇编工具的算法缺陷、漏洞来迫使分析者必须花费大量时间处理错误的反汇编结果，让诸如控制流视图之类的工具失效。  混淆和加花的主要区别 在我这 定义为 混淆是变换原程序逻辑，花指令不改变原程序逻辑 。
+这些对抗手段主要的目的都是 消磨耐心 和 拖延时间 ，抬高人肉分析的成本。但混淆加花这种手段是无法做到只让机器读懂代码而人读不懂这种效果的。这个结论忘了是哪篇论文里提到的了。
+本篇只讲如何对抗反汇编，也就是花指令技术。
+0x01 花指令原理 1.1 机器码指令格式 码农日常工作接触的是高级语言（这个概念可能有争议，反正相对汇编、机器码这个层级来说都是高级语言就对了），汇编和机器码这种满是历史尘埃的领域是绝无机会接触的。但要理解花指令，首先要理解汇编代码的二进制表示，才会明白为什么反汇编工具的力量是有极限的。
+ zHClf 
+这是 Intel 的 64-ia-32-architectures-software-developer-instruction-set-reference-manual 里的一张图，说明了汇编指令如何以二进制形式保存。可以简单看成3部分，1字节的可选前缀，1-3字节的opcode部分，剩余描述操作数的部分。
+几个要素：
+ 指令长度不固定，最短 1 字节，最长可能有 14 （图中全部相加，实际会不会有我就不知道了）。 一条汇编代码里的指令可能对应很多不同的 opcode ，简单到 add 这样的指令也会有很多种不同形式。  熟悉机器码格式在自己构造花指令的时候大概会有用，但实话说 Intel 这手册看得我头痛。所以还是直接快进到花指令原理。
+1.2 花指令原理 花指令的英文是 junk code ，也就是垃圾代码。实际上花指令的确是一些不影响程序逻辑的 垃圾 机器码，它存在的唯一意义就是干扰反汇编引擎和人肉分析。
+花指令有两种类型：
+ 不可执行的花指令 可执行的花指令  听起来像是废话但实际上构造这两种花指令的难度是完全不一样的。
+对于不可执行的花指令，本质上我们做的事情是在跳转指令之后插入一个多字节指令的字节，欺骗反汇编器将这个字节之后的几个字节当成一个多字节指令解释，进而造成后续指令反汇编出错。
+而可执行的花指令，本质是将指令的组成部分重新解释执行。像是一个2字节的跳转指令，第二个字节是操作数，但操作数可以是 0xff，也就是带符号的 -1，使 EIP 落在 0xff 这个字节上，将0xff作为指令继续执行。这个过程中0xff既可以被当成数字0xff解释，也被当成了指令来解释。">
+</head>
+<body class="article-page has-toc">
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"auto")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex
+extended">
+<div id=article-toolbar>
+<a href=https://nnnewb.github.io/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
+<span>返回</span>
+</a>
+</div>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/%E9%80%86%E5%90%91/>
+逆向
+</a>
+</header>
+<h2 class=article-title>
+<a href=/blog/p/learning-packer-07/>加壳原理07 - 花指令入门</a>
+</h2>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2021年 10月 31日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 2 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>个人浅见，一般分析一个程序可以有动态和静态两条路，动态一般指的就是调试或者别的运行时跟踪程序行为的方式了，除了调试器外就是抓取事件、日志、API调用记录、看内存数据等，比如有 Frida，还有内存搜索如CE。静态则是用各种工具在不实际运行程序的前提下，从程序文件里提取有用的信息。</p>
+<p>对于运行时的对抗手段很多，毕竟程序都跑起来了，你来我往打擂台嘛。而且在Windows这个闭源平台上，还可以靠不大可能被动手脚的内核来保护自己，Linux上就可能内核都是被魔改过的。</p>
+<p>但是对静态分析就没有什么特别好的办法，又要人造的计算机能正确运行，又要人不能理解，就有点矛盾。</p>
+<p>广为人知的对抗静态分析的手段有这些：</p>
+<ol>
+<li>混淆，把程序逻辑转换成更晦涩但等价的形式。</li>
+<li>加花，对抗反汇编引擎，利用反汇编工具的算法缺陷、漏洞来迫使分析者必须花费大量时间处理错误的反汇编结果，让诸如控制流视图之类的工具失效。</li>
+</ol>
+<p>混淆和加花的主要区别 <strong>在我这</strong> 定义为 <strong>混淆是变换原程序逻辑，花指令不改变原程序逻辑</strong> 。</p>
+<p>这些对抗手段主要的目的都是 <strong>消磨耐心</strong> 和 <strong>拖延时间</strong> ，抬高人肉分析的成本。但混淆加花这种手段是无法做到只让机器读懂代码而人读不懂这种效果的。这个结论忘了是哪篇论文里提到的了。</p>
+<p>本篇只讲如何对抗反汇编，也就是花指令技术。</p>
+<h2 id=0x01-花指令原理>0x01 花指令原理</h2>
+<h3 id=11-机器码指令格式>1.1 机器码指令格式</h3>
+<p>码农日常工作接触的是高级语言（这个概念可能有争议，反正相对汇编、机器码这个层级来说都是高级语言就对了），汇编和机器码这种满是历史尘埃的领域是绝无机会接触的。但要理解花指令，首先要理解汇编代码的二进制表示，才会明白为什么反汇编工具的力量是有极限的。</p>
+<p><figure style=flex-grow:178;flex-basis:429px>
+<a href=/blog/p/learning-packer-07/zHClf.png data-size=658x368><img src=/blog/p/learning-packer-07/zHClf.png srcset="/blog/p/learning-packer-07/zHClf_hu3ca7a186b6a8e60fb2df5f6ffb33e0d4_25027_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/zHClf_hu3ca7a186b6a8e60fb2df5f6ffb33e0d4_25027_1024x0_resize_box_3.png 1024w" width=658 height=368 loading=lazy alt=zHClf>
+</a>
+<figcaption>zHClf</figcaption>
+</figure></p>
+<p>这是 Intel 的 <a class=link href=https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-instruction-set-reference-manual-325383.pdf target=_blank rel=noopener>64-ia-32-architectures-software-developer-instruction-set-reference-manual</a> 里的一张图，说明了汇编指令如何以二进制形式保存。可以简单看成3部分，1字节的可选前缀，1-3字节的opcode部分，剩余描述操作数的部分。</p>
+<p>几个要素：</p>
+<ol>
+<li>指令长度不固定，最短 1 字节，最长可能有 14 （图中全部相加，实际会不会有我就不知道了）。</li>
+<li>一条<strong>汇编代码里的指令</strong>可能对应很多不同的 opcode ，简单到 <code>add</code> 这样的指令也会有很多种不同形式。</li>
+</ol>
+<p>熟悉机器码格式在自己构造花指令的时候大概会有用，但实话说 Intel 这手册看得我头痛。所以还是直接快进到花指令原理。</p>
+<h3 id=12-花指令原理>1.2 花指令原理</h3>
+<p>花指令的英文是 <em>junk code</em> ，也就是垃圾代码。实际上花指令的确是一些不影响程序逻辑的 <em>垃圾</em> 机器码，它存在的唯一意义就是干扰反汇编引擎和人肉分析。</p>
+<p>花指令有两种类型：</p>
+<ul>
+<li>不可执行的花指令</li>
+<li>可执行的花指令</li>
+</ul>
+<p>听起来像是废话但实际上构造这两种花指令的难度是完全不一样的。</p>
+<p>对于不可执行的花指令，本质上我们做的事情是在跳转指令之后插入一个多字节指令的字节，欺骗反汇编器将这个字节之后的几个字节当成一个多字节指令解释，进而造成后续指令反汇编出错。</p>
+<p>而可执行的花指令，本质是将指令的组成部分重新解释执行。像是一个2字节的跳转指令，第二个字节是操作数，但操作数可以是 <code>0xff</code>，也就是带符号的 <code>-1</code>，使 EIP 落在 <code>0xff</code> 这个字节上，将<code>0xff</code>作为指令继续执行。这个过程中<code>0xff</code>既可以被当成数字<code>0xff</code>解释，也被当成了指令来解释。</p>
+<h3 id=13-反汇编算法>1.3 反汇编算法</h3>
+<p>目前常见反汇编算法就两类，一类是线性反汇编，对输入的数据逐字节翻译成汇编代码。这种反汇编算法多数时候工作地很好，但属于老实人，认为指令总是一个接一个出现，一个简单地在<code>jmp</code>后插入<code>0xe8</code>就能骗到。</p>
+<p>另一类是基于代码流分析的算法，这类算法的特点是不会无脑地继续反汇编跳转指令之后的代码，而是去优先反汇编 <strong>可达</strong> 的代码。像是我们在 C 里面写 <code>if (1) {} else { /* junk code */ }</code>，对于足够聪明的编译器，<code>else</code> 分支就是明确无误的垃圾。对于这种反汇编算法，可以通过可执行的花指令来欺骗，或构造反汇编器无法判断真假的恒真/恒假分支，再插入不可执行的花指令来达到欺骗效果。</p>
+<h2 id=0x02-花指令案例>0x02 花指令案例</h2>
+<h3 id=21-e8-和线性反汇编算法>2.1 <code>E8</code> 和线性反汇编算法</h3>
+<p><code>E8</code> 是 <code>call</code> 指令的 opcode。opcode <em>operation code</em> 也叫指令机器码 <em>Instruction Machine Code</em>，就是汇编指令翻译后的二进制形式。贴一个 <a class=link href=https://en.wikipedia.org/wiki/X86_instruction_listings target=_blank rel=noopener>wiki 百科的 x86 指令列表</a> 以供参考。还有 <a class=link href=https://c9x.me/x86/html/file_module_x86_id_26.html target=_blank rel=noopener>x86 instruction set reference</a> 。还有 <a class=link href=https://stackoverflow.com/questions/44882315/how-does-the-cpu-distinguish-call-rel16-e8-cw-and-call-rel32-e8-cd target=_blank rel=noopener>How does the CPU distinguish &lsquo;CALL rel16&rsquo; (E8 cw) and &lsquo;CALL rel32&rsquo; (E8 cd)?</a></p>
+<p>我们的程序运行在用户模式（32位）模式下，<code>E8</code> 指令后紧跟着的是4字节的相对偏移，一条完整的 <code>E8</code> 指令会使用 5 个字节的空间。</p>
+<p>下面是一个 <code>E8</code> 花指令的案例，需要 MinGW 编译，对 x32dbg 有效。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#define ANTI_LINEAR_DISASSEMBLE_ALGORITHM_1 asm(&#34;jmp next\n.byte 0xe8;\nnext:\n&#34;)
+</span><span class=cp></span>
+<span class=kt>int</span> <span class=nf>start</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+    <span class=n>ANTI_LINEAR_DISASSEMBLE_ALGORITHM_1</span><span class=p>;</span>
+    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><p>编译命令</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>gcc demo.c <span class=s1>&#39;-Wl,--entry=_start&#39;</span> -nodefaultlibs -nostartfiles -o demo
+</code></pre></div><p>调试器内的效果</p>
+<p><figure style=flex-grow:234;flex-basis:562px>
+<a href=/blog/p/learning-packer-07/image-20211028152219524.png data-size=1175x501><img src=/blog/p/learning-packer-07/image-20211028152219524.png srcset="/blog/p/learning-packer-07/image-20211028152219524_hu2408fa036d3a5e5647fcc1f6e2c0b730_66690_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/image-20211028152219524_hu2408fa036d3a5e5647fcc1f6e2c0b730_66690_1024x0_resize_box_3.png 1024w" width=1175 height=501 loading=lazy alt=image-20211028152219524>
+</a>
+<figcaption>image-20211028152219524</figcaption>
+</figure></p>
+<p>可以看到在 <code>jmp</code> 指令后，反汇编出了一条 <code>call</code> 指令。但实际上我们写的代码里是没有任何函数调用的。而在这个 <code>E8</code> 后面的 <code>B8 00 00 00 00 5D C3</code> 才是真正会执行的代码：</p>
+<pre><code>mov eax, 0 ; B8 00 00 00 00
+pop ebp    ; 5D
+retn       ; C3
+</code></pre><p>参考<a class=link href=http://www.mathemainzel.info/files/x86asmref.html#pop target=_blank rel=noopener>intel 80x86 assembly language opcodes</a>。</p>
+<p>如果仔细看 <code>jmp</code> 后的偏移 <code>01</code> 的话也能猜到下一个 <code>E8</code> 是不会被执行的。</p>
+<p>像是这种简单的花指令在 IDA 里没用，IDA 的反汇编算法会根据控制流分析来判断哪些内容不会被执行，进而产生下面的结果。</p>
+<p><figure style=flex-grow:166;flex-basis:399px>
+<a href=/blog/p/learning-packer-07/image-20211028153421508.png data-size=796x478><img src=/blog/p/learning-packer-07/image-20211028153421508.png srcset="/blog/p/learning-packer-07/image-20211028153421508_hu997bdc75332333c1639f8a4c89fbdacd_51145_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/image-20211028153421508_hu997bdc75332333c1639f8a4c89fbdacd_51145_1024x0_resize_box_3.png 1024w" width=796 height=478 loading=lazy alt=image-20211028153421508>
+</a>
+<figcaption>image-20211028153421508</figcaption>
+</figure></p>
+<h3 id=22--ida-和代码流反汇编算法>2.2 IDA 和代码流反汇编算法</h3>
+<p>关于IDA的反汇编算法描述是来自《恶意代码分析实战》。</p>
+<blockquote>
+<p>前面讨论的简单对抗反汇编技术是巧妙地在条件跳转指令之后放一个字节，这种技术的思路是，从这个字节开始反汇编，阻止其后真正的指令被反汇编，因为插入的字节是一个多字节指令的机器码。我们称这样的字节是流氓字节，因为它不属于程序的一部分，只是用在代码段迷惑反汇编器。</p>
+</blockquote>
+<p>IDA的反汇编算法是针对代码流的反汇编，基本思路是记录反汇编过程中的跳转地址作为下一次反汇编的起点，当控制流转移（<code>jmp</code>之类的跳转指令）时，并不是从跳转指令之后继续反汇编，而是从之前记录的跳转地址里选一个，开始新的反汇编工作。如上面的 <code>jmp</code> + <code>e8</code> 就无法对抗这种反汇编算法。</p>
+<p>目前实践中也发现，IDA 已经可以识别出一些例如 <code>jz</code>+<code>jnz</code> 制造的无条件跳转，通过控制流指令制造恒真或恒假条件来跳转大概会往更加复杂、高开销的方向走：比如利用系统API、环境中的已知常量作为条件去欺骗IDA，让 IDA 无法轻易认定某条分支是无效分支，进而干扰反汇编结果。</p>
+<p>那么除了插入多字节指令还有什么办法对抗代码流分析算法呢？</p>
+<blockquote>
+<p>&mldr;但是，如果流氓字节不能被忽略怎么办？如果它是合法指令的一部分，且在运行时能够被正确执行怎么办？这里，我们碰到一个棘手的问题，所有给定字节都是多字节指令的一部分，而且它们都能够被执行。目前业内没有一个反汇编器能够将单个字节表示为两条指令的组成部分，然而处理器没有这种限制。</p>
+</blockquote>
+<p>下面是一个案例。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=p>.</span><span class=n>byte</span> <span class=mh>0xeb</span><span class=p>,</span><span class=mh>0xff</span><span class=p>,</span><span class=mh>0xc0</span><span class=p>,</span><span class=mh>0x48</span>
+</code></pre></div><p><code>0xeb</code> <code>jmp</code> 指令的 opcode，是一个 2 字节指令。<code>0xff</code> 被解释为 <code>-1</code>。</p>
+<p><code>0xff</code> 是 <code>INC</code> 的机器码，<code>0xc0</code>是操作数，表示 <code>eax</code>，也就是 <code>inc eax</code>。可以在这个<a class=link href=https://defuse.ca/online-x86-assembler.htm target=_blank rel=noopener>在线反汇编</a>网站上验证。</p>
+<p><code>0x48</code> 则是 <code>dec eax</code> 的汇编指令，因此这4个字节执行后最终不会影响 <code>eax</code> 的值。</p>
+<p>在这里，<code>0xff</code> 同时被解释为 <code>jmp</code> 的操作数和 <code>inc</code> 指令，并且能正常执行，但反汇编器则会被迷惑。</p>
+<p><figure style=flex-grow:514;flex-basis:1233px>
+<a href=/blog/p/learning-packer-07/image-20211030211603863.png data-size=910x177><img src=/blog/p/learning-packer-07/image-20211030211603863.png srcset="/blog/p/learning-packer-07/image-20211030211603863_huc23cc312a3844059e36c75b9cf995c65_26582_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/image-20211030211603863_huc23cc312a3844059e36c75b9cf995c65_26582_1024x0_resize_box_3.png 1024w" width=910 height=177 loading=lazy alt=image-20211030211603863>
+</a>
+<figcaption>image-20211030211603863</figcaption>
+</figure></p>
+<p>上图是IDA中反汇编的结果。</p>
+<h3 id=23-构造能欺骗ida的花指令>2.3 构造能欺骗IDA的花指令</h3>
+<p>构造能欺骗IDA的花指令简单的办法就是构造无法被静态分析的恒真/恒假条件。举例来说，<code>LoadLibraryA</code> 加载失败会返回 <code>NULL</code>，就可以被用来构造花指令。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c>  <span class=n>LoadLibraryA</span><span class=p>(</span><span class=s>&#34;not-exists.dll&#34;</span><span class=p>);</span>
+  <span class=k>asm</span><span class=p>(</span><span class=s>&#34;test %eax,%eax;</span><span class=se>\n</span><span class=s>jz next;</span><span class=se>\n</span><span class=s>.byte 0xe8;</span><span class=se>\n</span><span class=s>next:</span><span class=se>\n</span><span class=s>&#34;</span><span class=p>);</span>
+</code></pre></div><p><figure style=flex-grow:357;flex-basis:858px>
+<a href=/blog/p/learning-packer-07/image-20211030213109569.png data-size=955x267><img src=/blog/p/learning-packer-07/image-20211030213109569.png srcset="/blog/p/learning-packer-07/image-20211030213109569_huae46ff5cf7f405ad977cb15ab7a51e13_39907_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/image-20211030213109569_huae46ff5cf7f405ad977cb15ab7a51e13_39907_1024x0_resize_box_3.png 1024w" width=955 height=267 loading=lazy alt=image-20211030213109569>
+</a>
+<figcaption>image-20211030213109569</figcaption>
+</figure></p>
+<p>可以看到，IDA不能静态分析出<code>LoadLibraryA</code> 的返回值是 <code>NULL</code>，顺着 <code>jz</code> 的 False 分支反汇编时遇到了 <code>0xe8</code>，于是后续的反汇编结果就完全乱了套。</p>
+<h3 id=24-破坏栈帧分析>2.4 破坏栈帧分析</h3>
+<p>还有一种花指令是通过对 <code>call</code> 和 <code>ret</code> 利用来实现破坏栈帧分析。大家都知道 <code>call</code> 和 <code>ret</code> 就是 <code>push</code>+<code>jmp</code>和<code>pop</code>+<code>jmp</code>，如果我们手动在函数里再构造一个假函数，跳转之后修改栈上的返回地址，返回到我们希望继续执行的位置，虽然本质上是个 GOTO 的操作，但 IDA 就会懵圈了。</p>
+<p>一个简单的例子如下，<code>call</code>跳转到下一行，修改返回地址到 <code>continue</code> 后又<code>ret</code>，结果就是在 <code>continue</code> 这个标签处继续执行。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c> <span class=k>asm</span><span class=p>(</span>
+    <span class=s>&#34;call next;</span><span class=se>\n</span><span class=s>&#34;</span>
+    <span class=s>&#34;next:</span><span class=se>\n</span><span class=s>&#34;</span>
+    <span class=s>&#34;movl $continue,(%esp);</span><span class=se>\n</span><span class=s>&#34;</span>
+    <span class=s>&#34;ret;</span><span class=se>\n</span><span class=s>&#34;</span>
+    <span class=s>&#34;continue:</span><span class=se>\n</span><span class=s>&#34;</span>
+  <span class=p>);</span>
+</code></pre></div><p>产生的代码在IDA里分析会出现这样的 <code>sp-analysis failed</code>。</p>
+<p><figure style=flex-grow:162;flex-basis:390px>
+<a href=/blog/p/learning-packer-07/image-20211030215415946.png data-size=529x325><img src=/blog/p/learning-packer-07/image-20211030215415946.png srcset="/blog/p/learning-packer-07/image-20211030215415946_hu1b68fd95622716000a3ab92e85a1f3fd_15293_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/image-20211030215415946_hu1b68fd95622716000a3ab92e85a1f3fd_15293_1024x0_resize_box_3.png 1024w" width=529 height=325 loading=lazy alt=image-20211030215415946>
+</a>
+<figcaption>image-20211030215415946</figcaption>
+</figure></p>
+<p>这个思路可以反复嵌套，增加跳转的次数和深度，甚至把正常逻辑隐藏在这种反复跳转中，但从高级语言层面手工加这种花很困难。</p>
+<p>再给一个复杂一些的例子，同样是利用了 <code>call</code> 和 <code>ret</code> 来实现花式跳转。</p>
+<p><figure style=flex-grow:219;flex-basis:526px>
+<a href=/blog/p/learning-packer-07/165417l97li97iwq8lf5qz.png data-size=836x381><img src=/blog/p/learning-packer-07/165417l97li97iwq8lf5qz.png srcset="/blog/p/learning-packer-07/165417l97li97iwq8lf5qz_hua1e400469607dff71cf186bb43cf99f2_16220_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/165417l97li97iwq8lf5qz_hua1e400469607dff71cf186bb43cf99f2_16220_1024x0_resize_box_3.png 1024w" width=836 height=381 loading=lazy alt=img>
+</a>
+<figcaption>img</figcaption>
+</figure></p>
+<p>来自52论坛的：<a class=link href="https://www.52pojie.cn/forum.php?mod=viewthread&tid=1068444&highlight=%BB%A8%D6%B8%C1%EE" target=_blank rel=noopener>一些简单的花指令的解析(含Intel指令集) - 『病毒分析区』 - 吾爱破解 - LCG - LSG |安卓破解|病毒分析|www.52pojie.cn</a>。</p>
+<p>顺便一提，链接里那个 <code>pop ss</code> 也很有意思，GrandCrab 的案例也是结合了多种控制流指令来完成跳转，阻碍IDA分析。</p>
+<h2 id=总结>总结</h2>
+<p>首先，不只是E8，不要局限在这里。所有的多字节指令都可以用来构造花指令。花指令也不只是利用多字节指令干扰反汇编，也能精心伪造控制流对抗分析工具的其他高级分析功能，迫使分析者不能无脑F5读伪代码，消磨分析者的时间、精力、耐心。</p>
+<p>花指令有很多模式，但一个显著特征是 <strong>跳转</strong>，必须通过跳转指令来实现越过不可执行的花指令，或通过跳转来实现重新解释已经被解释过的指令的一部分，以及通过连续跳转来隐藏真实跳转地址。所以看到莫名其妙地开始跳起来就要警惕了，这会儿很可能正在分析无效的垃圾代码。</p>
+<p>编写花指令的时候应该注意到，花指令对抗的目标不是分析工具，而是分析者。简单地写一个<code>jz</code>和<code>E8</code>也许实现了让分析工具出错的目的，但分析者一眼就能看出这是无效代码，基本无法起到对抗作用。</p>
+<p>参考资料：</p>
+<ul>
+<li><a class=link href=https://book.douban.com/subject/25868289/ target=_blank rel=noopener>恶意代码分析实战 (豆瓣) (douban.com)</a></li>
+<li><a class=link href=https://www.cnblogs.com/onetrainee/p/12175257.html target=_blank rel=noopener>一个利用call+ret修改返回地址的花指令分析 - OneTrainee - 博客园 (cnblogs.com)</a></li>
+<li><a class=link href="https://www.52pojie.cn/forum.php?mod=viewthread&tid=1068444&highlight=%BB%A8%D6%B8%C1%EE" target=_blank rel=noopener>一些简单的花指令的解析(含Intel指令集) - 『病毒分析区』 - 吾爱破解 - LCG - LSG |安卓破解|病毒分析|www.52pojie.cn</a></li>
+<li><a class=link href=https://www.intel.com/content/www/us/en/develop/download/intel-64-and-ia-32-architectures-sdm-combined-volumes-1-2a-2b-2c-2d-3a-3b-3c-3d-and-4.html target=_blank rel=noopener>Combined Volume Set of Intel® 64 and IA-32 Architectures Software Developer’s Manuals</a></li>
+<li>[<a class=link href=https://bbs.pediy.com/thread-113402.htm target=_blank rel=noopener>原创]汇编指令之OpCode快速入门-软件逆向-看雪论坛-安全社区|安全招聘|bbs.pediy.com</a></li>
+<li><a class=link href=https://www.felixcloutier.com/x86/ target=_blank rel=noopener>x86 and amd64 instruction reference (felixcloutier.com)</a></li>
+<li><a class=link href=http://www.mathemainzel.info/files/x86asmref.html target=_blank rel=noopener>Intel 80x86 Assembly Language OpCodes (mathemainzel.info)</a></li>
+<li><a class=link href=https://defuse.ca/online-x86-assembler.htm target=_blank rel=noopener>online x86 disassembler</a></li>
+<li><a class=link href=https://www.docin.com/p-748789332.html target=_blank rel=noopener>花指令模糊变换策略研究与实现 - 豆丁网 (docin.com)</a></li>
+</ul>
+<p>特别推荐最后这篇论文，我没找到在哪儿能下，就放原链接了。直接百度学术搜花指令也能找到很多有意思的文章（尽管形式化描述的部分基本都没看懂）。</p>
+<p>自动化的加花方式基本要求在汇编层面去重排代码或者插入代码，直接在二进制文件上加花我寻思了一下是蛮难的，主要是正常程序代码段里随便插东西的话，重定位和重新算各种文件字段很麻烦。所以吧&mldr;大概在编译器层面（LLVM？或者对生成的汇编文件下手）才会比较好施展开。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
+<a href=/blog/tags/windows/>windows</a>
+<a href=/blog/tags/c++/>c++</a>
+<a href=/blog/tags/%E6%B1%87%E7%BC%96/>汇编</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/learning-packer-06/>
+<div class=article-details>
+<h2 class=article-title>加壳原理06：反调试技术入门</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/>
+<div class=article-details>
+<h2 class=article-title>加壳原理04 - zlib压缩壳案例</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/learning-packer-03-support-no-relocations/>
+<div class=article-details>
+<h2 class=article-title>加壳原理03 - 支持没有重定位的程序</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/learning-packer-05/>
+<div class=article-details>
+<h2 class=article-title>加壳原理05：利用图片隐藏</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/learning-packer-01/>
+<div class=article-details>
+<h2 class=article-title>加壳原理01 - Windows 程序的加载和运行</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 weakptr's 笔记
+</section>
+<section class=powerby>
+<a href=https://beian.miit.gov.cn/>浙ICP备2021032371号-1</a> <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.1.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#0x01-花指令原理>0x01 花指令原理</a>
+<ol>
+<li><a href=#11-机器码指令格式>1.1 机器码指令格式</a></li>
+<li><a href=#12-花指令原理>1.2 花指令原理</a></li>
+<li><a href=#13-反汇编算法>1.3 反汇编算法</a></li>
+</ol>
+</li>
+<li><a href=#0x02-花指令案例>0x02 花指令案例</a>
+<ol>
+<li><a href=#21-e8-和线性反汇编算法>2.1 <code>E8</code> 和线性反汇编算法</a></li>
+<li><a href=#22--ida-和代码流反汇编算法>2.2 IDA 和代码流反汇编算法</a></li>
+<li><a href=#23-构造能欺骗ida的花指令>2.3 构造能欺骗IDA的花指令</a></li>
+<li><a href=#24-破坏栈帧分析>2.4 破坏栈帧分析</a></li>
+</ol>
+</li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>

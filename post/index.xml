@@ -1,4 +1,20 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/post/</link><description>Recent content in Posts on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 27 Oct 2021 19:50:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/post/index.xml" rel="self" type="application/rss+xml"/><item><title>加壳原理06：反调试技术入门</title><link>https://nnnewb.github.io/blog/p/learning-packer-06/</link><pubDate>Wed, 27 Oct 2021 19:50:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-06/</guid><description>前言 反调试技术，往大了说是用尽一切手段防止运行时对程序的非法篡改和窥视，往小了说就是防调试器。反正反调试这件事和各种技术都能搭点边，什么HOOK啦DLL注入啦。真要给涉及到的各方面都说得头头是道，那我这个菜鸡就不叫菜鸡了。
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/post/</link><description>Recent content in Posts on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Sun, 31 Oct 2021 17:14:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/post/index.xml" rel="self" type="application/rss+xml"/><item><title>加壳原理07 - 花指令入门</title><link>https://nnnewb.github.io/blog/p/learning-packer-07/</link><pubDate>Sun, 31 Oct 2021 17:14:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-07/</guid><description>前言 个人浅见，一般分析一个程序可以有动态和静态两条路，动态一般指的就是调试或者别的运行时跟踪程序行为的方式了，除了调试器外就是抓取事件、日志、API调用记录、看内存数据等，比如有 Frida，还有内存搜索如CE。静态则是用各种工具在不实际运行程序的前提下，从程序文件里提取有用的信息。
+对于运行时的对抗手段很多，毕竟程序都跑起来了，你来我往打擂台嘛。而且在Windows这个闭源平台上，还可以靠不大可能被动手脚的内核来保护自己，Linux上就可能内核都是被魔改过的。
+但是对静态分析就没有什么特别好的办法，又要人造的计算机能正确运行，又要人不能理解，就有点矛盾。
+广为人知的对抗静态分析的手段有这些：
+混淆，把程序逻辑转换成更晦涩但等价的形式。 加花，对抗反汇编引擎，利用反汇编工具的算法缺陷、漏洞来迫使分析者必须花费大量时间处理错误的反汇编结果，让诸如控制流视图之类的工具失效。 混淆和加花的主要区别 在我这 定义为 混淆是变换原程序逻辑，花指令不改变原程序逻辑 。
+这些对抗手段主要的目的都是 消磨耐心 和 拖延时间 ，抬高人肉分析的成本。但混淆加花这种手段是无法做到只让机器读懂代码而人读不懂这种效果的。这个结论忘了是哪篇论文里提到的了。
+本篇只讲如何对抗反汇编，也就是花指令技术。
+0x01 花指令原理 1.1 机器码指令格式 码农日常工作接触的是高级语言（这个概念可能有争议，反正相对汇编、机器码这个层级来说都是高级语言就对了），汇编和机器码这种满是历史尘埃的领域是绝无机会接触的。但要理解花指令，首先要理解汇编代码的二进制表示，才会明白为什么反汇编工具的力量是有极限的。
+zHClf
+这是 Intel 的 64-ia-32-architectures-software-developer-instruction-set-reference-manual 里的一张图，说明了汇编指令如何以二进制形式保存。可以简单看成3部分，1字节的可选前缀，1-3字节的opcode部分，剩余描述操作数的部分。
+几个要素：
+指令长度不固定，最短 1 字节，最长可能有 14 （图中全部相加，实际会不会有我就不知道了）。 一条汇编代码里的指令可能对应很多不同的 opcode ，简单到 add 这样的指令也会有很多种不同形式。 熟悉机器码格式在自己构造花指令的时候大概会有用，但实话说 Intel 这手册看得我头痛。所以还是直接快进到花指令原理。
+1.2 花指令原理 花指令的英文是 junk code ，也就是垃圾代码。实际上花指令的确是一些不影响程序逻辑的 垃圾 机器码，它存在的唯一意义就是干扰反汇编引擎和人肉分析。
+花指令有两种类型：
+不可执行的花指令 可执行的花指令 听起来像是废话但实际上构造这两种花指令的难度是完全不一样的。
+对于不可执行的花指令，本质上我们做的事情是在跳转指令之后插入一个多字节指令的字节，欺骗反汇编器将这个字节之后的几个字节当成一个多字节指令解释，进而造成后续指令反汇编出错。
+而可执行的花指令，本质是将指令的组成部分重新解释执行。像是一个2字节的跳转指令，第二个字节是操作数，但操作数可以是 0xff，也就是带符号的 -1，使 EIP 落在 0xff 这个字节上，将0xff作为指令继续执行。这个过程中0xff既可以被当成数字0xff解释，也被当成了指令来解释。</description></item><item><title>加壳原理06：反调试技术入门</title><link>https://nnnewb.github.io/blog/p/learning-packer-06/</link><pubDate>Wed, 27 Oct 2021 19:50:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-06/</guid><description>前言 反调试技术，往大了说是用尽一切手段防止运行时对程序的非法篡改和窥视，往小了说就是防调试器。反正反调试这件事和各种技术都能搭点边，什么HOOK啦DLL注入啦。真要给涉及到的各方面都说得头头是道，那我这个菜鸡就不叫菜鸡了。
 反正涉及的各种技术细节吧，将来都会慢慢学到的。也不急于一时。本篇关注的重点还是在导，引入，了解个大概。看看有什么反调试思路，对付这些反调试技术又有什么 bypass 的手段。
 说这么多，其实还是找了篇写得不错的外文文章，抄了然后调试了下案例。
 0x01 反调试思路 首先概述一下本篇主要的反调试思路。
@@ -25,8 +41,8 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 将加壳后程序的基址设置为固定的 0x04000000 又会产生新的问题：加载器的代码段不能放在 0x04000000 ，否则加载器运行时就会出现被被加载的代码覆盖的情况，导致程序跑飞。所以编译后的加载器所有 Section 都必须有一定的偏移，这个偏移值就是被加载程序的 Section 大小之和（对齐后）。而因此多出来的空间单独分成一个 Section ，正好用来放要加载的程序。
 另外，还必须确认文件头大小是否一致，因为我们需要将被加载程序的文件头覆盖加载器的文件头。而最开始预留的空间必须分配为一个 Section，让 Windows 的加载器能顺利加载程序而不报“不是有效的Win32程序”错误。
 内存布局示意图如下：
-所以加载器的加载步骤如下：
-寻找被加载的 Section 。 复制文件头覆盖自己的文件头。 以自己的基址为被加载程序的基址，完成加载。 加壳机的加壳步骤如下：</description></item><item><title>关于在内存里找kernel32这件事</title><link>https://nnnewb.github.io/blog/p/find-kernel32-in-memory/</link><pubDate>Thu, 14 Oct 2021 16:31:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/find-kernel32-in-memory/</guid><description>前言 总得有个前言。
+内存布局
+所以加载器的加载步骤如下：</description></item><item><title>关于在内存里找kernel32这件事</title><link>https://nnnewb.github.io/blog/p/find-kernel32-in-memory/</link><pubDate>Thu, 14 Oct 2021 16:31:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/find-kernel32-in-memory/</guid><description>前言 总得有个前言。
 用 nasm 手工打造了一个 PE 文件后，这个 PE 文件还没什么卵用。如果要动 IAT，又嫌麻烦。网上冲浪找到一篇关于 shellcode 的文章，讲如何在内存里找到 kernel32.dll 并调用 WinExec 函数，于是就想实践一下看看，实际抄代码碰到不少坑。对汇编又熟悉了一点。
 0x01 寻找 kernel32 微软有一篇很简短的文章。
 The Thread Environment Block (TEB structure) holds context information for a thread.
@@ -53,9 +69,10 @@ cmake .. -G &amp;#34;Visual Studio 2019&amp;#34; # Generator，你的工具链�
 0x01 壳程序 1.1 思路 和加载一个PE文件不同，既然被加载的程序就在 Section 里，那需要做的只有定位到 Section，然后把 Section 内容当读取进内存的 PE 文件内容处理就好了。
 壳程序应该尽量保持轻量，不在原始程序上添加太多东西（加完壳大小翻一倍还多了一堆DLL依赖那谁受得了啊），所以很多标准C库的函数也不能用了，像是memcpy、strcmp 都要自己简单实现一个。
 1.2 壳实现 绝大部分内容和之前文章中的 load_PE 一致，入口点修改为 _start，需要注意。
-#include &amp;lt;Windows.h&amp;gt;#include &amp;lt;winnt.h&amp;gt; void *load_PE(char *PE_data); void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers); void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers); int mystrcmp(const char *str1, const char *str2); void mymemcpy(char *dest, const char *src, size_t length); int _start(void) { char *unpacker_VA = (char *)GetModuleHandleA(NULL); IMAGE_DOS_HEADER *p_DOS_header = (IMAGE_DOS_HEADER *)unpacker_VA; IMAGE_NT_HEADERS *p_NT_headers = (IMAGE_NT_HEADERS *)(((char *)unpacker_VA) + p_DOS_header-&amp;gt;e_lfanew); IMAGE_SECTION_HEADER *sections = (IMAGE_SECTION_HEADER *)(p_NT_headers + 1); char *packed = NULL; char packed_section_name[] = &amp;#34;.</description></item><item><title>加壳原理01 - Windows 程序的加载和运行</title><link>https://nnnewb.github.io/blog/p/learning-packer-01-windows-program-load-and-execution/</link><pubDate>Mon, 27 Sep 2021 14:51:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-01-windows-program-load-and-execution/</guid><description>前言 本文由多篇相关文章翻译整合得来，参考文章和书目文末给出。
-0x01 PE文件结构 1.1 从 PE-COFF 格式说起 &amp;hellip; 现在PC平台流行的 可执行文件格式（Executable） 主要是 Windows 下的 PE （Portable Executable） 和 Linux 的 ELF （Executable Linkable Format），它们都是 COFF（Common Object File Format）格式的变种。目标文件就是源代码编译后但未进行链接的那些中间文件（Windows 的 .obj 和 Linux 下的 .o），它和可执行文件的内容和结构很相似，所以一般跟可执行文件一起采用一种格式存储。从广义上看，目标文件与可执行文件的格式其实几乎是一样的，所以我们可以广义地将目标文件与可执行文件看成是同一种类型的文件，在 Windows 下，我们可以统称它们为 PE-COFF 文件格式。在 Linux 下，我们可以将它们统称为 ELF 文件。
-&amp;hellip; 不光是 可执行文件 （Windows 的 .exe 和 Linux 下的 ELF 可执行文件）按照可执行文件格式存储。动态链接库（DLL，Dynamic Linking Library） （Windows 的 DLL 和 Linux 下的 .so ）以及静态链接库 （Static Linking Library） （Windows 的 .lib 和 Linux 下的 .</description></item><item><title>自娱自乐 crackme-03</title><link>https://nnnewb.github.io/blog/p/crackme-03/</link><pubDate>Fri, 24 Sep 2021 16:58:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/crackme-03/</guid><description>前言 总得有个前言。
+#include &amp;lt;Windows.h&amp;gt;#include &amp;lt;winnt.h&amp;gt; void *load_PE(char *PE_data); void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers); void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers); int mystrcmp(const char *str1, const char *str2); void mymemcpy(char *dest, const char *src, size_t length); int _start(void) { char *unpacker_VA = (char *)GetModuleHandleA(NULL); IMAGE_DOS_HEADER *p_DOS_header = (IMAGE_DOS_HEADER *)unpacker_VA; IMAGE_NT_HEADERS *p_NT_headers = (IMAGE_NT_HEADERS *)(((char *)unpacker_VA) + p_DOS_header-&amp;gt;e_lfanew); IMAGE_SECTION_HEADER *sections = (IMAGE_SECTION_HEADER *)(p_NT_headers + 1); char *packed = NULL; char packed_section_name[] = &amp;#34;.</description></item><item><title>加壳原理01 - Windows 程序的加载和运行</title><link>https://nnnewb.github.io/blog/p/learning-packer-01/</link><pubDate>Mon, 27 Sep 2021 14:51:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-01/</guid><description>前言 本文由多篇相关文章翻译整合得来，参考文章和书目文末给出。
+0x01 PE文件结构 PE_Format
+1.1 从 PE-COFF 格式说起 &amp;hellip; 现在PC平台流行的 可执行文件格式（Executable） 主要是 Windows 下的 PE （Portable Executable） 和 Linux 的 ELF （Executable Linkable Format），它们都是 COFF（Common Object File Format）格式的变种。目标文件就是源代码编译后但未进行链接的那些中间文件（Windows 的 .obj 和 Linux 下的 .o），它和可执行文件的内容和结构很相似，所以一般跟可执行文件一起采用一种格式存储。从广义上看，目标文件与可执行文件的格式其实几乎是一样的，所以我们可以广义地将目标文件与可执行文件看成是同一种类型的文件，在 Windows 下，我们可以统称它们为 PE-COFF 文件格式。在 Linux 下，我们可以将它们统称为 ELF 文件。
+&amp;hellip; 不光是 可执行文件 （Windows 的 .exe 和 Linux 下的 ELF 可执行文件）按照可执行文件格式存储。动态链接库（DLL，Dynamic Linking Library） （Windows 的 DLL 和 Linux 下的 .so ）以及静态链接库 （Static Linking Library） （Windows 的 .</description></item><item><title>自娱自乐 crackme-03</title><link>https://nnnewb.github.io/blog/p/crackme-03/</link><pubDate>Fri, 24 Sep 2021 16:58:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/crackme-03/</guid><description>前言 总得有个前言。
 一直玩命令行 crackme 看着就没啥意思，来点带界面的。依然是学习用，目标是把汇编和底层和内存这套东西读熟。这次是用 wxwidgets 做的简单 crackme，为了在 CrackME-02 基础上再增加点难度但又不至于太难，这次是 OTP 生成序列号，要求解出生成 OTP 的 SECRET。
 源码 越来越长了，贴上来没法看。现在托管到GitHub，包括前面的两个cm。
 前两个cm托管的代码编译参数有一点修改，可能造成结果和文章不一致，但大体是一样的，别在意。
