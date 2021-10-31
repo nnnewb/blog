@@ -1,6 +1,6 @@
 ---
 title: 加壳原理01 - Windows 程序的加载和运行
-slug: learning-packer-01-windows-program-load-and-execution
+slug: learning-packer-01
 date: 2021-09-27 14:51:00
 categories:
 - 逆向
@@ -16,7 +16,7 @@ tags:
 
 ## 0x01 PE文件结构
 
-![PE_Format](image/learning-packer-01-windows-program-load-and-execution/PE_Format.png)
+![PE_Format](PE_Format.png)
 
 ### 1.1 从 PE-COFF 格式说起
 
@@ -34,7 +34,7 @@ tags:
 
 PE格式在 Wiki 上有张挺漂亮的图。
 
-![Portable_Executable_32_bit_Structure_in_SVG_fixed](image/learning-packer-01-windows-program-load-and-execution/Portable_Executable_32_bit_Structure_in_SVG_fixed.svg)
+![Portable_Executable_32_bit_Structure_in_SVG_fixed](Portable_Executable_32_bit_Structure_in_SVG_fixed.png)
 
 图中可以看到，微软的兼容包袱是真的重（不是）。
 
@@ -463,7 +463,7 @@ void *load_PE(char *PE_data) {
 
 在调试器里，我们可以看到这样的汇编指令。
 
-![import address table](image/learning-packer-01-windows-program-load-and-execution/call_IAT.jpg)
+![import address table](call_IAT.jpg)
 
 第一条`call`指令是内部调用，调用对象是同一个模块内的函数。编译器知道被调用函数的地址，并使用`E8` opcode 。这表示 *relative call* 。当调用外部模块时，它调用了从IAT读取的地址，也就是图中`ds:[<&ShellExecuteW>]`。
 
@@ -507,7 +507,7 @@ Out[10]:
 
 基本是，我们可以这么说， *IDT* 指示需要导入哪些函数，这些函数导入后，地址存入 *IAT* 。 *IDT* 是我们要导入什么， *IAT* 是我们导入后把地址放在哪儿。
 
-![IDT-IAT](image/learning-packer-01-windows-program-load-and-execution/IDT-IAT.drawio.png)
+![IDT-IAT](IDT-IAT.drawio.png)
 
 *Import Directory* 指向的是一个 `NULL` 结尾的`IMAGE_IMPORT_DESCRIPTOR`结构数组。之后在代码里会用到。
 
@@ -691,7 +691,7 @@ void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
 
 然后现在，某时某刻，calc.exe 需要调用被导入的函数，用我们之前提过的方法。
 
-![call_IAT](image/learning-packer-01-windows-program-load-and-execution/call_IAT.jpg)
+![call_IAT](call_IAT.jpg)
 
 仔细观察图中的 opcode：`FF15`，紧跟着的是小端序的`0x004b3038`，一个绝对地址（前文所述的VA），指向 *IAT* 中 `ShellExecuteW` 函数的地址。这对于一个预期自己会被映射到随机基址上的PE文件来说，是一个巨大的问题。
 
@@ -705,7 +705,7 @@ void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
 
 同样的，在 Data Directory 里有一个重定位表，结构和导入表类似，看图。
 
-![image-20210927134554770](image/learning-packer-01-windows-program-load-and-execution/basereloc.png)
+![image-20210927134554770](basereloc.png)
 
 实际上每个`IMAGE_BASE_RELOCATION`反应的就是一个 Windows 页（因为每个`fixup`的偏移最大取值只有 12bits，0x1000，4KB）。
 

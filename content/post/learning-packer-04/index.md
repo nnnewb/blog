@@ -145,11 +145,11 @@ with open('example.exe', 'rb') as f:
 
 ## 0x03 成果展示
 
-![compression-packer](image/加壳原理4/compression-packer.gif)
+![compression-packer](compression-packer.gif)
 
-![image-20211020154513713](image/加壳原理4/image-20211020154513713.png)
+![image-20211020154513713](image-20211020154513713.png)
 
-![image-20211020154539546](image/加壳原理4/image-20211020154539546.png)
+![image-20211020154539546](image-20211020154539546.png)
 
 ## 总结
 

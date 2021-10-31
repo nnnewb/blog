@@ -47,7 +47,7 @@ tags:
 
 如图：
 
-![07_resource_tree.png](image/加壳原理5/07_resource_tree.png)
+![07_resource_tree.png](07_resource_tree.png)
 
 ### 2.2 查找并加载资源
 
@@ -282,13 +282,13 @@ print('[+] compile loader with resource success.')
 
 ### 4.2 成果
 
-![png-packer](image/加壳原理5/png-packer.gif)
+![png-packer](png-packer.gif)
 
-![image-20211021172402101](image/加壳原理5/image-20211021172402101.png)
+![image-20211021172402101](image-20211021172402101.png)
 
-![image-20211021172445654](image/加壳原理5/image-20211021172445654.png)
+![image-20211021172445654](image-20211021172445654.png)
 
-![image-20211021172504888](image/加壳原理5/image-20211021172504888.png)
+![image-20211021172504888](image-20211021172504888.png)
 
 ## 总结
 
