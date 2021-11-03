@@ -1,0 +1,943 @@
+<!doctype html><html lang=zh-cn>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。
+0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作为首要开发环境，不然光是 MSVC 把 LLVM 源码编译一遍就够呛了。
+安装好MSYS2之后安装 clang 工具链（2021年11月3日，clang32工具链默认不在msys2的源里，需要手动改 pacman.conf 加入 clang32 源，这里以 x86_64 的 LLVM 工具链进行实践）。
+pacman -Sy mingw-w64-clang-x86_64-toolchain 完成后添加环境变量，把 msys2 安装目录下的 clang64/bin 加入环境变量，方便 VSCode + CMake 找到工具链。另外注意装一个 Ninja，同样加入 Path。
+VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense，实在太慢。
+手动编译整个LLVM源码树实在是太费时间了，我选择用MSYS2的工具链。参考这篇文档去配置一个 LLVM 源码树外的 Pass 工程：CMake out of source pass - LLVM 。写一个简单的 CMakeLists.txt ，跟着 Writing an LLVM Pass - LLVM 这篇文档快速实现一个遍历函数的 Pass 。"><title>加壳原理08：混淆技术入门</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-08/>
+<link rel=stylesheet href=/blog/scss/style.min.css><meta property="og:title" content="加壳原理08：混淆技术入门">
+<meta property="og:description" content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。
+0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作为首要开发环境，不然光是 MSVC 把 LLVM 源码编译一遍就够呛了。
+安装好MSYS2之后安装 clang 工具链（2021年11月3日，clang32工具链默认不在msys2的源里，需要手动改 pacman.conf 加入 clang32 源，这里以 x86_64 的 LLVM 工具链进行实践）。
+pacman -Sy mingw-w64-clang-x86_64-toolchain 完成后添加环境变量，把 msys2 安装目录下的 clang64/bin 加入环境变量，方便 VSCode + CMake 找到工具链。另外注意装一个 Ninja，同样加入 Path。
+VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense，实在太慢。
+手动编译整个LLVM源码树实在是太费时间了，我选择用MSYS2的工具链。参考这篇文档去配置一个 LLVM 源码树外的 Pass 工程：CMake out of source pass - LLVM 。写一个简单的 CMakeLists.txt ，跟着 Writing an LLVM Pass - LLVM 这篇文档快速实现一个遍历函数的 Pass 。">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-08/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="windows"><meta property="article:tag" content="c++"><meta property="article:tag" content="llvm"><meta property="article:tag" content="汇编"><meta property="article:published_time" content="2021-11-03T16:54:00+08:00"><meta property="article:modified_time" content="2021-11-03T16:54:00+08:00">
+<meta name=twitter:title content="加壳原理08：混淆技术入门">
+<meta name=twitter:description content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。
+0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作为首要开发环境，不然光是 MSVC 把 LLVM 源码编译一遍就够呛了。
+安装好MSYS2之后安装 clang 工具链（2021年11月3日，clang32工具链默认不在msys2的源里，需要手动改 pacman.conf 加入 clang32 源，这里以 x86_64 的 LLVM 工具链进行实践）。
+pacman -Sy mingw-w64-clang-x86_64-toolchain 完成后添加环境变量，把 msys2 安装目录下的 clang64/bin 加入环境变量，方便 VSCode + CMake 找到工具链。另外注意装一个 Ninja，同样加入 Path。
+VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense，实在太慢。
+手动编译整个LLVM源码树实在是太费时间了，我选择用MSYS2的工具链。参考这篇文档去配置一个 LLVM 源码树外的 Pass 工程：CMake out of source pass - LLVM 。写一个简单的 CMakeLists.txt ，跟着 Writing an LLVM Pass - LLVM 这篇文档快速实现一个遍历函数的 Pass 。">
+</head>
+<body class="article-page has-toc">
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"auto")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex
+extended">
+<div id=article-toolbar>
+<a href=https://nnnewb.github.io/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
+<span>返回</span>
+</a>
+</div>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/%E9%80%86%E5%90%91/>
+逆向
+</a>
+</header>
+<h2 class=article-title>
+<a href=/blog/p/learning-packer-08/>加壳原理08：混淆技术入门</a>
+</h2>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2021年 11月 3日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 12 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。</p>
+<h2 id=0x01-环境设置>0x01 环境设置</h2>
+<p>LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作为首要开发环境，不然光是 MSVC 把 LLVM 源码编译一遍就够呛了。</p>
+<p>安装好MSYS2之后安装 clang 工具链（2021年11月3日，clang32工具链默认不在msys2的源里，需要手动改 <code>pacman.conf</code> 加入 <code>clang32</code> 源，这里以 x86_64 的 LLVM 工具链进行实践）。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>pacman -Sy mingw-w64-clang-x86_64-toolchain
+</code></pre></div><p>完成后添加环境变量，把 msys2 安装目录下的 <code>clang64/bin</code> 加入环境变量，方便 VSCode + CMake 找到工具链。另外注意装一个 Ninja，同样加入 Path。</p>
+<p>VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense，实在太慢。</p>
+<p>手动编译整个LLVM源码树实在是太费时间了，我选择用MSYS2的工具链。参考这篇文档去配置一个 LLVM 源码树外的 Pass 工程：<a class=link href=https://llvm.org/docs/CMake.html#cmake-out-of-source-pass target=_blank rel=noopener>CMake out of source pass - LLVM</a> 。写一个简单的 CMakeLists.txt ，跟着 <a class=link href=https://llvm.org/docs/WritingAnLLVMPass.html target=_blank rel=noopener>Writing an LLVM Pass - LLVM</a> 这篇文档快速实现一个遍历函数的 Pass 。</p>
+<p>下面是 <code>CMakeLists.txt</code> 的内容</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=nb>cmake_minimum_required</span><span class=p>(</span><span class=s>VERSION</span> <span class=s>3.13.4</span><span class=p>)</span><span class=err>
+</span><span class=err></span><span class=nb>project</span><span class=p>(</span><span class=s>Hello</span><span class=p>)</span><span class=err>
+</span><span class=err></span><span class=nb>find_package</span><span class=p>(</span><span class=s>LLVM</span> <span class=s>REQUIRED</span> <span class=s>CONFIG</span><span class=p>)</span><span class=err>
+</span><span class=err>
+</span><span class=err></span><span class=nb>message</span><span class=p>(</span><span class=s>STATUS</span> <span class=s2>&#34;Found LLVM ${LLVM_PACKAGE_VERSION}&#34;</span><span class=p>)</span><span class=err>
+</span><span class=err></span><span class=nb>message</span><span class=p>(</span><span class=s>STATUS</span> <span class=s2>&#34;Using LLVMConfig.cmake in: ${LLVM_DIR}&#34;</span><span class=p>)</span><span class=err>
+</span><span class=err>
+</span><span class=err></span><span class=nb>include_directories</span><span class=p>(</span><span class=o>${</span><span class=nv>LLVM_INCLUDE_DIRS</span><span class=o>}</span><span class=p>)</span><span class=err>
+</span><span class=err></span><span class=nb>separate_arguments</span><span class=p>(</span><span class=s>LLVM_DEFINITIONS_LIST</span> <span class=s>NATIVE_COMMAND</span> <span class=o>${</span><span class=nv>LLVM_DEFINITIONS</span><span class=o>}</span><span class=p>)</span><span class=err>
+</span><span class=err></span><span class=nb>add_definitions</span><span class=p>(</span><span class=o>${</span><span class=nv>LLVM_DEFINITIONS_LIST</span><span class=o>}</span><span class=p>)</span><span class=err>
+</span><span class=err>
+</span><span class=err></span><span class=nb>list</span><span class=p>(</span><span class=s>APPEND</span> <span class=s>CMAKE_MODULE_PATH</span> <span class=s2>&#34;${LLVM_CMAKE_DIR}&#34;</span><span class=p>)</span><span class=err>
+</span><span class=err></span><span class=nb>include</span><span class=p>(</span><span class=s>AddLLVM</span><span class=p>)</span><span class=err>
+</span><span class=err></span><span class=nb>add_llvm_library</span><span class=p>(</span><span class=s>Hello</span> <span class=s>MODULE</span> <span class=s>hello.cpp</span> <span class=s>PLUGIN_TOOL</span> <span class=s>opt</span><span class=p>)</span><span class=err>
+</span></code></pre></div><p>然后是实现 pass 的源码，源码的详细解释直接读 LLVM 给的文档。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cp>#include</span> <span class=cpf>&#34;llvm/IR/Function.h&#34;</span><span class=cp>
+</span><span class=cp>#include</span> <span class=cpf>&#34;llvm/IR/LegacyPassManager.h&#34;</span><span class=cp>
+</span><span class=cp>#include</span> <span class=cpf>&#34;llvm/Pass.h&#34;</span><span class=cp>
+</span><span class=cp>#include</span> <span class=cpf>&#34;llvm/Support/raw_ostream.h&#34;</span><span class=cp>
+</span><span class=cp>#include</span> <span class=cpf>&#34;llvm/Transforms/IPO/PassManagerBuilder.h&#34;</span><span class=cp>
+</span><span class=cp></span>
+<span class=k>using</span> <span class=k>namespace</span> <span class=n>llvm</span><span class=p>;</span>
+
+<span class=k>namespace</span> <span class=p>{</span>
+  <span class=k>struct</span> <span class=nc>Hello</span> <span class=o>:</span> <span class=k>public</span> <span class=n>FunctionPass</span> <span class=p>{</span>
+    <span class=k>static</span> <span class=kt>char</span> <span class=n>ID</span><span class=p>;</span>
+    <span class=n>Hello</span><span class=p>()</span> <span class=o>:</span> <span class=n>FunctionPass</span><span class=p>(</span><span class=n>ID</span><span class=p>)</span> <span class=p>{}</span>
+    <span class=kt>bool</span> <span class=nf>runOnFunction</span><span class=p>(</span><span class=n>Function</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>)</span> <span class=k>override</span> <span class=p>{</span>
+      <span class=n>errs</span><span class=p>()</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;Hello:&#34;</span><span class=p>;</span>
+      <span class=n>errs</span><span class=p>().</span><span class=n>write_escaped</span><span class=p>(</span><span class=n>F</span><span class=p>.</span><span class=n>getName</span><span class=p>())</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;</span><span class=se>\n</span><span class=s>&#34;</span><span class=p>;</span>
+      <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
+    <span class=p>}</span>
+  <span class=p>};</span>
+<span class=p>}</span> <span class=c1>// namespace
+</span><span class=c1></span>
+<span class=kt>char</span> <span class=n>Hello</span><span class=o>::</span><span class=n>ID</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+
+<span class=k>static</span> <span class=n>RegisterPass</span><span class=o>&lt;</span><span class=n>Hello</span><span class=o>&gt;</span> <span class=n>X</span><span class=p>(</span><span class=s>&#34;hello&#34;</span><span class=p>,</span> <span class=s>&#34;hello world pass&#34;</span><span class=p>,</span> <span class=nb>false</span><span class=p>,</span> <span class=nb>false</span><span class=p>);</span>
+
+<span class=k>static</span> <span class=n>RegisterStandardPasses</span> <span class=nf>Y</span><span class=p>(</span><span class=n>PassManagerBuilder</span><span class=o>::</span><span class=n>EP_EarlyAsPossible</span><span class=p>,</span>
+                                <span class=p>[](</span><span class=k>const</span> <span class=n>PassManagerBuilder</span> <span class=o>&amp;</span><span class=n>builder</span><span class=p>,</span> <span class=n>legacy</span><span class=o>::</span><span class=n>PassManagerBase</span> <span class=o>&amp;</span><span class=n>pm</span><span class=p>)</span> <span class=p>{</span>
+                                  <span class=n>pm</span><span class=p>.</span><span class=n>add</span><span class=p>(</span><span class=k>new</span> <span class=n>Hello</span><span class=p>());</span>
+                                <span class=p>});</span>
+</code></pre></div><p>再准备一个简单的样本，用来实验 Pass 的效果。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;stdio.h&gt;</span><span class=cp>
+</span><span class=cp></span>
+<span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+  <span class=n>printf</span><span class=p>(</span><span class=s>&#34;hello world&#34;</span><span class=p>);</span>
+  <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><p>接着是实验步骤：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>clang -O3 -emit-llvm sample.c -c -o sample.bc
+opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello.dll -hello sample.bc -o sample.exe
+</code></pre></div><p>如果一切顺利，输出如下：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-plain data-lang=plain>Hello:main
+</code></pre></div><p>不顺利的话只能自己谷歌。</p>
+<h2 id=0x02-ollvm-bcf-混淆初窥>0x02 OLLVM bcf 混淆初窥</h2>
+<p>这部分先看看知名的 OLLVM 项目是怎么做的，先看 <em>bcf</em> 混淆，源码在 <code>llvm/lib/Transforms/Obfuscation/BogusControlFlow.cpp</code>， 入口在 <code>runOnFunction</code> 函数。</p>
+<h3 id=21-runonfunction>2.1 runOnFunction</h3>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp>    <span class=cm>/* runOnFunction
+</span><span class=cm>     *
+</span><span class=cm>     * Overwrite FunctionPass method to apply the transformation
+</span><span class=cm>     * to the function. See header for more details.
+</span><span class=cm>     */</span>
+    <span class=k>virtual</span> <span class=kt>bool</span> <span class=nf>runOnFunction</span><span class=p>(</span><span class=n>Function</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>){</span>
+      <span class=c1>// Check if the percentage is correct
+</span><span class=c1></span>      <span class=k>if</span> <span class=p>(</span><span class=n>ObfTimes</span> <span class=o>&lt;=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+        <span class=n>errs</span><span class=p>()</span><span class=o>&lt;&lt;</span><span class=s>&#34;BogusControlFlow application number -bcf_loop=x must be x &gt; 0&#34;</span><span class=p>;</span>
+		<span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
+      <span class=p>}</span>
+
+      <span class=c1>// Check if the number of applications is correct
+</span><span class=c1></span>      <span class=k>if</span> <span class=p>(</span> <span class=o>!</span><span class=p>((</span><span class=n>ObfProbRate</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>)</span> <span class=o>&amp;&amp;</span> <span class=p>(</span><span class=n>ObfProbRate</span> <span class=o>&lt;=</span> <span class=mi>100</span><span class=p>))</span> <span class=p>)</span> <span class=p>{</span>
+        <span class=n>errs</span><span class=p>()</span><span class=o>&lt;&lt;</span><span class=s>&#34;BogusControlFlow application basic blocks percentage -bcf_prob=x must be 0 &lt; x &lt;= 100&#34;</span><span class=p>;</span>
+		<span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
+      <span class=p>}</span>
+      <span class=c1>// If fla annotations
+</span><span class=c1></span>      <span class=k>if</span><span class=p>(</span><span class=n>toObfuscate</span><span class=p>(</span><span class=n>flag</span><span class=p>,</span><span class=o>&amp;</span><span class=n>F</span><span class=p>,</span><span class=s>&#34;bcf&#34;</span><span class=p>))</span> <span class=p>{</span>
+        <span class=k>if</span> <span class=p>(</span><span class=n>isInvoke</span><span class=p>(</span><span class=o>&amp;</span><span class=n>F</span><span class=p>))</span> <span class=p>{</span>
+          <span class=n>bogus</span><span class=p>(</span><span class=n>F</span><span class=p>);</span>
+          <span class=n>doF</span><span class=p>(</span><span class=o>*</span><span class=n>F</span><span class=p>.</span><span class=n>getParent</span><span class=p>());</span>
+          <span class=k>return</span> <span class=nb>true</span><span class=p>;</span>
+        <span class=p>}</span>
+      <span class=p>}</span>
+
+      <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
+    <span class=p>}</span> <span class=c1>// end of runOnFunction()
+</span></code></pre></div><p>前两个 <code>if</code> 都是在判断参数，先忽略。<code>if(toObfuscate(flag,&F,"bcf"))</code> 判断是否是否需要混淆，<code>if (isInvoke(&F))</code> 判断能否混淆。</p>
+<p>真正的混淆逻辑在 <code>bogus(F)</code> 里。</p>
+<h3 id=22-bogus>2.2 bogus</h3>
+<p>裁剪掉了调试输出后的 <code>bogus</code> 函数内容。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=kt>void</span> <span class=nf>bogus</span><span class=p>(</span><span class=n>Function</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>)</span> <span class=p>{</span>
+  <span class=c1>// For statistics and debug
+</span><span class=c1></span>  <span class=o>++</span><span class=n>NumFunction</span><span class=p>;</span>
+  <span class=kt>int</span> <span class=n>NumBasicBlocks</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+  <span class=kt>bool</span> <span class=n>firstTime</span> <span class=o>=</span> <span class=nb>true</span><span class=p>;</span> <span class=c1>// First time we do the loop in this function
+</span><span class=c1></span>
+  <span class=n>NumTimesOnFunctions</span> <span class=o>=</span> <span class=n>ObfTimes</span><span class=p>;</span>
+  <span class=kt>int</span> <span class=n>NumObfTimes</span> <span class=o>=</span> <span class=n>ObfTimes</span><span class=p>;</span>
+
+  <span class=c1>// Real begining of the pass
+</span><span class=c1></span>  <span class=c1>// Loop for the number of time we run the pass on the function
+</span><span class=c1></span>  <span class=k>do</span> <span class=p>{</span>
+    <span class=c1>// Put all the function&#39;s block in a list
+</span><span class=c1></span>    <span class=n>std</span><span class=o>::</span><span class=n>list</span><span class=o>&lt;</span><span class=n>BasicBlock</span> <span class=o>*&gt;</span> <span class=n>basicBlocks</span><span class=p>;</span>
+    <span class=k>for</span> <span class=p>(</span><span class=n>Function</span><span class=o>::</span><span class=n>iterator</span> <span class=n>i</span> <span class=o>=</span> <span class=n>F</span><span class=p>.</span><span class=n>begin</span><span class=p>();</span> <span class=n>i</span> <span class=o>!=</span> <span class=n>F</span><span class=p>.</span><span class=n>end</span><span class=p>();</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
+      <span class=n>basicBlocks</span><span class=p>.</span><span class=n>push_back</span><span class=p>(</span><span class=o>&amp;*</span><span class=n>i</span><span class=p>);</span>
+    <span class=p>}</span>
+
+    <span class=k>while</span> <span class=p>(</span><span class=o>!</span><span class=n>basicBlocks</span><span class=p>.</span><span class=n>empty</span><span class=p>())</span> <span class=p>{</span>
+      <span class=n>NumBasicBlocks</span><span class=o>++</span><span class=p>;</span>
+      <span class=c1>// Basic Blocks&#39; selection
+</span><span class=c1></span>      <span class=k>if</span> <span class=p>((</span><span class=kt>int</span><span class=p>)</span><span class=n>llvm</span><span class=o>::</span><span class=n>cryptoutils</span><span class=o>-&gt;</span><span class=n>get_range</span><span class=p>(</span><span class=mi>100</span><span class=p>)</span> <span class=o>&lt;=</span> <span class=n>ObfProbRate</span><span class=p>)</span> <span class=p>{</span>
+        <span class=o>++</span><span class=n>NumModifiedBasicBlocks</span><span class=p>;</span>
+        <span class=n>NumAddedBasicBlocks</span> <span class=o>+=</span> <span class=mi>3</span><span class=p>;</span>
+        <span class=n>FinalNumBasicBlocks</span> <span class=o>+=</span> <span class=mi>3</span><span class=p>;</span>
+        <span class=c1>// Add bogus flow to the given Basic Block (see description)
+</span><span class=c1></span>        <span class=n>BasicBlock</span> <span class=o>*</span><span class=n>basicBlock</span> <span class=o>=</span> <span class=n>basicBlocks</span><span class=p>.</span><span class=n>front</span><span class=p>();</span>
+        <span class=n>addBogusFlow</span><span class=p>(</span><span class=n>basicBlock</span><span class=p>,</span> <span class=n>F</span><span class=p>);</span>
+      <span class=p>}</span>
+      <span class=c1>// remove the block from the list
+</span><span class=c1></span>      <span class=n>basicBlocks</span><span class=p>.</span><span class=n>pop_front</span><span class=p>();</span>
+
+      <span class=k>if</span> <span class=p>(</span><span class=n>firstTime</span><span class=p>)</span> <span class=p>{</span> <span class=c1>// first time we iterate on this function
+</span><span class=c1></span>        <span class=o>++</span><span class=n>InitNumBasicBlocks</span><span class=p>;</span>
+        <span class=o>++</span><span class=n>FinalNumBasicBlocks</span><span class=p>;</span>
+      <span class=p>}</span>
+    <span class=p>}</span> <span class=c1>// end of while(!basicBlocks.empty())
+</span><span class=c1></span>
+    <span class=n>firstTime</span> <span class=o>=</span> <span class=nb>false</span><span class=p>;</span>
+  <span class=p>}</span> <span class=k>while</span> <span class=p>(</span><span class=o>--</span><span class=n>NumObfTimes</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>);</span>
+<span class=p>}</span>
+</code></pre></div><p>尝试分析上面的函数逻辑：</p>
+<ol>
+<li>循环混淆一定次数（<code>NumObfTimes</code>）
+<ol>
+<li>遍历原函数基本块（<code>basicBlocks</code>）
+<ol>
+<li>选择基本块（<code>cryptoutils->get_range(100) &lt;= ObfProbRate</code>）
+<ol>
+<li>各种计数自增</li>
+<li>添加伪造控制流（<code>addBogusFlow(basicBlock, F)</code>）</li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+<p>混淆次数和基本块遍历没什么好说的，选择基本块这里，<code>get_range(100)</code> 实际上是一个安全的随机数生成器，<code>ObfProbRate</code> 是基本块被混淆的机率。也就是说一个函数内的基本块是随机被混淆的，加上混淆次数的设计，会出现有的基本块被混淆多次有的没有被混淆的情况。</p>
+<h3 id=22-addbogusflow>2.2 addBogusFlow</h3>
+<p>接着继续看添加伪造控制流的逻辑，同样裁剪掉了调试输出。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cm>/* addBogusFlow
+</span><span class=cm>  *
+</span><span class=cm>  * Add bogus flow to a given basic block, according to the header&#39;s description
+</span><span class=cm>  */</span>
+<span class=k>virtual</span> <span class=kt>void</span> <span class=nf>addBogusFlow</span><span class=p>(</span><span class=n>BasicBlock</span> <span class=o>*</span><span class=n>basicBlock</span><span class=p>,</span> <span class=n>Function</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>)</span> <span class=p>{</span>
+      <span class=c1>// Split the block: first part with only the phi nodes and debug info and terminator
+</span><span class=c1></span>      <span class=c1>//                  created by splitBasicBlock. (-&gt; No instruction)
+</span><span class=c1></span>      <span class=c1>//                  Second part with every instructions from the original block
+</span><span class=c1></span>      <span class=c1>// We do this way, so we don&#39;t have to adjust all the phi nodes, metadatas and so on
+</span><span class=c1></span>      <span class=c1>// for the first block. We have to let the phi nodes in the first part, because they
+</span><span class=c1></span>      <span class=c1>// actually are updated in the second part according to them.
+</span><span class=c1></span>      <span class=n>BasicBlock</span><span class=o>::</span><span class=n>iterator</span> <span class=n>i1</span> <span class=o>=</span> <span class=n>basicBlock</span><span class=o>-&gt;</span><span class=n>begin</span><span class=p>();</span>
+      <span class=k>if</span> <span class=p>(</span><span class=n>basicBlock</span><span class=o>-&gt;</span><span class=n>getFirstNonPHIOrDbgOrLifetime</span><span class=p>())</span>
+        <span class=n>i1</span> <span class=o>=</span> <span class=p>(</span><span class=n>BasicBlock</span><span class=o>::</span><span class=n>iterator</span><span class=p>)</span><span class=n>basicBlock</span><span class=o>-&gt;</span><span class=n>getFirstNonPHIOrDbgOrLifetime</span><span class=p>();</span>
+      <span class=n>Twine</span> <span class=o>*</span><span class=n>var</span><span class=p>;</span>
+      <span class=n>var</span> <span class=o>=</span> <span class=k>new</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;originalBB&#34;</span><span class=p>);</span>
+      <span class=n>BasicBlock</span> <span class=o>*</span><span class=n>originalBB</span> <span class=o>=</span> <span class=n>basicBlock</span><span class=o>-&gt;</span><span class=n>splitBasicBlock</span><span class=p>(</span><span class=n>i1</span><span class=p>,</span> <span class=o>*</span><span class=n>var</span><span class=p>);</span>
+
+      <span class=c1>// Creating the altered basic block on which the first basicBlock will jump
+</span><span class=c1></span>      <span class=n>Twine</span> <span class=o>*</span><span class=n>var3</span> <span class=o>=</span> <span class=k>new</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;alteredBB&#34;</span><span class=p>);</span>
+      <span class=n>BasicBlock</span> <span class=o>*</span><span class=n>alteredBB</span> <span class=o>=</span> <span class=n>createAlteredBasicBlock</span><span class=p>(</span><span class=n>originalBB</span><span class=p>,</span> <span class=o>*</span><span class=n>var3</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>);</span>
+
+      <span class=c1>// Now that all the blocks are created,
+</span><span class=c1></span>      <span class=c1>// we modify the terminators to adjust the control flow.
+</span><span class=c1></span>      <span class=n>alteredBB</span><span class=o>-&gt;</span><span class=n>getTerminator</span><span class=p>()</span><span class=o>-&gt;</span><span class=n>eraseFromParent</span><span class=p>();</span>
+      <span class=n>basicBlock</span><span class=o>-&gt;</span><span class=n>getTerminator</span><span class=p>()</span><span class=o>-&gt;</span><span class=n>eraseFromParent</span><span class=p>();</span>
+
+      <span class=c1>// Preparing a condition..
+</span><span class=c1></span>      <span class=c1>// For now, the condition is an always true comparaison between 2 float
+</span><span class=c1></span>      <span class=c1>// This will be complicated after the pass (in doFinalization())
+</span><span class=c1></span>      <span class=n>Value</span> <span class=o>*</span><span class=n>LHS</span> <span class=o>=</span> <span class=n>ConstantFP</span><span class=o>::</span><span class=n>get</span><span class=p>(</span><span class=n>Type</span><span class=o>::</span><span class=n>getFloatTy</span><span class=p>(</span><span class=n>F</span><span class=p>.</span><span class=n>getContext</span><span class=p>()),</span> <span class=mf>1.0</span><span class=p>);</span>
+      <span class=n>Value</span> <span class=o>*</span><span class=n>RHS</span> <span class=o>=</span> <span class=n>ConstantFP</span><span class=o>::</span><span class=n>get</span><span class=p>(</span><span class=n>Type</span><span class=o>::</span><span class=n>getFloatTy</span><span class=p>(</span><span class=n>F</span><span class=p>.</span><span class=n>getContext</span><span class=p>()),</span> <span class=mf>1.0</span><span class=p>);</span>
+
+      <span class=c1>// The always true condition. End of the first block
+</span><span class=c1></span>      <span class=n>Twine</span> <span class=o>*</span><span class=n>var4</span> <span class=o>=</span> <span class=k>new</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;condition&#34;</span><span class=p>);</span>
+      <span class=n>FCmpInst</span> <span class=o>*</span><span class=n>condition</span> <span class=o>=</span> <span class=k>new</span> <span class=n>FCmpInst</span><span class=p>(</span><span class=o>*</span><span class=n>basicBlock</span><span class=p>,</span> <span class=n>FCmpInst</span><span class=o>::</span><span class=n>FCMP_TRUE</span><span class=p>,</span> <span class=n>LHS</span><span class=p>,</span> <span class=n>RHS</span><span class=p>,</span> <span class=o>*</span><span class=n>var4</span><span class=p>);</span>
+
+      <span class=c1>// Jump to the original basic block if the condition is true or
+</span><span class=c1></span>      <span class=c1>// to the altered block if false.
+</span><span class=c1></span>      <span class=n>BranchInst</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>originalBB</span><span class=p>,</span> <span class=n>alteredBB</span><span class=p>,</span> <span class=p>(</span><span class=n>Value</span> <span class=o>*</span><span class=p>)</span><span class=n>condition</span><span class=p>,</span> <span class=n>basicBlock</span><span class=p>);</span>
+
+      <span class=c1>// The altered block loop back on the original one.
+</span><span class=c1></span>      <span class=n>BranchInst</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>originalBB</span><span class=p>,</span> <span class=n>alteredBB</span><span class=p>);</span>
+
+      <span class=c1>// The end of the originalBB is modified to give the impression that sometimes
+</span><span class=c1></span>      <span class=c1>// it continues in the loop, and sometimes it return the desired value
+</span><span class=c1></span>      <span class=c1>// (of course it&#39;s always true, so it always use the original terminator..
+</span><span class=c1></span>      <span class=c1>//  but this will be obfuscated too;) )
+</span><span class=c1></span>
+      <span class=c1>// iterate on instruction just before the terminator of the originalBB
+</span><span class=c1></span>      <span class=n>BasicBlock</span><span class=o>::</span><span class=n>iterator</span> <span class=n>i</span> <span class=o>=</span> <span class=n>originalBB</span><span class=o>-&gt;</span><span class=n>end</span><span class=p>();</span>
+
+      <span class=c1>// Split at this point (we only want the terminator in the second part)
+</span><span class=c1></span>      <span class=n>Twine</span> <span class=o>*</span><span class=n>var5</span> <span class=o>=</span> <span class=k>new</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;originalBBpart2&#34;</span><span class=p>);</span>
+      <span class=n>BasicBlock</span> <span class=o>*</span><span class=n>originalBBpart2</span> <span class=o>=</span> <span class=n>originalBB</span><span class=o>-&gt;</span><span class=n>splitBasicBlock</span><span class=p>(</span><span class=o>--</span><span class=n>i</span><span class=p>,</span> <span class=o>*</span><span class=n>var5</span><span class=p>);</span>
+      <span class=c1>// the first part go either on the return statement or on the begining
+</span><span class=c1></span>      <span class=c1>// of the altered block.. So we erase the terminator created when splitting.
+</span><span class=c1></span>      <span class=n>originalBB</span><span class=o>-&gt;</span><span class=n>getTerminator</span><span class=p>()</span><span class=o>-&gt;</span><span class=n>eraseFromParent</span><span class=p>();</span>
+      <span class=c1>// We add at the end a new always true condition
+</span><span class=c1></span>      <span class=n>Twine</span> <span class=o>*</span><span class=n>var6</span> <span class=o>=</span> <span class=k>new</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;condition2&#34;</span><span class=p>);</span>
+      <span class=n>FCmpInst</span> <span class=o>*</span><span class=n>condition2</span> <span class=o>=</span> <span class=k>new</span> <span class=n>FCmpInst</span><span class=p>(</span><span class=o>*</span><span class=n>originalBB</span><span class=p>,</span> <span class=n>CmpInst</span><span class=o>::</span><span class=n>FCMP_TRUE</span><span class=p>,</span> <span class=n>LHS</span><span class=p>,</span> <span class=n>RHS</span><span class=p>,</span> <span class=o>*</span><span class=n>var6</span><span class=p>);</span>
+      <span class=n>BranchInst</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>originalBBpart2</span><span class=p>,</span> <span class=n>alteredBB</span><span class=p>,</span> <span class=p>(</span><span class=n>Value</span> <span class=o>*</span><span class=p>)</span><span class=n>condition2</span><span class=p>,</span> <span class=n>originalBB</span><span class=p>);</span>
+<span class=p>}</span> <span class=c1>// end of addBogusFlow()
+</span></code></pre></div><p>尝试分析上面的函数逻辑：</p>
+<ol>
+<li>分割基本块，把 <code>phinode</code> 和调试信息之类的分割到原始块，新创建出来的块不包含 <code>phinode</code> 之类的东西。（<code>entry</code>）</li>
+<li>创建伪造分支。（<code>altered</code>）</li>
+<li>创建恒真条件，这里是利用浮点比较 <code>FCMP_TRUE</code>。（<code>condition</code>）</li>
+<li>创建分支指令，真跳转原始块，假跳转伪造块，伪造块的末尾又跳回原始块。</li>
+<li>在原始块的结束部分再次分割基本块，分割后的块包含原始块的 terminator （<code>terminator</code>）</li>
+<li>创建一个恒真条件，跳转到原始块的 terminator，假则跳转到伪造块 （<code>condition2</code>）</li>
+</ol>
+<p><figure style=flex-grow:67;flex-basis:161px>
+<a href=/blog/p/learning-packer-08/image-20211102160422737.png data-size=435x648><img src=/blog/p/learning-packer-08/image-20211102160422737.png srcset="/blog/p/learning-packer-08/image-20211102160422737_hu1adf2e2db9eba618ac02ebe93739a09a_98722_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/image-20211102160422737_hu1adf2e2db9eba618ac02ebe93739a09a_98722_1024x0_resize_box_3.png 1024w" width=435 height=648 loading=lazy alt=image-20211102160422737>
+</a>
+<figcaption>image-20211102160422737</figcaption>
+</figure></p>
+<p>混淆后的控制流长这样，两个 condition 都是恒真条件，原始块被分成了三个部分，<code>entry</code>、<code>origin</code>、<code>terminator</code> 。图中红色的部分是伪造块，包含垃圾指令，绿色的条件块都是恒真条件，只有绿色箭头的控制流能走通。蓝色节点是从原始基本块上分割出来的部分。</p>
+<h3 id=23-createalteredbasicblock>2.3 createAlteredBasicBlock</h3>
+<p>再看伪造块是如何生成的。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++>    <span class=cm>/* createAlteredBasicBlock
+</span><span class=cm>     *
+</span><span class=cm>     * This function return a basic block similar to a given one.
+</span><span class=cm>     * It&#39;s inserted just after the given basic block.
+</span><span class=cm>     * The instructions are similar but junk instructions are added between
+</span><span class=cm>     * the cloned one. The cloned instructions&#39; phi nodes, metadatas, uses and
+</span><span class=cm>     * debug locations are adjusted to fit in the cloned basic block and
+</span><span class=cm>     * behave nicely.
+</span><span class=cm>     */</span>
+    <span class=k>virtual</span> <span class=n>BasicBlock</span> <span class=o>*</span><span class=nf>createAlteredBasicBlock</span><span class=p>(</span><span class=n>BasicBlock</span> <span class=o>*</span><span class=n>basicBlock</span><span class=p>,</span> <span class=k>const</span> <span class=n>Twine</span> <span class=o>&amp;</span><span class=n>Name</span> <span class=o>=</span> <span class=s>&#34;gen&#34;</span><span class=p>,</span> <span class=n>Function</span> <span class=o>*</span><span class=n>F</span> <span class=o>=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+      <span class=c1>// Useful to remap the informations concerning instructions.
+</span><span class=c1></span>      <span class=n>ValueToValueMapTy</span> <span class=n>VMap</span><span class=p>;</span>
+      <span class=n>BasicBlock</span> <span class=o>*</span><span class=n>alteredBB</span> <span class=o>=</span> <span class=n>llvm</span><span class=o>::</span><span class=n>CloneBasicBlock</span><span class=p>(</span><span class=n>basicBlock</span><span class=p>,</span> <span class=n>VMap</span><span class=p>,</span> <span class=n>Name</span><span class=p>,</span> <span class=n>F</span><span class=p>);</span>
+      <span class=c1>// Remap operands.
+</span><span class=c1></span>      <span class=n>BasicBlock</span><span class=o>::</span><span class=n>iterator</span> <span class=n>ji</span> <span class=o>=</span> <span class=n>basicBlock</span><span class=o>-&gt;</span><span class=n>begin</span><span class=p>();</span>
+      <span class=k>for</span> <span class=p>(</span><span class=n>BasicBlock</span><span class=o>::</span><span class=n>iterator</span> <span class=n>i</span> <span class=o>=</span> <span class=n>alteredBB</span><span class=o>-&gt;</span><span class=n>begin</span><span class=p>(),</span> <span class=n>e</span> <span class=o>=</span> <span class=n>alteredBB</span><span class=o>-&gt;</span><span class=n>end</span><span class=p>();</span> <span class=n>i</span> <span class=o>!=</span> <span class=n>e</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
+        <span class=c1>// Loop over the operands of the instruction
+</span><span class=c1></span>        <span class=k>for</span> <span class=p>(</span><span class=n>User</span><span class=o>::</span><span class=n>op_iterator</span> <span class=n>opi</span> <span class=o>=</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>op_begin</span><span class=p>(),</span> <span class=n>ope</span> <span class=o>=</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>op_end</span><span class=p>();</span> <span class=n>opi</span> <span class=o>!=</span> <span class=n>ope</span><span class=p>;</span> <span class=o>++</span><span class=n>opi</span><span class=p>)</span> <span class=p>{</span>
+          <span class=c1>// get the value for the operand
+</span><span class=c1></span>          <span class=n>Value</span> <span class=o>*</span><span class=n>v</span> <span class=o>=</span> <span class=n>MapValue</span><span class=p>(</span><span class=o>*</span><span class=n>opi</span><span class=p>,</span> <span class=n>VMap</span><span class=p>,</span> <span class=n>RF_None</span><span class=p>,</span> <span class=mi>0</span><span class=p>);</span>
+          <span class=k>if</span> <span class=p>(</span><span class=n>v</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+            <span class=o>*</span><span class=n>opi</span> <span class=o>=</span> <span class=n>v</span><span class=p>;</span>
+          <span class=p>}</span>
+        <span class=p>}</span>
+        <span class=c1>// Remap phi nodes&#39; incoming blocks.
+</span><span class=c1></span>        <span class=k>if</span> <span class=p>(</span><span class=n>PHINode</span> <span class=o>*</span><span class=n>pn</span> <span class=o>=</span> <span class=n>dyn_cast</span><span class=o>&lt;</span><span class=n>PHINode</span><span class=o>&gt;</span><span class=p>(</span><span class=n>i</span><span class=p>))</span> <span class=p>{</span>
+          <span class=k>for</span> <span class=p>(</span><span class=kt>unsigned</span> <span class=n>j</span> <span class=o>=</span> <span class=mi>0</span><span class=p>,</span> <span class=n>e</span> <span class=o>=</span> <span class=n>pn</span><span class=o>-&gt;</span><span class=n>getNumIncomingValues</span><span class=p>();</span> <span class=n>j</span> <span class=o>!=</span> <span class=n>e</span><span class=p>;</span> <span class=o>++</span><span class=n>j</span><span class=p>)</span> <span class=p>{</span>
+            <span class=n>Value</span> <span class=o>*</span><span class=n>v</span> <span class=o>=</span> <span class=n>MapValue</span><span class=p>(</span><span class=n>pn</span><span class=o>-&gt;</span><span class=n>getIncomingBlock</span><span class=p>(</span><span class=n>j</span><span class=p>),</span> <span class=n>VMap</span><span class=p>,</span> <span class=n>RF_None</span><span class=p>,</span> <span class=mi>0</span><span class=p>);</span>
+            <span class=k>if</span> <span class=p>(</span><span class=n>v</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+              <span class=n>pn</span><span class=o>-&gt;</span><span class=n>setIncomingBlock</span><span class=p>(</span><span class=n>j</span><span class=p>,</span> <span class=n>cast</span><span class=o>&lt;</span><span class=n>BasicBlock</span><span class=o>&gt;</span><span class=p>(</span><span class=n>v</span><span class=p>));</span>
+            <span class=p>}</span>
+          <span class=p>}</span>
+        <span class=p>}</span>
+        <span class=c1>// Remap attached metadata.
+</span><span class=c1></span>        <span class=n>SmallVector</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>pair</span><span class=o>&lt;</span><span class=kt>unsigned</span><span class=p>,</span> <span class=n>MDNode</span> <span class=o>*&gt;</span><span class=p>,</span> <span class=mi>4</span><span class=o>&gt;</span> <span class=n>MDs</span><span class=p>;</span>
+        <span class=n>i</span><span class=o>-&gt;</span><span class=n>getAllMetadata</span><span class=p>(</span><span class=n>MDs</span><span class=p>);</span>
+        <span class=c1>// important for compiling with DWARF, using option -g.
+</span><span class=c1></span>        <span class=n>i</span><span class=o>-&gt;</span><span class=n>setDebugLoc</span><span class=p>(</span><span class=n>ji</span><span class=o>-&gt;</span><span class=n>getDebugLoc</span><span class=p>());</span>
+        <span class=n>ji</span><span class=o>++</span><span class=p>;</span>
+
+      <span class=p>}</span> <span class=c1>// The instructions&#39; informations are now all correct
+</span><span class=c1></span>
+
+      <span class=c1>// add random instruction in the middle of the bloc. This part can be improve
+</span><span class=c1></span>      <span class=k>for</span> <span class=p>(</span><span class=n>BasicBlock</span><span class=o>::</span><span class=n>iterator</span> <span class=n>i</span> <span class=o>=</span> <span class=n>alteredBB</span><span class=o>-&gt;</span><span class=n>begin</span><span class=p>(),</span> <span class=n>e</span> <span class=o>=</span> <span class=n>alteredBB</span><span class=o>-&gt;</span><span class=n>end</span><span class=p>();</span> <span class=n>i</span> <span class=o>!=</span> <span class=n>e</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
+        <span class=c1>// in the case we find binary operator, we modify slightly this part by randomly
+</span><span class=c1></span>        <span class=c1>// insert some instructions
+</span><span class=c1></span>        <span class=k>if</span> <span class=p>(</span><span class=n>i</span><span class=o>-&gt;</span><span class=n>isBinaryOp</span><span class=p>())</span> <span class=p>{</span> <span class=c1>// binary instructions
+</span><span class=c1></span>          <span class=kt>unsigned</span> <span class=n>opcode</span> <span class=o>=</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>getOpcode</span><span class=p>();</span>
+          <span class=n>BinaryOperator</span> <span class=o>*</span><span class=n>op</span><span class=p>,</span> <span class=o>*</span><span class=n>op1</span> <span class=o>=</span> <span class=nb>NULL</span><span class=p>;</span>
+          <span class=n>UnaryOperator</span> <span class=o>*</span><span class=n>op2</span><span class=p>;</span>
+          <span class=n>Twine</span> <span class=o>*</span><span class=n>var</span> <span class=o>=</span> <span class=k>new</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;_&#34;</span><span class=p>);</span>
+          <span class=c1>// treat differently float or int
+</span><span class=c1></span>          <span class=c1>// Binary int
+</span><span class=c1></span>          <span class=k>if</span> <span class=p>(</span><span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>Add</span> <span class=o>||</span> <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>Sub</span> <span class=o>||</span> <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>Mul</span> <span class=o>||</span>
+              <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>UDiv</span> <span class=o>||</span> <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>SDiv</span> <span class=o>||</span> <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>URem</span> <span class=o>||</span>
+              <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>SRem</span> <span class=o>||</span> <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>Shl</span> <span class=o>||</span> <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>LShr</span> <span class=o>||</span>
+              <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>AShr</span> <span class=o>||</span> <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>And</span> <span class=o>||</span> <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>Or</span> <span class=o>||</span>
+              <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>Xor</span><span class=p>)</span> <span class=p>{</span>
+            <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>random</span> <span class=o>=</span> <span class=p>(</span><span class=kt>int</span><span class=p>)</span><span class=n>llvm</span><span class=o>::</span><span class=n>cryptoutils</span><span class=o>-&gt;</span><span class=n>get_range</span><span class=p>(</span><span class=mi>10</span><span class=p>);</span> <span class=n>random</span> <span class=o>&lt;</span> <span class=mi>10</span><span class=p>;</span> <span class=o>++</span><span class=n>random</span><span class=p>)</span> <span class=p>{</span>
+              <span class=k>switch</span> <span class=p>(</span><span class=n>llvm</span><span class=o>::</span><span class=n>cryptoutils</span><span class=o>-&gt;</span><span class=n>get_range</span><span class=p>(</span><span class=mi>4</span><span class=p>))</span> <span class=p>{</span> <span class=c1>// to improve
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>0</span><span class=o>:</span>                                    <span class=c1>// do nothing
+</span><span class=c1></span>                <span class=k>break</span><span class=p>;</span>
+              <span class=k>case</span> <span class=mi>1</span><span class=o>:</span>
+                <span class=n>op</span> <span class=o>=</span> <span class=n>BinaryOperator</span><span class=o>::</span><span class=n>CreateNeg</span><span class=p>(</span><span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>0</span><span class=p>),</span> <span class=o>*</span><span class=n>var</span><span class=p>,</span> <span class=o>&amp;*</span><span class=n>i</span><span class=p>);</span>
+                <span class=n>op1</span> <span class=o>=</span> <span class=n>BinaryOperator</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>Instruction</span><span class=o>::</span><span class=n>Add</span><span class=p>,</span> <span class=n>op</span><span class=p>,</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>1</span><span class=p>),</span> <span class=s>&#34;gen&#34;</span><span class=p>,</span> <span class=o>&amp;*</span><span class=n>i</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span>
+              <span class=k>case</span> <span class=mi>2</span><span class=o>:</span>
+                <span class=n>op1</span> <span class=o>=</span> <span class=n>BinaryOperator</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>Instruction</span><span class=o>::</span><span class=n>Sub</span><span class=p>,</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>0</span><span class=p>),</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>1</span><span class=p>),</span> <span class=o>*</span><span class=n>var</span><span class=p>,</span> <span class=o>&amp;*</span><span class=n>i</span><span class=p>);</span>
+                <span class=n>op</span> <span class=o>=</span> <span class=n>BinaryOperator</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>Instruction</span><span class=o>::</span><span class=n>Mul</span><span class=p>,</span> <span class=n>op1</span><span class=p>,</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>1</span><span class=p>),</span> <span class=s>&#34;gen&#34;</span><span class=p>,</span> <span class=o>&amp;*</span><span class=n>i</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span>
+              <span class=k>case</span> <span class=mi>3</span><span class=o>:</span>
+                <span class=n>op</span> <span class=o>=</span> <span class=n>BinaryOperator</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>Instruction</span><span class=o>::</span><span class=n>Shl</span><span class=p>,</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>0</span><span class=p>),</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>1</span><span class=p>),</span> <span class=o>*</span><span class=n>var</span><span class=p>,</span> <span class=o>&amp;*</span><span class=n>i</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span>
+              <span class=p>}</span>
+            <span class=p>}</span>
+          <span class=p>}</span>
+          <span class=c1>// Binary float
+</span><span class=c1></span>          <span class=k>if</span> <span class=p>(</span><span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>FAdd</span> <span class=o>||</span> <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>FSub</span> <span class=o>||</span> <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>FMul</span> <span class=o>||</span>
+              <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>FDiv</span> <span class=o>||</span> <span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>FRem</span><span class=p>)</span> <span class=p>{</span>
+            <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>random</span> <span class=o>=</span> <span class=p>(</span><span class=kt>int</span><span class=p>)</span><span class=n>llvm</span><span class=o>::</span><span class=n>cryptoutils</span><span class=o>-&gt;</span><span class=n>get_range</span><span class=p>(</span><span class=mi>10</span><span class=p>);</span> <span class=n>random</span> <span class=o>&lt;</span> <span class=mi>10</span><span class=p>;</span> <span class=o>++</span><span class=n>random</span><span class=p>)</span> <span class=p>{</span>
+              <span class=k>switch</span> <span class=p>(</span><span class=n>llvm</span><span class=o>::</span><span class=n>cryptoutils</span><span class=o>-&gt;</span><span class=n>get_range</span><span class=p>(</span><span class=mi>3</span><span class=p>))</span> <span class=p>{</span> <span class=c1>// can be improved
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>0</span><span class=o>:</span>                                    <span class=c1>// do nothing
+</span><span class=c1></span>                <span class=k>break</span><span class=p>;</span>
+              <span class=k>case</span> <span class=mi>1</span><span class=o>:</span>
+                <span class=n>op2</span> <span class=o>=</span> <span class=n>UnaryOperator</span><span class=o>::</span><span class=n>CreateFNeg</span><span class=p>(</span><span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>0</span><span class=p>),</span> <span class=o>*</span><span class=n>var</span><span class=p>,</span> <span class=o>&amp;*</span><span class=n>i</span><span class=p>);</span>
+                <span class=n>op1</span> <span class=o>=</span> <span class=n>BinaryOperator</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>Instruction</span><span class=o>::</span><span class=n>FAdd</span><span class=p>,</span> <span class=n>op2</span><span class=p>,</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>1</span><span class=p>),</span> <span class=s>&#34;gen&#34;</span><span class=p>,</span> <span class=o>&amp;*</span><span class=n>i</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span>
+              <span class=k>case</span> <span class=mi>2</span><span class=o>:</span>
+                <span class=n>op</span> <span class=o>=</span> <span class=n>BinaryOperator</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>Instruction</span><span class=o>::</span><span class=n>FSub</span><span class=p>,</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>0</span><span class=p>),</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>1</span><span class=p>),</span> <span class=o>*</span><span class=n>var</span><span class=p>,</span> <span class=o>&amp;*</span><span class=n>i</span><span class=p>);</span>
+                <span class=n>op1</span> <span class=o>=</span> <span class=n>BinaryOperator</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>Instruction</span><span class=o>::</span><span class=n>FMul</span><span class=p>,</span> <span class=n>op</span><span class=p>,</span> <span class=n>i</span><span class=o>-&gt;</span><span class=n>getOperand</span><span class=p>(</span><span class=mi>1</span><span class=p>),</span> <span class=s>&#34;gen&#34;</span><span class=p>,</span> <span class=o>&amp;*</span><span class=n>i</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span>
+              <span class=p>}</span>
+            <span class=p>}</span>
+          <span class=p>}</span>
+          <span class=k>if</span> <span class=p>(</span><span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>ICmp</span><span class=p>)</span> <span class=p>{</span> <span class=c1>// Condition (with int)
+</span><span class=c1></span>            <span class=n>ICmpInst</span> <span class=o>*</span><span class=n>currentI</span> <span class=o>=</span> <span class=p>(</span><span class=n>ICmpInst</span> <span class=o>*</span><span class=p>)(</span><span class=o>&amp;</span><span class=n>i</span><span class=p>);</span>
+            <span class=k>switch</span> <span class=p>(</span><span class=n>llvm</span><span class=o>::</span><span class=n>cryptoutils</span><span class=o>-&gt;</span><span class=n>get_range</span><span class=p>(</span><span class=mi>3</span><span class=p>))</span> <span class=p>{</span> <span class=c1>// must be improved
+</span><span class=c1></span>            <span class=k>case</span> <span class=mi>0</span><span class=o>:</span>                                    <span class=c1>// do nothing
+</span><span class=c1></span>              <span class=k>break</span><span class=p>;</span>
+            <span class=k>case</span> <span class=mi>1</span><span class=o>:</span>
+              <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>swapOperands</span><span class=p>();</span>
+              <span class=k>break</span><span class=p>;</span>
+            <span class=k>case</span> <span class=mi>2</span><span class=o>:</span> <span class=c1>// randomly change the predicate
+</span><span class=c1></span>              <span class=k>switch</span> <span class=p>(</span><span class=n>llvm</span><span class=o>::</span><span class=n>cryptoutils</span><span class=o>-&gt;</span><span class=n>get_range</span><span class=p>(</span><span class=mi>10</span><span class=p>))</span> <span class=p>{</span>
+              <span class=k>case</span> <span class=mi>0</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_EQ</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// equal
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>1</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_NE</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// not equal
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>2</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_UGT</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// unsigned greater than
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>3</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_UGE</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// unsigned greater or equal
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>4</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_ULT</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// unsigned less than
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>5</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_ULE</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// unsigned less or equal
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>6</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_SGT</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// signed greater than
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>7</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_SGE</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// signed greater or equal
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>8</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_SLT</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// signed less than
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>9</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_SLE</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// signed less or equal
+</span><span class=c1></span>              <span class=p>}</span>
+              <span class=k>break</span><span class=p>;</span>
+            <span class=p>}</span>
+          <span class=p>}</span>
+          <span class=k>if</span> <span class=p>(</span><span class=n>opcode</span> <span class=o>==</span> <span class=n>Instruction</span><span class=o>::</span><span class=n>FCmp</span><span class=p>)</span> <span class=p>{</span> <span class=c1>// Conditions (with float)
+</span><span class=c1></span>            <span class=n>FCmpInst</span> <span class=o>*</span><span class=n>currentI</span> <span class=o>=</span> <span class=p>(</span><span class=n>FCmpInst</span> <span class=o>*</span><span class=p>)(</span><span class=o>&amp;</span><span class=n>i</span><span class=p>);</span>
+            <span class=k>switch</span> <span class=p>(</span><span class=n>llvm</span><span class=o>::</span><span class=n>cryptoutils</span><span class=o>-&gt;</span><span class=n>get_range</span><span class=p>(</span><span class=mi>3</span><span class=p>))</span> <span class=p>{</span> <span class=c1>// must be improved
+</span><span class=c1></span>            <span class=k>case</span> <span class=mi>0</span><span class=o>:</span>                                    <span class=c1>// do nothing
+</span><span class=c1></span>              <span class=k>break</span><span class=p>;</span>
+            <span class=k>case</span> <span class=mi>1</span><span class=o>:</span>
+              <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>swapOperands</span><span class=p>();</span>
+              <span class=k>break</span><span class=p>;</span>
+            <span class=k>case</span> <span class=mi>2</span><span class=o>:</span> <span class=c1>// randomly change the predicate
+</span><span class=c1></span>              <span class=k>switch</span> <span class=p>(</span><span class=n>llvm</span><span class=o>::</span><span class=n>cryptoutils</span><span class=o>-&gt;</span><span class=n>get_range</span><span class=p>(</span><span class=mi>10</span><span class=p>))</span> <span class=p>{</span>
+              <span class=k>case</span> <span class=mi>0</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>FCmpInst</span><span class=o>::</span><span class=n>FCMP_OEQ</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// ordered and equal
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>1</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>FCmpInst</span><span class=o>::</span><span class=n>FCMP_ONE</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// ordered and operands are unequal
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>2</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>FCmpInst</span><span class=o>::</span><span class=n>FCMP_UGT</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// unordered or greater than
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>3</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>FCmpInst</span><span class=o>::</span><span class=n>FCMP_UGE</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// unordered, or greater than, or equal
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>4</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>FCmpInst</span><span class=o>::</span><span class=n>FCMP_ULT</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// unordered or less than
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>5</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>FCmpInst</span><span class=o>::</span><span class=n>FCMP_ULE</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// unordered, or less than, or equal
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>6</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>FCmpInst</span><span class=o>::</span><span class=n>FCMP_OGT</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// ordered and greater than
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>7</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>FCmpInst</span><span class=o>::</span><span class=n>FCMP_OGE</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// ordered and greater than or equal
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>8</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>FCmpInst</span><span class=o>::</span><span class=n>FCMP_OLT</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// ordered and less than
+</span><span class=c1></span>              <span class=k>case</span> <span class=mi>9</span><span class=o>:</span>
+                <span class=n>currentI</span><span class=o>-&gt;</span><span class=n>setPredicate</span><span class=p>(</span><span class=n>FCmpInst</span><span class=o>::</span><span class=n>FCMP_OLE</span><span class=p>);</span>
+                <span class=k>break</span><span class=p>;</span> <span class=c1>// ordered or less than, or equal
+</span><span class=c1></span>              <span class=p>}</span>
+              <span class=k>break</span><span class=p>;</span>
+            <span class=p>}</span>
+          <span class=p>}</span>
+        <span class=p>}</span>
+      <span class=p>}</span>
+      <span class=k>return</span> <span class=n>alteredBB</span><span class=p>;</span>
+    <span class=p>}</span> <span class=c1>// end of createAlteredBasicBlock()
+</span></code></pre></div><p>主要是分两部分：</p>
+<ol>
+<li>复制原始块，并修复伪造块的调试信息与元数据</li>
+<li>在伪造块中寻找二元运算、浮点运算、比较指令，在其中插入垃圾指令。</li>
+</ol>
+<h2 id=0x03-创建自己的混淆>0x03 创建自己的混淆</h2>
+<p>对 OLLVM 的 bcf 混淆有了初步的映像之后，接下来就可以依样画葫芦抄一个自己的混淆出来啦。</p>
+<h3 id=31-方案>3.1 方案</h3>
+<p><figure style=flex-grow:131;flex-basis:315px>
+<a href=/blog/p/learning-packer-08/image-20211103105527721.png data-size=953x726><img src=/blog/p/learning-packer-08/image-20211103105527721.png srcset="/blog/p/learning-packer-08/image-20211103105527721_huf9cff02c3a79573b2f021a9808299ab4_137978_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/image-20211103105527721_huf9cff02c3a79573b2f021a9808299ab4_137978_1024x0_resize_box_3.png 1024w" width=953 height=726 loading=lazy alt=image-20211103105527721>
+</a>
+<figcaption>image-20211103105527721</figcaption>
+</figure></p>
+<p>作为概念验证，我们的 pass 将原始代码分割成三个基本块，称为 <code>entry</code>、<code>original</code>和<code>terminator</code>。<code>entry</code> 通过一个恒真判断跳转至 <code>original</code>，<code>original</code> 通过恒真判断跳转至 <code>terminator</code>。伪造块 <code>altered</code> 则是 false 分支，内容仅复制 <code>original</code> 块，并在末尾跳转至 <code>original</code> 块。</p>
+<p>伪造块应该永远不会被执行。</p>
+<h3 id=32-llvm编程的重要概念>3.2 LLVM编程的重要概念</h3>
+<p>参考文章：<a class=link href=https://mukulrathi.com/create-your-own-programming-language/llvm-ir-cpp-api-tutorial/ target=_blank rel=noopener>LLVM IR C++ API Tutorial</a></p>
+<h4 id=关键类型>关键类型：</h4>
+<p>清单如下：</p>
+<ul>
+<li><code>Value</code></li>
+<li><code>Module</code></li>
+<li><code>Type</code></li>
+<li><code>Function</code></li>
+<li><code>BasicBlock</code></li>
+<li><code>BranchInst</code></li>
+</ul>
+<p>列出的这些是 LLVM C++ 接口定义的类，可以通过 <code>Module</code> 获取 <code>Function</code>，可以从 <code>Function</code> 获取 <code>BasicBlock</code>，也可以从 <code>BasicBlock</code> 反过来获取 <code>Function</code>，这些容器间组织成层级关系。</p>
+<p><code>Module</code>-><code>Function</code>-><code>BasicBlock</code>-><code>Instruction</code></p>
+<p><code>Value</code> 是公共基类，<code>Function</code>、<code>BasicBlock</code>，包括各种指令类都是从<code>Value</code>继承。</p>
+<h4 id=phinode>PHINode：</h4>
+<p>参考文章：<a class=link href=http://mayuyu.io/2018/06/04/PhiNode-in-LLVM/ target=_blank rel=noopener>PhiNode in LLVM</a></p>
+<p>LLVM的指令类型中包含一种特殊节点叫 PhiNode，PhiNode 的存在是为了解决 LLVM IR 中因 SSA （静态单次赋值）引起的条件初始化问题。示例如下。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>int</span> <span class=nf>foooooo</span><span class=p>(</span><span class=kt>int</span> <span class=n>bar</span><span class=p>){</span>
+    <span class=kt>int</span> <span class=n>i</span><span class=o>=</span><span class=mi>0</span><span class=p>;</span>
+    <span class=k>if</span><span class=p>(</span><span class=n>bar</span><span class=o>%</span><span class=mi>2</span><span class=o>==</span><span class=mi>0</span><span class=p>){</span>
+        <span class=n>i</span><span class=o>=</span><span class=mi>1</span><span class=p>;</span> <span class=c1>//BasicBlock 1
+</span><span class=c1></span>    <span class=p>}</span>
+    <span class=k>else</span><span class=p>{</span>
+        <span class=n>i</span><span class=o>=</span><span class=mi>2</span><span class=p>;</span> <span class=c1>//BasicBlock 2
+</span><span class=c1></span>    <span class=p>}</span>
+    <span class=k>return</span> <span class=n>i</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><p>可以看到我们需要按 <code>bar</code> 的取值来初始化 <code>i</code>，但 SSA 要求 <code>i</code> 只能被赋值一次。PhiNode 允许根据基本块选择赋值。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>int</span> <span class=nf>foooooo</span><span class=p>(</span><span class=kt>int</span> <span class=n>bar</span><span class=p>)</span> <span class=p>{</span>
+    <span class=k>if</span><span class=p>(</span><span class=n>bar</span><span class=o>%</span><span class=mi>2</span><span class=o>==</span><span class=mi>0</span><span class=p>){</span>
+        <span class=c1>//BasicBlock1
+</span><span class=c1></span>    <span class=p>}</span>
+    <span class=k>else</span><span class=p>{</span>
+        <span class=c1>//BasicBlock2
+</span><span class=c1></span>    <span class=p>}</span>
+    <span class=kt>int</span> <span class=n>i</span><span class=o>=</span><span class=n>Phi</span><span class=p>([</span><span class=n>BasicBlock1</span><span class=p>,</span><span class=mi>1</span><span class=p>],[</span><span class=n>BasicBlock2</span><span class=p>,</span><span class=mi>2</span><span class=p>]);</span>
+    <span class=k>return</span> <span class=n>i</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><p>上面的例子也可以改成在栈或堆上开辟空间，以类似指针的方式避开 SSA 约束。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>int</span> <span class=nf>foooooo</span><span class=p>(</span><span class=kt>int</span> <span class=n>bar</span><span class=p>)</span> <span class=p>{</span>
+    <span class=kt>int</span><span class=o>*</span> <span class=n>i</span><span class=o>=</span><span class=n>malloc</span><span class=p>(</span><span class=k>sizeof</span><span class=p>(</span><span class=kt>int</span><span class=p>));</span>
+    <span class=k>if</span><span class=p>(</span><span class=n>bar</span><span class=o>%</span><span class=mi>2</span><span class=o>==</span><span class=mi>0</span><span class=p>){</span>
+        <span class=n>Store</span> <span class=n>Value</span> <span class=mi>1</span> <span class=n>to</span> <span class=n>the</span> <span class=n>memory</span> <span class=n>location</span> <span class=n>pointed</span> <span class=n>to</span> <span class=n>by</span> <span class=n>i</span><span class=p>;</span>
+    <span class=p>}</span>
+    <span class=k>else</span><span class=p>{</span>
+        <span class=n>Store</span> <span class=n>Value</span> <span class=mi>2</span> <span class=n>to</span> <span class=n>the</span> <span class=n>memory</span> <span class=n>location</span> <span class=n>pointed</span> <span class=n>to</span> <span class=n>by</span> <span class=n>i</span><span class=p>;</span>
+    <span class=p>}</span>
+    <span class=kt>int</span> <span class=n>j</span><span class=o>=</span><span class=n>load</span> <span class=n>from</span> <span class=n>the</span> <span class=n>address</span> <span class=n>pointed</span> <span class=n>by</span> <span class=n>i</span><span class=p>;</span>
+    <span class=k>return</span> <span class=n>j</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><h4 id=terminator>Terminator:</h4>
+<p>参考文章：<a class=link href=https://www.quora.com/How-do-Terminators-work-in-the-LLVM-IR target=_blank rel=noopener>How do Terminator work in LLVM IR</a></p>
+<p>LLVM中，一个基本块 <em>BasicBlock</em> 总是以终结指令 <em>TerminatorInst</em> 结束的。终结指令不能出现在基本块末尾以外的任何地方。粗略地说，终结指令标识控制流在基本块结束后去往何方。</p>
+<p>每个终结指令都包含一定的后继基本块。</p>
+<p>几个常见的终结指令类型：</p>
+<ul>
+<li>
+<p><code>ReturnInst</code> 就像是普通编程中的的<code>return</code>语句。</p>
+</li>
+<li>
+<p><code>BranchInst</code> 是跳转指令，包括两类：</p>
+<ul>
+<li>条件跳转，满足条件时跳转分支1，否则跳转分支2。</li>
+<li>非条件跳转，总是跳转到某个分支。</li>
+</ul>
+</li>
+<li>
+<p><code>SwitchInst</code> 类似于普通编程里的 <code>switch</code> 语句，可以包含更多的后继块。</p>
+</li>
+</ul>
+<p>还有些不那么常见的终结指令：</p>
+<ul>
+<li><code>invoke</code> 和 <code>catchswitch</code></li>
+<li><code>unreachable</code></li>
+</ul>
+<h3 id=33-工具链>3.3 工具链</h3>
+<p>参考文章：<a class=link href=https://llvm.org/docs/CommandGuide/index.html target=_blank rel=noopener>LLVM Command Guide</a></p>
+<p>实际动手前先了解下 LLVM工具链，列出一些会涉及到的命令行工具。</p>
+<ul>
+<li><code>llc</code> 将输入的 LLVM IR(<code>.ll</code>) 编译成指定架构的汇编（或二进制对象文件）</li>
+<li><code>lli</code> 将输入的 BitCode(<code>.bc</code>) 解释执行。</li>
+<li><code>llvm-as</code> 汇编器</li>
+<li><code>llvm-dis</code> 反汇编器，可以反汇编 BitCode</li>
+<li><code>opt</code> BITCODE/IR 优化器</li>
+</ul>
+<p>最好再安装一个 graphviz，因为很多编程语言的命令行工具如果提供图形输出的话，大多是以 dot 形式提供（比如 go 的 pprof 和 LLVM opt 的 dot-cfg）。</p>
+<h3 id=33-runonfunction>3.3 runOnFunction</h3>
+<p>参考 OLLVM 的代码，抄出过滤函数。原理不明暂且不深究。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=kt>bool</span> <span class=nf>isObfuscateable</span><span class=p>(</span><span class=k>const</span> <span class=n>Function</span> <span class=o>&amp;</span><span class=n>fn</span><span class=p>)</span> <span class=p>{</span>
+    <span class=k>if</span> <span class=p>(</span><span class=n>fn</span><span class=p>.</span><span class=n>isDeclaration</span><span class=p>())</span> <span class=p>{</span>
+        <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
+    <span class=p>}</span>
+
+    <span class=k>if</span> <span class=p>(</span><span class=n>fn</span><span class=p>.</span><span class=n>hasAvailableExternallyLinkage</span><span class=p>())</span> <span class=p>{</span>
+        <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
+    <span class=p>}</span>
+
+    <span class=k>if</span> <span class=p>(</span><span class=o>!</span><span class=n>isInvoke</span><span class=p>(</span><span class=n>fn</span><span class=p>))</span> <span class=p>{</span>
+        <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
+    <span class=p>}</span>
+
+    <span class=k>return</span> <span class=nb>true</span><span class=p>;</span>
+<span class=p>}</span>
+
+<span class=kt>bool</span> <span class=nf>isInvoke</span><span class=p>(</span><span class=k>const</span> <span class=n>Function</span> <span class=o>&amp;</span><span class=n>fn</span><span class=p>)</span> <span class=p>{</span>
+    <span class=k>for</span> <span class=p>(</span><span class=k>const</span> <span class=n>BasicBlock</span> <span class=o>&amp;</span><span class=nl>bb</span> <span class=p>:</span> <span class=n>fn</span><span class=p>)</span> <span class=p>{</span>
+        <span class=k>if</span> <span class=p>(</span><span class=n>isa</span><span class=o>&lt;</span><span class=n>InvokeInst</span><span class=o>&gt;</span><span class=p>(</span><span class=n>bb</span><span class=p>.</span><span class=n>getTerminator</span><span class=p>()))</span> <span class=p>{</span>
+            <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
+        <span class=p>}</span>
+    <span class=p>}</span>
+    <span class=k>return</span> <span class=nb>true</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><p>然后在入口点简单过滤掉不能混淆的函数，接着遍历基本块，对每个基本块都进行一次混淆。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=kt>bool</span> <span class=nf>runOnFunction</span><span class=p>(</span><span class=n>Function</span><span class=o>&amp;</span> <span class=n>F</span><span class=p>)</span> <span class=p>{</span>
+    <span class=k>if</span> <span class=p>(</span><span class=o>!</span><span class=n>isObfuscateable</span><span class=p>(</span><span class=n>F</span><span class=p>))</span> <span class=p>{</span>
+        <span class=n>errs</span><span class=p>()</span><span class=o>&lt;&lt;</span><span class=s>&#34;function &#34;</span><span class=o>&lt;&lt;</span> <span class=n>F</span><span class=p>.</span><span class=n>getName</span><span class=p>()</span> <span class=o>&lt;&lt;</span><span class=s>&#34; is not obfuscateable</span><span class=se>\n</span><span class=s>&#34;</span><span class=p>;</span>
+        <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
+    <span class=p>}</span>
+    
+    <span class=n>list</span><span class=o>&lt;</span><span class=n>BasicBlock</span> <span class=o>*&gt;</span> <span class=n>blocks</span><span class=p>;</span>
+    <span class=k>for</span> <span class=p>(</span><span class=n>BasicBlock</span> <span class=o>&amp;</span><span class=nl>block</span> <span class=p>:</span> <span class=n>F</span><span class=p>)</span> <span class=p>{</span>
+        <span class=n>blocks</span><span class=p>.</span><span class=n>push_back</span><span class=p>(</span><span class=o>&amp;</span><span class=n>block</span><span class=p>);</span>
+    <span class=p>}</span>
+
+    <span class=k>for</span> <span class=p>(</span><span class=n>BasicBlock</span> <span class=o>*</span><span class=nl>block</span> <span class=p>:</span> <span class=n>blocks</span><span class=p>)</span> <span class=p>{</span>
+        <span class=c1>// 原始块分割为三个基本块：entry、original、terminator
+</span><span class=c1></span>        <span class=c1>// 通过两个恒真条件连接
+</span><span class=c1></span>        <span class=k>auto</span> <span class=n>entryBB</span> <span class=o>=</span> <span class=o>&amp;</span><span class=n>block</span><span class=p>;</span>
+        <span class=k>auto</span> <span class=n>originalBB</span> <span class=o>=</span> <span class=n>entryBB</span><span class=o>-&gt;</span><span class=n>splitBasicBlock</span><span class=p>(</span><span class=n>entryBB</span><span class=o>-&gt;</span><span class=n>getFirstNonPHIOrDbgOrLifetime</span><span class=p>(),</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;original&#34;</span><span class=p>));</span>
+        <span class=k>auto</span> <span class=n>terminatorBB</span> <span class=o>=</span> <span class=n>originalBB</span><span class=o>-&gt;</span><span class=n>splitBasicBlock</span><span class=p>(</span><span class=o>--</span><span class=n>originalBB</span><span class=o>-&gt;</span><span class=n>end</span><span class=p>(),</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;terminator&#34;</span><span class=p>));</span>
+
+        <span class=c1>// 构造伪造块
+</span><span class=c1></span>        <span class=c1>// 这一步已经构造好了 altered 跳转 original
+</span><span class=c1></span>        <span class=k>auto</span> <span class=n>alteredBB</span> <span class=o>=</span> <span class=n>createAlteredBB</span><span class=p>(</span><span class=n>originalBB</span><span class=p>,</span> <span class=n>F</span><span class=p>);</span>
+
+        <span class=c1>// 清理 terminator，重新构造跳转关系
+</span><span class=c1></span>        <span class=n>entryBB</span><span class=o>-&gt;</span><span class=n>getTerminator</span><span class=p>()</span><span class=o>-&gt;</span><span class=n>eraseFromParent</span><span class=p>();</span>
+        <span class=n>originalBB</span><span class=o>-&gt;</span><span class=n>getTerminator</span><span class=p>()</span><span class=o>-&gt;</span><span class=n>eraseFromParent</span><span class=p>();</span>
+
+        <span class=c1>// 构造恒真条件，从 entry 跳转到 original
+</span><span class=c1></span>        <span class=k>auto</span> <span class=n>lhs</span> <span class=o>=</span> <span class=n>ConstantInt</span><span class=o>::</span><span class=n>get</span><span class=p>(</span><span class=n>Type</span><span class=o>::</span><span class=n>getInt32Ty</span><span class=p>(</span><span class=n>F</span><span class=p>.</span><span class=n>getContext</span><span class=p>()),</span> <span class=mi>1</span><span class=p>);</span>
+        <span class=k>auto</span> <span class=n>rhs</span> <span class=o>=</span> <span class=n>ConstantInt</span><span class=o>::</span><span class=n>get</span><span class=p>(</span><span class=n>Type</span><span class=o>::</span><span class=n>getInt32Ty</span><span class=p>(</span><span class=n>F</span><span class=p>.</span><span class=n>getContext</span><span class=p>()),</span> <span class=mi>1</span><span class=p>);</span>
+        <span class=k>auto</span> <span class=n>condition</span> <span class=o>=</span> <span class=k>new</span> <span class=n>ICmpInst</span><span class=p>(</span><span class=o>*</span><span class=n>entryBB</span><span class=p>,</span> <span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_EQ</span><span class=p>,</span> <span class=n>lhs</span><span class=p>,</span> <span class=n>rhs</span><span class=p>,</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;condition&#34;</span><span class=p>));</span>
+        <span class=n>BranchInst</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>originalBB</span><span class=p>,</span> <span class=n>alteredBB</span><span class=p>,</span> <span class=p>(</span><span class=n>Value</span> <span class=o>*</span><span class=p>)</span><span class=n>condition</span><span class=p>,</span> <span class=n>entryBB</span><span class=p>);</span>
+
+        <span class=c1>// 构造恒真条件，从 original 跳转到 terminator
+</span><span class=c1></span>        <span class=k>auto</span> <span class=n>lhs2</span> <span class=o>=</span> <span class=n>ConstantInt</span><span class=o>::</span><span class=n>get</span><span class=p>(</span><span class=n>Type</span><span class=o>::</span><span class=n>getInt32Ty</span><span class=p>(</span><span class=n>F</span><span class=p>.</span><span class=n>getContext</span><span class=p>()),</span> <span class=mi>1</span><span class=p>);</span>
+        <span class=k>auto</span> <span class=n>rhs2</span> <span class=o>=</span> <span class=n>ConstantInt</span><span class=o>::</span><span class=n>get</span><span class=p>(</span><span class=n>Type</span><span class=o>::</span><span class=n>getInt32Ty</span><span class=p>(</span><span class=n>F</span><span class=p>.</span><span class=n>getContext</span><span class=p>()),</span> <span class=mi>1</span><span class=p>);</span>
+        <span class=k>auto</span> <span class=n>condition2</span> <span class=o>=</span> <span class=k>new</span> <span class=n>ICmpInst</span><span class=p>(</span><span class=o>*</span><span class=n>originalBB</span><span class=p>,</span> <span class=n>ICmpInst</span><span class=o>::</span><span class=n>ICMP_EQ</span><span class=p>,</span> <span class=n>lhs</span><span class=p>,</span> <span class=n>rhs</span><span class=p>,</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;condition2&#34;</span><span class=p>));</span>
+        <span class=n>BranchInst</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>terminatorBB</span><span class=p>,</span> <span class=n>alteredBB</span><span class=p>,</span> <span class=p>(</span><span class=n>Value</span> <span class=o>*</span><span class=p>)</span><span class=n>condition</span><span class=p>,</span> <span class=n>originalBB</span><span class=p>);</span>
+    <span class=p>}</span>
+
+    <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><p>混淆过程非常简单，原始基本块分割成三个部分，清除<code>entry</code>和<code>original</code>的<code>terminator</code>并加入恒真条件跳转，false 分支都指定为 <code>altered</code> 即可。</p>
+<h3 id=34-createalteredbb>3.4 createAlteredBB</h3>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=n>BasicBlock</span> <span class=o>*</span><span class=nf>createAlteredBB</span><span class=p>(</span><span class=n>BasicBlock</span> <span class=o>*</span><span class=n>original</span><span class=p>,</span> <span class=n>Function</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>)</span> <span class=p>{</span>
+    <span class=c1>// 构造伪造块
+</span><span class=c1></span>    <span class=n>ValueToValueMapTy</span> <span class=n>VMap</span><span class=p>;</span>
+    <span class=k>auto</span> <span class=n>altered</span> <span class=o>=</span> <span class=n>CloneBasicBlock</span><span class=p>(</span><span class=n>original</span><span class=p>,</span> <span class=n>VMap</span><span class=p>,</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;altered&#34;</span><span class=p>),</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>);</span>
+
+    <span class=c1>// 修复伪造块的指令
+</span><span class=c1></span>    <span class=k>auto</span> <span class=n>originalInstIt</span> <span class=o>=</span> <span class=n>original</span><span class=o>-&gt;</span><span class=n>begin</span><span class=p>();</span>
+    <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=o>&amp;</span><span class=nl>inst</span> <span class=p>:</span> <span class=o>*</span><span class=n>altered</span><span class=p>)</span> <span class=p>{</span>
+        <span class=c1>// NOTE:
+</span><span class=c1></span>        <span class=c1>// 参考链接： https://bbs.pediy.com/thread-266201.htm
+</span><span class=c1></span>        <span class=c1>//
+</span><span class=c1></span>        <span class=c1>// ... 但是CloneBasicBlock函数进行的克隆并不是完全的克隆，第一他不会对指令的操作数进行替换，比如：
+</span><span class=c1></span>        <span class=c1>//
+</span><span class=c1></span>        <span class=c1>// ```
+</span><span class=c1></span>        <span class=c1>// orig:
+</span><span class=c1></span>        <span class=c1>//   %a = ...
+</span><span class=c1></span>        <span class=c1>//   %b = fadd %a, ...
+</span><span class=c1></span>        <span class=c1>//
+</span><span class=c1></span>        <span class=c1>// clone:
+</span><span class=c1></span>        <span class=c1>//   %a.clone = ...
+</span><span class=c1></span>        <span class=c1>//   %b.clone = fadd %a, ... ; Note that this references the old %a and
+</span><span class=c1></span>        <span class=c1>// not %a.clone!
+</span><span class=c1></span>        <span class=c1>// ```
+</span><span class=c1></span>        <span class=c1>//
+</span><span class=c1></span>        <span class=c1>// 在clone出来的基本块中，fadd指令的操作数不是%a.clone，而是%a。
+</span><span class=c1></span>        <span class=c1>// 所以之后要通过VMap对所有操作数进行映射，使其恢复正常：
+</span><span class=c1></span>        <span class=c1>//
+</span><span class=c1></span>        <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=n>opi</span> <span class=o>=</span> <span class=n>inst</span><span class=p>.</span><span class=n>op_begin</span><span class=p>();</span> <span class=n>opi</span> <span class=o>!=</span> <span class=n>inst</span><span class=p>.</span><span class=n>op_end</span><span class=p>();</span> <span class=n>opi</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+            <span class=n>Value</span> <span class=o>*</span><span class=n>v</span> <span class=o>=</span> <span class=n>MapValue</span><span class=p>(</span><span class=o>*</span><span class=n>opi</span><span class=p>,</span> <span class=n>VMap</span><span class=p>,</span> <span class=n>RF_None</span><span class=p>,</span> <span class=mi>0</span><span class=p>);</span>
+            <span class=k>if</span> <span class=p>(</span><span class=n>v</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+                <span class=o>*</span><span class=n>opi</span> <span class=o>=</span> <span class=n>v</span><span class=p>;</span>
+            <span class=p>}</span>
+        <span class=p>}</span>
+
+        <span class=c1>// 第二，它不会对PHI Node进行任何处理，PHI Node的前驱块仍然是原始基本块的前驱块，
+</span><span class=c1></span>        <span class=c1>// 但是新克隆出来的基本块并没有任何前驱块，所以我们要对PHI Node的前驱块进行remap：
+</span><span class=c1></span>        <span class=k>if</span> <span class=p>(</span><span class=k>auto</span> <span class=n>pn</span> <span class=o>=</span> <span class=n>dyn_cast</span><span class=o>&lt;</span><span class=n>PHINode</span><span class=o>&gt;</span><span class=p>(</span><span class=o>&amp;</span><span class=n>inst</span><span class=p>))</span> <span class=p>{</span>
+            <span class=k>for</span> <span class=p>(</span><span class=kt>unsigned</span> <span class=n>j</span> <span class=o>=</span> <span class=mi>0</span><span class=p>,</span> <span class=n>e</span> <span class=o>=</span> <span class=n>pn</span><span class=o>-&gt;</span><span class=n>getNumIncomingValues</span><span class=p>();</span> <span class=n>j</span> <span class=o>!=</span> <span class=n>e</span><span class=p>;</span> <span class=o>++</span><span class=n>j</span><span class=p>)</span> <span class=p>{</span>
+                <span class=n>Value</span> <span class=o>*</span><span class=n>v</span> <span class=o>=</span> <span class=n>MapValue</span><span class=p>(</span><span class=n>pn</span><span class=o>-&gt;</span><span class=n>getIncomingBlock</span><span class=p>(</span><span class=n>j</span><span class=p>),</span> <span class=n>VMap</span><span class=p>,</span> <span class=n>RF_None</span><span class=p>,</span> <span class=mi>0</span><span class=p>);</span>
+                <span class=k>if</span> <span class=p>(</span><span class=n>v</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+                    <span class=n>pn</span><span class=o>-&gt;</span><span class=n>setIncomingBlock</span><span class=p>(</span><span class=n>j</span><span class=p>,</span> <span class=n>cast</span><span class=o>&lt;</span><span class=n>BasicBlock</span><span class=o>&gt;</span><span class=p>(</span><span class=n>v</span><span class=p>));</span>
+                <span class=p>}</span>
+            <span class=p>}</span>
+        <span class=p>}</span>
+
+        <span class=c1>// 元数据
+</span><span class=c1></span>        <span class=n>SmallVector</span><span class=o>&lt;</span><span class=n>pair</span><span class=o>&lt;</span><span class=kt>unsigned</span><span class=p>,</span> <span class=n>MDNode</span> <span class=o>*&gt;</span><span class=p>,</span> <span class=mi>4</span><span class=o>&gt;</span> <span class=n>MDs</span><span class=p>;</span>
+        <span class=n>inst</span><span class=p>.</span><span class=n>getAllMetadata</span><span class=p>(</span><span class=n>MDs</span><span class=p>);</span>
+
+        <span class=c1>// 修复调试
+</span><span class=c1></span>        <span class=n>inst</span><span class=p>.</span><span class=n>setDebugLoc</span><span class=p>(</span><span class=n>originalInstIt</span><span class=o>-&gt;</span><span class=n>getDebugLoc</span><span class=p>());</span>
+        <span class=o>++</span><span class=n>originalInstIt</span><span class=p>;</span>
+    <span class=p>}</span>
+
+    <span class=c1>// 清理原来的 terminator，无条件从 altered 跳转到 original
+</span><span class=c1></span>    <span class=n>altered</span><span class=o>-&gt;</span><span class=n>getTerminator</span><span class=p>()</span><span class=o>-&gt;</span><span class=n>eraseFromParent</span><span class=p>();</span>
+    <span class=n>BranchInst</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>original</span><span class=p>,</span> <span class=n>altered</span><span class=p>);</span>
+
+    <span class=k>return</span> <span class=n>altered</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><p>去除修复指令操作数和 PhiNode 的部分，其实就是复制了原始块的指令，然后将终结指令改成跳转到原始块而已。</p>
+<h3 id=35-编译和测试>3.5 编译和测试</h3>
+<p>使用 CMake 编译，在环境设置一节中已经说明了怎么配置，编译得到了 <code>Hello.dll</code> 后用下面的案例程序测试。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;stdio.h&gt;</span><span class=cp>
+</span><span class=cp></span>
+<span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+    <span class=n>printf</span><span class=p>(</span><span class=s>&#34;hello world&#34;</span><span class=p>);</span>
+    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><p>程序保存在 <code>sample/sample.c</code>，测试命令如下。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=c1># clang 编译得到 bitcode</span>
+clang -emit-llvm .<span class=se>\s</span>ample<span class=se>\s</span>ample.c -c -o .<span class=se>\s</span>ample<span class=se>\s</span>ample.bc
+<span class=c1># opt 启用 hello pass 创建混淆后的新 bitcode</span>
+opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load .<span class=se>\b</span>uild<span class=se>\H</span>ello.dll -hello .<span class=se>\s</span>ample<span class=se>\s</span>ample.bc -o .<span class=se>\s</span>ample<span class=se>\s</span>ample-optimized.bc
+<span class=c1># llvm-dis 反汇编混淆后的 bitcode，得到 sample-optimized.ll ，可以拿来看混淆结果</span>
+llvm-dis .<span class=se>\s</span>ample<span class=se>\s</span>ample-optimized.bc
+<span class=c1># llc 将混淆后的 bitcode 编译出汇编文件，也可以编译出 obj 文件，用 -filetype=obj 就行</span>
+<span class=c1># 注意 -O0，不然默认优化就会直接把我们伪造的分支给干掉</span>
+llc .<span class=se>\s</span>ample<span class=se>\s</span>ample-optimized.bc -O0 -o .<span class=se>\s</span>ample.s
+<span class=c1># 用 clang 完成最后的汇编和链接</span>
+clang sample.s -o sample.exe
+</code></pre></div><p>也可以用 opt 来获得混淆后的代码控制流视图。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -dot-cfg -cfg-func-name<span class=o>=</span>main .<span class=se>\s</span>ample<span class=se>\s</span>ample-optimized.bc
+</code></pre></div><p><figure style=flex-grow:136;flex-basis:326px>
+<a href=/blog/p/learning-packer-08/main.png data-size=755x555><img src=/blog/p/learning-packer-08/main.png srcset="/blog/p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_1024x0_resize_box_3.png 1024w" width=755 height=555 loading=lazy alt=main>
+</a>
+<figcaption>main</figcaption>
+</figure></p>
+<p>在IDA打开后看到的结果如下。</p>
+<p><figure style=flex-grow:55;flex-basis:132px>
+<a href=/blog/p/learning-packer-08/image-20211103141258015.png data-size=370x668><img src=/blog/p/learning-packer-08/image-20211103141258015.png srcset="/blog/p/learning-packer-08/image-20211103141258015_hu6b9a1833094321916938f7c8374d48d6_60703_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/image-20211103141258015_hu6b9a1833094321916938f7c8374d48d6_60703_1024x0_resize_box_3.png 1024w" width=370 height=668 loading=lazy alt=image-20211103141258015>
+</a>
+<figcaption>image-20211103141258015</figcaption>
+</figure></p>
+<p>再来个更复杂的例子：<a class=link href=https://github.com/nnnewb/crackmes/blob/main/cm02/main.c target=_blank rel=noopener>main.c</a></p>
+<p><figure style=flex-grow:49;flex-basis:118px>
+<a href=/blog/p/learning-packer-08/image-20211103142352174.png data-size=314x638><img src=/blog/p/learning-packer-08/image-20211103142352174.png srcset="/blog/p/learning-packer-08/image-20211103142352174_hu6e7d17f0f44390d3241deebec431bcff_8522_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/image-20211103142352174_hu6e7d17f0f44390d3241deebec431bcff_8522_1024x0_resize_box_3.png 1024w" width=314 height=638 loading=lazy alt=image-20211103142352174>
+</a>
+<figcaption>image-20211103142352174</figcaption>
+</figure></p>
+<h3 id=36-扩展不透明谓词>3.6 扩展：不透明谓词</h3>
+<p>参考文章：<a class=link href=https://reverseengineering.stackexchange.com/questions/1669/what-is-an-opaque-predicate target=_blank rel=noopener>what is an opaque predicate</a></p>
+<p>PS：本人没有相关学术背景，内容东拼西凑，如果存在理解错误或者陈述不准确请指出。</p>
+<p>概括地说，不透明谓词就是“某种如果程序分析不够充分，就可能错过的东西”。学术上说不透明谓词是始终在一个方向上执行的分支，对程序创建者已知，对分析器未知。</p>
+<p>例如我们知道程序运行时，<code>LoadLibraryA</code> 加载一个不存在的库会返回 <code>null</code>，但分析器并不清楚我们运行的环境里是否真的存在/不存在这个库，对于分析器来说用<code>LoadLibraryA</code>构造出来的条件跳转就是一个不透明谓词。</p>
+<p>那透明呢？不知道有没有这样的说法，不透明是分析器可能错过的东西的话，透明就是分析器不会错过的东西，比如 <code>xor eax,eax</code> 再紧跟着 <code>test eax,eax</code>，那么<code>jnz</code>的走向对分析器来说就是已知的——除非分析器根本没这功能。</p>
+<h2 id=总结>总结</h2>
+<p>首先是完整案例代码：<a class=link href=https://github.com/nnnewb/learning-packer/tree/main/packer8 target=_blank rel=noopener>packer8 - GitHub</a></p>
+<p>总结知识点：</p>
+<ul>
+<li>关键类型：<code>Module</code>、<code>Function</code>、<code>BasicBlock</code>、<code>Instruction</code> &mldr;</li>
+<li>PhiNode</li>
+<li>终结指令，<code>BranchInst</code>、<code>ReturnInst</code></li>
+<li>LLVM 工具链：<code>opt</code>、<code>llc</code>、<code>lli</code>、<code>llvm-dis</code></li>
+<li>关于 new pass manager 的坑：<code>-fno-experimental-new-pass-manager</code>、<code>-enable-new-pm=0</code></li>
+</ul>
+<p>用 opt 单独搞混淆很麻烦，也不能集成到已有的 cmake/make 项目里。用 clang 加载混淆器的只需要这样：<code>-Xclang -load -Xclang bcf.dll -fno-experimental-new-pass-manager</code> 就可以直接使用 <code>bcf.dll</code> 参与混淆啦。</p>
+<p>LLVM 13.x 版本的新 pass manager 带来了很多问题，主要是 LLVM 的文档没写怎么把 Pass 注册到新的 PM 里，结果 opt 能跑 clang 又没运行 pass ，就搜来搜去花了很多时间&mldr;不过实际动手写过之后会发现 LLVM 是个大宝库，特别适合发挥想象。Pass 来扩展编译器功能还是挺方便扩展的，也能一窥LLVM内部的奇妙世界。</p>
+<p>原本还打算看看控制流扁平化，毕竟OLLVM都已经开始看了，控制流扁平化不看一下感觉有点说不过去。但是实际上手发现没耐心再读一遍这代码了=。=也许下次。OLLVM代码解读好像有不少帖子了吧，不献丑了。控制流扁平化的代码量也不是很多，慢慢读还是能捋清楚逻辑的。</p>
+<p>另外还可以发挥想象：能不能用 LLVM Pass 往代码里插入花指令？</p>
+<p>参考资料：</p>
+<ul>
+<li><a class=link href=https://llvm.org/docs/CMake.html#cmake-out-of-source-pass target=_blank rel=noopener>CMake out of source pass - LLVM</a></li>
+<li><a class=link href=https://llvm.org/docs/WritingAnLLVMPass.html target=_blank rel=noopener>Writing an LLVM Pass - LLVM</a></li>
+<li><a class=link href=https://mukulrathi.com/create-your-own-programming-language/llvm-ir-cpp-api-tutorial/ target=_blank rel=noopener>LLVM IR C++ API Tutorial</a></li>
+<li><a class=link href=http://mayuyu.io/2018/06/04/PhiNode-in-LLVM/ target=_blank rel=noopener>PhiNode in LLVM</a></li>
+<li><a class=link href=https://www.quora.com/How-do-Terminators-work-in-the-LLVM-IR target=_blank rel=noopener>How do Terminator work in LLVM IR</a></li>
+<li><a class=link href=https://llvm.org/docs/CommandGuide/index.html target=_blank rel=noopener>LLVM Command Guide</a></li>
+<li><a class=link href=https://bbs.pediy.com/thread-266201.htm target=_blank rel=noopener>OLLVM 虚假控制流源码学习笔记 - 看雪论坛</a></li>
+<li><a class=link href=https://github1s.com/0x3f97/ollvm-12.x/blob/HEAD/README.md target=_blank rel=noopener>0x3f97/ollvm-12.x</a></li>
+</ul>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
+<a href=/blog/tags/windows/>windows</a>
+<a href=/blog/tags/c++/>c++</a>
+<a href=/blog/tags/llvm/>llvm</a>
+<a href=/blog/tags/%E6%B1%87%E7%BC%96/>汇编</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/learning-packer-07/>
+<div class=article-details>
+<h2 class=article-title>加壳原理07 - 花指令入门</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/learning-packer-06/>
+<div class=article-details>
+<h2 class=article-title>加壳原理06：反调试技术入门</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/>
+<div class=article-details>
+<h2 class=article-title>加壳原理04 - zlib压缩壳案例</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/learning-packer-03-support-no-relocations/>
+<div class=article-details>
+<h2 class=article-title>加壳原理03 - 支持没有重定位的程序</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/learning-packer-05/>
+<div class=article-details>
+<h2 class=article-title>加壳原理05：利用图片隐藏</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 weakptr's 笔记
+</section>
+<section class=powerby>
+<a href=https://beian.miit.gov.cn/>浙ICP备2021032371号-1</a> <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.1.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#0x01-环境设置>0x01 环境设置</a></li>
+<li><a href=#0x02-ollvm-bcf-混淆初窥>0x02 OLLVM bcf 混淆初窥</a>
+<ol>
+<li><a href=#21-runonfunction>2.1 runOnFunction</a></li>
+<li><a href=#22-bogus>2.2 bogus</a></li>
+<li><a href=#22-addbogusflow>2.2 addBogusFlow</a></li>
+<li><a href=#23-createalteredbasicblock>2.3 createAlteredBasicBlock</a></li>
+</ol>
+</li>
+<li><a href=#0x03-创建自己的混淆>0x03 创建自己的混淆</a>
+<ol>
+<li><a href=#31-方案>3.1 方案</a></li>
+<li><a href=#32-llvm编程的重要概念>3.2 LLVM编程的重要概念</a>
+<ol>
+<li><a href=#关键类型>关键类型：</a></li>
+<li><a href=#phinode>PHINode：</a></li>
+<li><a href=#terminator>Terminator:</a></li>
+</ol>
+</li>
+<li><a href=#33-工具链>3.3 工具链</a></li>
+<li><a href=#33-runonfunction>3.3 runOnFunction</a></li>
+<li><a href=#34-createalteredbb>3.4 createAlteredBB</a></li>
+<li><a href=#35-编译和测试>3.5 编译和测试</a></li>
+<li><a href=#36-扩展不透明谓词>3.6 扩展：不透明谓词</a></li>
+</ol>
+</li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
