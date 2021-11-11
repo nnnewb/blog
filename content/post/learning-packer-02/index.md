@@ -2,6 +2,7 @@
 title: 加壳原理02 - 简单加壳机
 slug: learning-packer-02
 date: 2021-09-28 16:57:00
+image: cover.jpg
 categories:
 - 逆向
 tags:

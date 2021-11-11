@@ -2,6 +2,7 @@
 title: 加壳原理04 - zlib压缩壳案例
 slug: learning-packer-04-zlib-compression-packer-demo
 date: 2021-10-20 16:07:00
+image: cover.jpg
 categories:
 - 逆向
 tags:

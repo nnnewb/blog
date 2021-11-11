@@ -2,6 +2,7 @@
 title: 加壳原理08：混淆技术入门
 slug: learning-packer-08
 date: 2021-11-03 16:54:00
+image: cover.jpg
 categories:
 - 逆向
 tags:

@@ -2,6 +2,7 @@
 title: 加壳原理01 - Windows 程序的加载和运行
 slug: learning-packer-01
 date: 2021-09-27 14:51:00
+image: cover.jpg
 categories:
 - 逆向
 tags:

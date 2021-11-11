@@ -2,6 +2,7 @@
 title: 加壳原理05：利用图片隐藏
 slug: learning-packer-05
 date: 2021-10-21 21:17:00
+image: cover.jpg
 categories:
 - 逆向
 tags:

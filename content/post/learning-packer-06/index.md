@@ -2,6 +2,7 @@
 title: 加壳原理06：反调试技术入门
 slug: learning-packer-06
 date: 2021-10-27 19:50:00
+image: cover.jpg
 categories:
 - 逆向
 tags:

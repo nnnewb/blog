@@ -2,6 +2,7 @@
 title: 加壳原理03 - 支持没有重定位的程序
 slug: learning-packer-03-support-no-relocations
 date: 2021-10-20 10:25:00
+image: cover.jpg
 categories:
 - 逆向
 tags:

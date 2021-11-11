@@ -2,6 +2,7 @@
 title: 加壳原理07 - 花指令入门
 slug: learning-packer-07
 date: 2021-10-31 17:14:00
+image: cover.jpg
 categories:
 - 逆向
 tags:
