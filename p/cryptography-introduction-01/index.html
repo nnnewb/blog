@@ -1,0 +1,417 @@
+<!doctype html><html lang=zh-cn>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 本文是学习《密码编码学与网络安全》一书的笔记，关于传统加密技术一章。
+0x01 对称密码模型 对称加密，也称传统加密或单钥加密，是20世纪70年代公钥密码产生之前唯一的加密类型。迄今为止，它仍是使用最广泛的加密类型。
+对称加密方案有5个基本成分：
+ 明文：原始可以理解的消息或数据，是算法的输入。 加密算法：加密算法对明文进行各种代替和变换。 密钥：密钥也是加密算法的输入。密钥独立于明文和算法。算法根据所用的特定密钥而产生不同的输出。算法所用的确切代替和变换也依靠密钥。 密文：作为算法的输出，看起来完全随机而杂乱的消息，依赖于明文和密钥。对于给定的消息，不同密钥产生不同的密文，密文看上去是随机的数据流并且其意义是不可理解的。 解密算法：本质上是加密算法的逆运算。输入密文和密钥，输出原始明文。   image-20211110140236382 
+传统密码的安全使用要满足两个要求：
+ 加密算法必须是足够强的。即使攻击者拥有一定数量的密文和产生这些密文的明文，他也不能破译密文或发现密钥。 发送者和接收者必须在某种安全的形式下获得密钥并保证密钥安全。如果有人发现密钥，并知道算法，就能解读使用该密钥加密的所有通信。  我们假设基于已知密文和加密/解密算法而破译消息是不实际的，我们不需要算法保密，仅需要密钥保密。如果密钥是由信息的发送方产生的，那么它要通过某种安全信道发送到接收方；另一种是由第三方生成密钥后再安全地分发给发送方和接收方。
+// 明文X，共 m 个元素 byte[m] X = {X1,X2,X3,X4,...,Xm}; // 密钥K，共 j 个元素 byte[j] K = {K1,K2,K3,K4,...,Kj}; // 加密算法E，以明文和密钥为输入，输出密文 Y byte[n] Y = E(X, K); // 解密算法D，以密文和密钥为输入，输出明文 X byte[] X = D(Y, K); 1.1 密码编码学 密码编码系统有三个独立特征：
+ 转换明文为密文的运算类型。所有的加密算法都基于两个原理：代替和置换。代替是将明文中的每个元素（如位、字母、位组或字母组）映射成另一个元素；置换是将明文中的元素重新排列。上述运算的基本要求是不允许有信息丢失（所有运算都是可逆的）。大多密码体制也称为乘积密码系统，都使用了多层代替和置换。 所用的密钥数。如果发送方和接收方使用相同的密钥，这种密码就称为对称密码、单密钥密码或传统密码。如果发收双方使用不同的密钥，这种密码就称为非对称密码、双钥或公钥密码。 处理明文的方法。分组密码每次处理输入的一组元素，相应地输出一组元素。流密码则是连续地处理输入元素，每次输出一个元素。  攻击密码系统的典型目标是恢复使用的密钥，而不仅仅恢复出单个密文对应的明文。攻击传统密码有两种通用的方法。
+ 密码分析学：密码分析学攻击依赖于算法的性质、明文的一般特征或某些明密文对。这种攻击形式企图利用算法的特征来推导出特定的明文或使用的密钥。 穷举攻击：攻击者对一条密文尝试所有可能的密钥，直到把它转化为可读的有意义的明文。平均而言，获得成功至少要尝试所有可能的密钥的一半。  基于密码分析者知道的信息的多少，概括密码攻击的几种类型如下。
+   攻击类型 攻击者已知的信息     唯密文攻击 加密算法；密文；   已知明文攻击 加密算法；密文；与待解密密文同一密钥加密的一个或多个明密文对；   选择明文攻击 加密算法；密文；分析者选择的明文，以及对应的（使用和待解密密文同一密钥）加密的密文；   选择密文攻击 加密算法；密文；分析者选择的密文，以及对应的（使用和待解密密文同一密钥）的解密明文；   选择文本攻击 加密算法；密文；分析者选的明文，以及对应的密文；分析者选择的密文，以及对应的明文，使用和待解密密文同一密钥。    唯密文攻击最容易防范，但很多情况下分析者可以得到更多的信息。比如 postscript 格式加密的文件总是以相同的格式开头，电子金融消息往往有标准化的文件头或者标志，类似的例子还有很多，这些都是已知明文攻击的例子。有这些知识的分析者就可以从转换明文的方法入手来推导出密钥。"><title>密码学入门01 - 古典密码#1</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/cryptography-introduction-01/>
+<link rel=stylesheet href=/blog/scss/style.min.css><meta property="og:title" content="密码学入门01 - 古典密码#1">
+<meta property="og:description" content="前言 本文是学习《密码编码学与网络安全》一书的笔记，关于传统加密技术一章。
+0x01 对称密码模型 对称加密，也称传统加密或单钥加密，是20世纪70年代公钥密码产生之前唯一的加密类型。迄今为止，它仍是使用最广泛的加密类型。
+对称加密方案有5个基本成分：
+ 明文：原始可以理解的消息或数据，是算法的输入。 加密算法：加密算法对明文进行各种代替和变换。 密钥：密钥也是加密算法的输入。密钥独立于明文和算法。算法根据所用的特定密钥而产生不同的输出。算法所用的确切代替和变换也依靠密钥。 密文：作为算法的输出，看起来完全随机而杂乱的消息，依赖于明文和密钥。对于给定的消息，不同密钥产生不同的密文，密文看上去是随机的数据流并且其意义是不可理解的。 解密算法：本质上是加密算法的逆运算。输入密文和密钥，输出原始明文。   image-20211110140236382 
+传统密码的安全使用要满足两个要求：
+ 加密算法必须是足够强的。即使攻击者拥有一定数量的密文和产生这些密文的明文，他也不能破译密文或发现密钥。 发送者和接收者必须在某种安全的形式下获得密钥并保证密钥安全。如果有人发现密钥，并知道算法，就能解读使用该密钥加密的所有通信。  我们假设基于已知密文和加密/解密算法而破译消息是不实际的，我们不需要算法保密，仅需要密钥保密。如果密钥是由信息的发送方产生的，那么它要通过某种安全信道发送到接收方；另一种是由第三方生成密钥后再安全地分发给发送方和接收方。
+// 明文X，共 m 个元素 byte[m] X = {X1,X2,X3,X4,...,Xm}; // 密钥K，共 j 个元素 byte[j] K = {K1,K2,K3,K4,...,Kj}; // 加密算法E，以明文和密钥为输入，输出密文 Y byte[n] Y = E(X, K); // 解密算法D，以密文和密钥为输入，输出明文 X byte[] X = D(Y, K); 1.1 密码编码学 密码编码系统有三个独立特征：
+ 转换明文为密文的运算类型。所有的加密算法都基于两个原理：代替和置换。代替是将明文中的每个元素（如位、字母、位组或字母组）映射成另一个元素；置换是将明文中的元素重新排列。上述运算的基本要求是不允许有信息丢失（所有运算都是可逆的）。大多密码体制也称为乘积密码系统，都使用了多层代替和置换。 所用的密钥数。如果发送方和接收方使用相同的密钥，这种密码就称为对称密码、单密钥密码或传统密码。如果发收双方使用不同的密钥，这种密码就称为非对称密码、双钥或公钥密码。 处理明文的方法。分组密码每次处理输入的一组元素，相应地输出一组元素。流密码则是连续地处理输入元素，每次输出一个元素。  攻击密码系统的典型目标是恢复使用的密钥，而不仅仅恢复出单个密文对应的明文。攻击传统密码有两种通用的方法。
+ 密码分析学：密码分析学攻击依赖于算法的性质、明文的一般特征或某些明密文对。这种攻击形式企图利用算法的特征来推导出特定的明文或使用的密钥。 穷举攻击：攻击者对一条密文尝试所有可能的密钥，直到把它转化为可读的有意义的明文。平均而言，获得成功至少要尝试所有可能的密钥的一半。  基于密码分析者知道的信息的多少，概括密码攻击的几种类型如下。
+   攻击类型 攻击者已知的信息     唯密文攻击 加密算法；密文；   已知明文攻击 加密算法；密文；与待解密密文同一密钥加密的一个或多个明密文对；   选择明文攻击 加密算法；密文；分析者选择的明文，以及对应的（使用和待解密密文同一密钥）加密的密文；   选择密文攻击 加密算法；密文；分析者选择的密文，以及对应的（使用和待解密密文同一密钥）的解密明文；   选择文本攻击 加密算法；密文；分析者选的明文，以及对应的密文；分析者选择的密文，以及对应的明文，使用和待解密密文同一密钥。    唯密文攻击最容易防范，但很多情况下分析者可以得到更多的信息。比如 postscript 格式加密的文件总是以相同的格式开头，电子金融消息往往有标准化的文件头或者标志，类似的例子还有很多，这些都是已知明文攻击的例子。有这些知识的分析者就可以从转换明文的方法入手来推导出密钥。">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/cryptography-introduction-01/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="密码学入门"><meta property="article:tag" content="密码学"><meta property="article:tag" content="c++"><meta property="article:published_time" content="2021-11-11T11:35:00+08:00"><meta property="article:modified_time" content="2021-11-11T11:35:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/cryptography-introduction-01/cover.jpg">
+<meta name=twitter:title content="密码学入门01 - 古典密码#1">
+<meta name=twitter:description content="前言 本文是学习《密码编码学与网络安全》一书的笔记，关于传统加密技术一章。
+0x01 对称密码模型 对称加密，也称传统加密或单钥加密，是20世纪70年代公钥密码产生之前唯一的加密类型。迄今为止，它仍是使用最广泛的加密类型。
+对称加密方案有5个基本成分：
+ 明文：原始可以理解的消息或数据，是算法的输入。 加密算法：加密算法对明文进行各种代替和变换。 密钥：密钥也是加密算法的输入。密钥独立于明文和算法。算法根据所用的特定密钥而产生不同的输出。算法所用的确切代替和变换也依靠密钥。 密文：作为算法的输出，看起来完全随机而杂乱的消息，依赖于明文和密钥。对于给定的消息，不同密钥产生不同的密文，密文看上去是随机的数据流并且其意义是不可理解的。 解密算法：本质上是加密算法的逆运算。输入密文和密钥，输出原始明文。   image-20211110140236382 
+传统密码的安全使用要满足两个要求：
+ 加密算法必须是足够强的。即使攻击者拥有一定数量的密文和产生这些密文的明文，他也不能破译密文或发现密钥。 发送者和接收者必须在某种安全的形式下获得密钥并保证密钥安全。如果有人发现密钥，并知道算法，就能解读使用该密钥加密的所有通信。  我们假设基于已知密文和加密/解密算法而破译消息是不实际的，我们不需要算法保密，仅需要密钥保密。如果密钥是由信息的发送方产生的，那么它要通过某种安全信道发送到接收方；另一种是由第三方生成密钥后再安全地分发给发送方和接收方。
+// 明文X，共 m 个元素 byte[m] X = {X1,X2,X3,X4,...,Xm}; // 密钥K，共 j 个元素 byte[j] K = {K1,K2,K3,K4,...,Kj}; // 加密算法E，以明文和密钥为输入，输出密文 Y byte[n] Y = E(X, K); // 解密算法D，以密文和密钥为输入，输出明文 X byte[] X = D(Y, K); 1.1 密码编码学 密码编码系统有三个独立特征：
+ 转换明文为密文的运算类型。所有的加密算法都基于两个原理：代替和置换。代替是将明文中的每个元素（如位、字母、位组或字母组）映射成另一个元素；置换是将明文中的元素重新排列。上述运算的基本要求是不允许有信息丢失（所有运算都是可逆的）。大多密码体制也称为乘积密码系统，都使用了多层代替和置换。 所用的密钥数。如果发送方和接收方使用相同的密钥，这种密码就称为对称密码、单密钥密码或传统密码。如果发收双方使用不同的密钥，这种密码就称为非对称密码、双钥或公钥密码。 处理明文的方法。分组密码每次处理输入的一组元素，相应地输出一组元素。流密码则是连续地处理输入元素，每次输出一个元素。  攻击密码系统的典型目标是恢复使用的密钥，而不仅仅恢复出单个密文对应的明文。攻击传统密码有两种通用的方法。
+ 密码分析学：密码分析学攻击依赖于算法的性质、明文的一般特征或某些明密文对。这种攻击形式企图利用算法的特征来推导出特定的明文或使用的密钥。 穷举攻击：攻击者对一条密文尝试所有可能的密钥，直到把它转化为可读的有意义的明文。平均而言，获得成功至少要尝试所有可能的密钥的一半。  基于密码分析者知道的信息的多少，概括密码攻击的几种类型如下。
+   攻击类型 攻击者已知的信息     唯密文攻击 加密算法；密文；   已知明文攻击 加密算法；密文；与待解密密文同一密钥加密的一个或多个明密文对；   选择明文攻击 加密算法；密文；分析者选择的明文，以及对应的（使用和待解密密文同一密钥）加密的密文；   选择密文攻击 加密算法；密文；分析者选择的密文，以及对应的（使用和待解密密文同一密钥）的解密明文；   选择文本攻击 加密算法；密文；分析者选的明文，以及对应的密文；分析者选择的密文，以及对应的明文，使用和待解密密文同一密钥。    唯密文攻击最容易防范，但很多情况下分析者可以得到更多的信息。比如 postscript 格式加密的文件总是以相同的格式开头，电子金融消息往往有标准化的文件头或者标志，类似的例子还有很多，这些都是已知明文攻击的例子。有这些知识的分析者就可以从转换明文的方法入手来推导出密钥。"><meta name=twitter:card content="summary_large_image">
+<meta name=twitter:image content="https://nnnewb.github.io/blog/p/cryptography-introduction-01/cover.jpg">
+</head>
+<body class="article-page has-toc">
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex
+extended">
+<div id=article-toolbar>
+<a href=https://nnnewb.github.io/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
+<span>返回</span>
+</a>
+</div>
+<main class="main full-width">
+<article class="has-image main-article">
+<header class=article-header>
+<div class=article-image>
+<a href=/blog/p/cryptography-introduction-01/>
+<img src=/blog/p/cryptography-introduction-01/cover_hu0e9b28c8bfc106532b4dce6f21f139c2_149022_800x0_resize_q75_box.jpg srcset="/blog/p/cryptography-introduction-01/cover_hu0e9b28c8bfc106532b4dce6f21f139c2_149022_800x0_resize_q75_box.jpg 800w, /blog/p/cryptography-introduction-01/cover_hu0e9b28c8bfc106532b4dce6f21f139c2_149022_1600x0_resize_q75_box.jpg 1600w" width=800 height=500 loading=lazy alt="Featured image of post 密码学入门01 - 古典密码#1">
+</a>
+</div>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/%E5%AF%86%E7%A0%81%E5%AD%A6/>
+密码学
+</a>
+</header>
+<h2 class=article-title>
+<a href=/blog/p/cryptography-introduction-01/>密码学入门01 - 古典密码#1</a>
+</h2>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2021年 11月 11日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 3 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>本文是学习《密码编码学与网络安全》一书的笔记，关于传统加密技术一章。</p>
+<h2 id=0x01-对称密码模型>0x01 对称密码模型</h2>
+<p>对称加密，也称传统加密或单钥加密，是20世纪70年代公钥密码产生之前唯一的加密类型。迄今为止，它仍是使用最广泛的加密类型。</p>
+<p>对称加密方案有5个基本成分：</p>
+<ul>
+<li>明文：原始可以理解的消息或数据，是算法的输入。</li>
+<li>加密算法：加密算法对明文进行各种代替和变换。</li>
+<li>密钥：密钥也是加密算法的输入。密钥独立于明文和算法。算法根据所用的特定密钥而产生不同的输出。算法所用的确切代替和变换也依靠密钥。</li>
+<li>密文：作为算法的输出，看起来完全随机而杂乱的消息，依赖于明文和密钥。对于给定的消息，不同密钥产生不同的密文，密文看上去是随机的数据流并且其意义是不可理解的。</li>
+<li>解密算法：本质上是加密算法的逆运算。输入密文和密钥，输出原始明文。</li>
+</ul>
+<p><figure style=flex-grow:306;flex-basis:735px>
+<a href=/blog/p/cryptography-introduction-01/image-20211110140236382.png data-size=1155x377><img src=/blog/p/cryptography-introduction-01/image-20211110140236382.png srcset="/blog/p/cryptography-introduction-01/image-20211110140236382_hu8783c317e7f9de22b27c24c57fb0b0d7_134857_480x0_resize_box_3.png 480w, /blog/p/cryptography-introduction-01/image-20211110140236382_hu8783c317e7f9de22b27c24c57fb0b0d7_134857_1024x0_resize_box_3.png 1024w" width=1155 height=377 loading=lazy alt=image-20211110140236382>
+</a>
+<figcaption>image-20211110140236382</figcaption>
+</figure></p>
+<p>传统密码的安全使用要满足两个要求：</p>
+<ul>
+<li>加密算法必须是足够强的。即使攻击者拥有一定数量的密文和产生这些密文的明文，他也不能破译密文或发现密钥。</li>
+<li>发送者和接收者必须在某种安全的形式下获得密钥并保证密钥安全。如果有人发现密钥，并知道算法，就能解读使用该密钥加密的所有通信。</li>
+</ul>
+<p>我们假设基于已知密文和加密/解密算法而破译消息是不实际的，我们不需要算法保密，仅需要密钥保密。如果密钥是由信息的发送方产生的，那么它要通过某种安全信道发送到接收方；另一种是由第三方生成密钥后再安全地分发给发送方和接收方。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=c1>// 明文X，共 m 个元素
+</span><span class=c1></span><span class=n>byte</span><span class=p>[</span><span class=n>m</span><span class=p>]</span> <span class=n>X</span> <span class=o>=</span> <span class=p>{</span><span class=n>X1</span><span class=p>,</span><span class=n>X2</span><span class=p>,</span><span class=n>X3</span><span class=p>,</span><span class=n>X4</span><span class=p>,...,</span><span class=n>Xm</span><span class=p>};</span>
+<span class=c1>// 密钥K，共 j 个元素
+</span><span class=c1></span><span class=n>byte</span><span class=p>[</span><span class=n>j</span><span class=p>]</span> <span class=n>K</span> <span class=o>=</span> <span class=p>{</span><span class=n>K1</span><span class=p>,</span><span class=n>K2</span><span class=p>,</span><span class=n>K3</span><span class=p>,</span><span class=n>K4</span><span class=p>,...,</span><span class=n>Kj</span><span class=p>};</span>
+<span class=c1>// 加密算法E，以明文和密钥为输入，输出密文 Y
+</span><span class=c1></span><span class=n>byte</span><span class=p>[</span><span class=n>n</span><span class=p>]</span> <span class=n>Y</span> <span class=o>=</span> <span class=n>E</span><span class=p>(</span><span class=n>X</span><span class=p>,</span> <span class=n>K</span><span class=p>);</span>
+<span class=c1>// 解密算法D，以密文和密钥为输入，输出明文 X
+</span><span class=c1></span><span class=n>byte</span><span class=p>[]</span> <span class=n>X</span> <span class=o>=</span> <span class=n>D</span><span class=p>(</span><span class=n>Y</span><span class=p>,</span> <span class=n>K</span><span class=p>);</span>
+</code></pre></div><h3 id=11-密码编码学>1.1 密码编码学</h3>
+<p>密码编码系统有三个独立特征：</p>
+<ul>
+<li><strong>转换明文为密文的运算类型</strong>。<strong>所有的加密算法都基于两个原理：代替和置换</strong>。代替是将明文中的每个元素（如位、字母、位组或字母组）映射成另一个元素；置换是将明文中的元素重新排列。上述运算的基本要求是不允许有信息丢失（所有运算都是可逆的）。大多密码体制也称为乘积密码系统，都使用了多层代替和置换。</li>
+<li><strong>所用的密钥数</strong>。如果发送方和接收方使用相同的密钥，这种密码就称为对称密码、单密钥密码或传统密码。如果发收双方使用不同的密钥，这种密码就称为非对称密码、双钥或公钥密码。</li>
+<li><strong>处理明文的方法</strong>。分组密码每次处理输入的一组元素，相应地输出一组元素。流密码则是连续地处理输入元素，每次输出一个元素。</li>
+</ul>
+<p>攻击密码系统的典型目标是恢复使用的密钥，而不仅仅恢复出单个密文对应的明文。攻击传统密码有两种通用的方法。</p>
+<ul>
+<li><strong>密码分析学</strong>：密码分析学攻击依赖于算法的性质、明文的一般特征或某些明密文对。这种攻击形式企图利用算法的特征来推导出特定的明文或使用的密钥。</li>
+<li><strong>穷举攻击</strong>：攻击者对一条密文尝试所有可能的密钥，直到把它转化为可读的有意义的明文。平均而言，获得成功至少要尝试所有可能的密钥的一半。</li>
+</ul>
+<p>基于密码分析者知道的信息的多少，概括密码攻击的几种类型如下。</p>
+<table>
+<thead>
+<tr>
+<th>攻击类型</th>
+<th>攻击者已知的信息</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>唯密文攻击</td>
+<td>加密算法；密文；</td>
+</tr>
+<tr>
+<td>已知明文攻击</td>
+<td>加密算法；密文；与待解密密文同一密钥加密的一个或多个明密文对；</td>
+</tr>
+<tr>
+<td>选择明文攻击</td>
+<td>加密算法；密文；分析者选择的明文，以及对应的（使用和待解密密文同一密钥）加密的密文；</td>
+</tr>
+<tr>
+<td>选择密文攻击</td>
+<td>加密算法；密文；分析者选择的密文，以及对应的（使用和待解密密文同一密钥）的解密明文；</td>
+</tr>
+<tr>
+<td>选择文本攻击</td>
+<td>加密算法；密文；分析者选的明文，以及对应的密文；分析者选择的密文，以及对应的明文，使用和待解密密文同一密钥。</td>
+</tr>
+</tbody>
+</table>
+<p>唯密文攻击最容易防范，但很多情况下分析者可以得到更多的信息。比如 postscript 格式加密的文件总是以相同的格式开头，电子金融消息往往有标准化的文件头或者标志，类似的例子还有很多，这些都是已知明文攻击的例子。有这些知识的分析者就可以从转换明文的方法入手来推导出密钥。</p>
+<p>与已知明文攻击紧密相关的是可能词攻击。如果攻击者处理的是一些特定的信息，他就可能知道其中的部分内容。比如说，某公司开发的程序源代码就可能包含该公司的版权信息，并放在某个标准位置。</p>
+<p>如果分析者能通过某种方式让发送方在发送的信息中插入一段由他选择的信息，那么选择明文攻击就有可能实现。一般来说，如果分析者有办法选择明文加密，那么他将特意选取那些最有可能会付出密钥的数据。</p>
+<p>只有相对较弱的算法才抵挡不住唯密文攻击，一般地说，加密算法起码要能经受住已知明文攻击才行。</p>
+<p>如果一个密码体制满足条件：无论有多少可使用的密文，都不足以唯一地确定密文所对应的明文，则称该加密体制是无条件安全的。也就是攻击者无论花多少时间，都无法将密文解密，因为他所需的信息不在密文中。除了一次一密之外所有的加密算法都不是无条件安全的。</p>
+<p>加密算法使用者应该尽量挑选满足下面标准的算法：</p>
+<ul>
+<li>破译密码的代价超过密文信息的价值。</li>
+<li>破译密码的时间超出密文信息的有效生命期。</li>
+</ul>
+<p>如果满足上述标准中任意一条则它在计算上是安全的，但估计攻击者破译密文所需的工作量是非常困难的。</p>
+<p>从穷举法入手，考虑所需的时间。穷举要获得成功平均来说必须尝试所有可能密钥的一半，下图给出了不同密钥空间穷举尝试所需的时间。</p>
+<p><figure style=flex-grow:401;flex-basis:964px>
+<a href=/blog/p/cryptography-introduction-01/image-20211110150214623.png data-size=1431x356><img src=/blog/p/cryptography-introduction-01/image-20211110150214623.png srcset="/blog/p/cryptography-introduction-01/image-20211110150214623_hua784c719a6627b81510d7a296f0c9cd9_192031_480x0_resize_box_3.png 480w, /blog/p/cryptography-introduction-01/image-20211110150214623_hua784c719a6627b81510d7a296f0c9cd9_192031_1024x0_resize_box_3.png 1024w" width=1431 height=356 loading=lazy alt=image-20211110150214623>
+</a>
+<figcaption>image-20211110150214623</figcaption>
+</figure></p>
+<h2 id=0x02-代替技术>0x02 代替技术</h2>
+<h3 id=21-caesar-凯撒密码>2.1 Caesar 凯撒密码</h3>
+<p>已知最早的代替密码是由 julius caesar 发明的 caesar 密码。caesar 密码非常简单，就是对字母表中的每个字母，用它之后的第三个字母来代替，字母表是首尾相连循环的。</p>
+<p>凯撒密码可以这样表达：<code>C = E(k, p) = (p + k) mod 26</code>。</p>
+<p>凯撒密码的解密算法可以这样表达：<code>p = D(k, C) = (C - k) mod 26</code>。</p>
+<p>其中 k 的取值范围是 1-25，取值为 0 的情况下就是明文；取值26和取值0相同；取值超过 26 则相当于是取了 <code>k mod 26</code> ，因为字母表是循环的；取负数相当于取 <code>26 + k</code>，因为字母表是循环的。</p>
+<p>一个简单的实现如下。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=k>enum</span> <span class=k>class</span> <span class=nc>CryptMode</span> <span class=p>{</span>
+  <span class=n>encrypt</span><span class=p>,</span>
+  <span class=n>decrypt</span><span class=p>,</span>
+<span class=p>};</span>
+
+<span class=n>std</span><span class=o>::</span><span class=n>string</span> <span class=n>caesar</span><span class=p>(</span><span class=kt>int</span> <span class=n>k</span><span class=p>,</span> <span class=n>std</span><span class=o>::</span><span class=n>string</span> <span class=n>plaintext</span><span class=p>,</span> <span class=n>CryptMode</span> <span class=n>mode</span><span class=p>)</span> <span class=p>{</span>
+  <span class=n>std</span><span class=o>::</span><span class=n>string</span> <span class=n>output</span><span class=p>;</span>
+  <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=nl>c</span> <span class=p>:</span> <span class=n>plaintext</span><span class=p>)</span> <span class=p>{</span>
+    <span class=k>if</span> <span class=p>(</span><span class=n>mode</span> <span class=o>==</span> <span class=n>CryptMode</span><span class=o>::</span><span class=n>decrypt</span><span class=p>)</span> <span class=p>{</span>
+      <span class=n>output</span><span class=p>.</span><span class=n>push_back</span><span class=p>((</span><span class=n>c</span> <span class=o>-</span> <span class=sc>&#39;A&#39;</span> <span class=o>-</span> <span class=n>k</span><span class=p>)</span> <span class=o>%</span> <span class=mi>26</span> <span class=o>+</span> <span class=sc>&#39;a&#39;</span><span class=p>);</span>
+    <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+      <span class=n>output</span><span class=p>.</span><span class=n>push_back</span><span class=p>((</span><span class=n>c</span> <span class=o>-</span> <span class=sc>&#39;a&#39;</span> <span class=o>+</span> <span class=n>k</span><span class=p>)</span> <span class=o>%</span> <span class=mi>26</span> <span class=o>+</span> <span class=sc>&#39;A&#39;</span><span class=p>);</span>
+    <span class=p>}</span>
+  <span class=p>}</span>
+  <span class=k>return</span> <span class=n>output</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><p>对于输入 <code>hello</code> ，<code>k=3</code>，输出为 <code>KHOOR</code> 。</p>
+<p>如果已知某给定的密文是 caesar 密码，穷举攻击是很容易实现的：只要简单地测试25种可能的密钥。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=n>std</span><span class=o>::</span><span class=n>vector</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>string</span><span class=o>&gt;</span> <span class=n>brute_force_caesar</span><span class=p>(</span><span class=n>std</span><span class=o>::</span><span class=n>string</span> <span class=n>ciphertext</span><span class=p>)</span> <span class=p>{</span>
+  <span class=n>std</span><span class=o>::</span><span class=n>vector</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>string</span><span class=o>&gt;</span> <span class=n>result</span><span class=p>;</span>
+  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>k</span> <span class=o>=</span> <span class=mi>1</span><span class=p>;</span> <span class=n>k</span> <span class=o>&lt;=</span> <span class=mi>25</span><span class=p>;</span> <span class=n>k</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+    <span class=n>result</span><span class=p>.</span><span class=n>push_back</span><span class=p>(</span><span class=n>caesar</span><span class=p>(</span><span class=n>k</span><span class=p>,</span> <span class=n>ciphertext</span><span class=p>,</span> <span class=n>CryptMode</span><span class=o>::</span><span class=n>decrypt</span><span class=p>));</span>
+  <span class=p>}</span>
+  <span class=k>return</span> <span class=n>result</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><p>将前面的密文输入，得到输出如下。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>brute force caesar: jgnnq
+brute force caesar: ifmmp
+brute force caesar: hello
+brute force caesar: gdkkn
+... 下略
+</code></pre></div><p>可以看到明文已经出现。</p>
+<p>凯撒密码的三个重要特征使我们可以穷举攻击：</p>
+<ol>
+<li>已知加解密的算法</li>
+<li>需测试的密钥只有25个</li>
+<li>明文所用的语言是已知的，而且意义易于识别</li>
+</ol>
+<p>大多情况下，我们假设密码算法是已知的。一般密钥空间很大的算法可以使穷举攻击不太可能，例如3DES算法的密钥长度是 168 位，密钥空间是 2^168，有大于 3.7*10^50 种可能的密钥。</p>
+<p>如果明文所用的语言不为我们所知，那么明文输出就不可识别。输入也可能按照某种方式经过缩写或压缩，也就更不可能识别了。例如一个经过zip压缩的文本文件，用一种简单的代替密码来加密，那么即使用穷举法来进行密码分析，恢复出来的明文也是不可识别的。（注：实际上可以通过文件头、magic number 之类的已知特征来猜测出内容是被压缩过的）。</p>
+<h3 id=22-单表代替密码>2.2 单表代替密码</h3>
+<p>凯撒密码是一种代替密码，每个明文元素唯一对应代替表中的一个密文元素。因为代替表是字母表的循环移动，故密码范围只有 1-25。</p>
+<p><figure style=flex-grow:620;flex-basis:1489px>
+<a href=/blog/p/cryptography-introduction-01/image-20211110155545123.png data-size=571x92><img src=/blog/p/cryptography-introduction-01/image-20211110155545123.png srcset="/blog/p/cryptography-introduction-01/image-20211110155545123_hu3e213ee09efbd6d51e121868c96de46b_37508_480x0_resize_box_3.png 480w, /blog/p/cryptography-introduction-01/image-20211110155545123_hu3e213ee09efbd6d51e121868c96de46b_37508_1024x0_resize_box_3.png 1024w" width=571 height=92 loading=lazy alt=image-20211110155545123>
+</a>
+<figcaption>image-20211110155545123</figcaption>
+</figure></p>
+<p>定义术语<strong>置换</strong>：设有限元素的集合 <em>S</em> 的置换是 <em>S</em> 的所有元素的有序排列，而且每个元素只出现一次。例如，如果有 <code>S = {a,b,c}</code> ，则 <em>S</em> 有 6 个置换：<code>abc,acb,bac,bca,cab,cba</code> 。一般具有 n 个元素的集合有 <code>n!</code> 个置换。</p>
+<p>如果代替表是26个字母的任意置换，那么就有 <code>26!</code> 种可能的密钥，大于 <code>4*10^26</code> 种可能，这比 DES 的密钥空间还要大 10 个数量级，看起来能抵挡穷举攻击了。</p>
+<p>这种方法被称为单表代替密码，每条消息用一个字母表（给出从明文字母到密文字母的映射）加密。</p>
+<h3 id=23-词频攻击>2.3 词频攻击</h3>
+<p>对于单表代替密码，如果攻击者知道明文的属性，比如知道明文是未经压缩的英文文本，就可以通过语言的一些统计学规律进行攻击。</p>
+<p>例如下图中的密文。</p>
+<p><figure style=flex-grow:596;flex-basis:1431px>
+<a href=/blog/p/cryptography-introduction-01/image-20211110160433970.png data-size=841x141><img src=/blog/p/cryptography-introduction-01/image-20211110160433970.png srcset="/blog/p/cryptography-introduction-01/image-20211110160433970_hu0bae56299b47face312e3af416d81f8d_75914_480x0_resize_box_3.png 480w, /blog/p/cryptography-introduction-01/image-20211110160433970_hu0bae56299b47face312e3af416d81f8d_75914_1024x0_resize_box_3.png 1024w" width=841 height=141 loading=lazy alt=image-20211110160433970>
+</a>
+<figcaption>image-20211110160433970</figcaption>
+</figure></p>
+<p>已知明文是英文文本，首先把字母使用的相对频率统计出来，与英文字母的使用频率分布进行比较。</p>
+<p>密文字母使用频率：</p>
+<p><figure style=flex-grow:567;flex-basis:1362px>
+<a href=/blog/p/cryptography-introduction-01/image-20211110160604203.png data-size=1345x237><img src=/blog/p/cryptography-introduction-01/image-20211110160604203.png srcset="/blog/p/cryptography-introduction-01/image-20211110160604203_hud2bc73f9e0917779ec0f259ca64b743c_85725_480x0_resize_box_3.png 480w, /blog/p/cryptography-introduction-01/image-20211110160604203_hud2bc73f9e0917779ec0f259ca64b743c_85725_1024x0_resize_box_3.png 1024w" width=1345 height=237 loading=lazy alt=image-20211110160604203>
+</a>
+<figcaption>image-20211110160604203</figcaption>
+</figure></p>
+<p>英文字母使用频率：</p>
+<p><figure style=flex-grow:134;flex-basis:323px>
+<a href=/blog/p/cryptography-introduction-01/image-20211110160620669.png data-size=884x656><img src=/blog/p/cryptography-introduction-01/image-20211110160620669.png srcset="/blog/p/cryptography-introduction-01/image-20211110160620669_hu4f20a761c6fb706ee66e5ab52766ee21_322944_480x0_resize_box_3.png 480w, /blog/p/cryptography-introduction-01/image-20211110160620669_hu4f20a761c6fb706ee66e5ab52766ee21_322944_1024x0_resize_box_3.png 1024w" width=884 height=656 loading=lazy alt=image-20211110160620669>
+</a>
+<figcaption>image-20211110160620669</figcaption>
+</figure></p>
+<p>此时我们可以尝试在密文上做一些代替，填入明文，看看是否形成一个可读消息。更系统一点的方法是寻找其他规律，例如明文中有某些词可能是已知的，或者寻找密文字母中的重复序列，推导它们的等价明文。统计双字母组合的频率会是个很有效的工具。</p>
+<p>尝试分析的结果是：</p>
+<p><figure style=flex-grow:343;flex-basis:824px>
+<a href=/blog/p/cryptography-introduction-01/image-20211110160738100.png data-size=831x242><img src=/blog/p/cryptography-introduction-01/image-20211110160738100.png srcset="/blog/p/cryptography-introduction-01/image-20211110160738100_hub66bc3a0a336c5d68333c334cbbee3ec_99281_480x0_resize_box_3.png 480w, /blog/p/cryptography-introduction-01/image-20211110160738100_hub66bc3a0a336c5d68333c334cbbee3ec_99281_1024x0_resize_box_3.png 1024w" width=831 height=242 loading=lazy alt=image-20211110160738100>
+</a>
+<figcaption>image-20211110160738100</figcaption>
+</figure></p>
+<p>继续进行分析和测试可以很快得出完整的明文。</p>
+<p><figure style=flex-grow:864;flex-basis:2075px>
+<a href=/blog/p/cryptography-introduction-01/image-20211110161027735.png data-size=960x111><img src=/blog/p/cryptography-introduction-01/image-20211110161027735.png srcset="/blog/p/cryptography-introduction-01/image-20211110161027735_hu97cc0623de9f6e01bc3a236c731df603_66342_480x0_resize_box_3.png 480w, /blog/p/cryptography-introduction-01/image-20211110161027735_hu97cc0623de9f6e01bc3a236c731df603_66342_1024x0_resize_box_3.png 1024w" width=960 height=111 loading=lazy alt=image-20211110161027735>
+</a>
+<figcaption>image-20211110161027735</figcaption>
+</figure></p>
+<p>实践：</p>
+<p>实现一个简单的替代密码，用随机生成的密码表。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=n>std</span><span class=o>::</span><span class=n>string</span> <span class=n>substitution_cipher</span><span class=p>(</span><span class=k>const</span> <span class=n>std</span><span class=o>::</span><span class=n>string</span> <span class=o>&amp;</span><span class=n>plaintext</span><span class=p>,</span> <span class=k>const</span> <span class=n>std</span><span class=o>::</span><span class=n>map</span><span class=o>&lt;</span><span class=kt>char</span><span class=p>,</span> <span class=kt>char</span><span class=o>&gt;</span> <span class=o>&amp;</span><span class=n>chart</span><span class=p>)</span> <span class=p>{</span>
+  <span class=n>std</span><span class=o>::</span><span class=n>string</span> <span class=n>output</span><span class=p>;</span>
+  <span class=k>for</span> <span class=p>(</span><span class=kt>char</span> <span class=nl>c</span> <span class=p>:</span> <span class=n>plaintext</span><span class=p>)</span> <span class=p>{</span>
+    <span class=k>try</span> <span class=p>{</span>
+      <span class=n>output</span><span class=p>.</span><span class=n>push_back</span><span class=p>(</span><span class=n>chart</span><span class=p>.</span><span class=n>at</span><span class=p>(</span><span class=n>tolower</span><span class=p>(</span><span class=n>c</span><span class=p>)));</span>
+    <span class=p>}</span> <span class=k>catch</span> <span class=p>(</span><span class=n>std</span><span class=o>::</span><span class=n>out_of_range</span> <span class=n>err</span><span class=p>)</span> <span class=p>{</span>
+      <span class=k>return</span> <span class=s>&#34;invalid input&#34;</span><span class=p>;</span>
+    <span class=p>}</span>
+  <span class=p>}</span>
+  <span class=k>return</span> <span class=n>output</span><span class=p>;</span>
+<span class=p>}</span>
+
+<span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+  <span class=c1>// 替代密码表
+</span><span class=c1></span>  <span class=k>const</span> <span class=n>std</span><span class=o>::</span><span class=n>map</span><span class=o>&lt;</span><span class=kt>char</span><span class=p>,</span> <span class=kt>char</span><span class=o>&gt;</span> <span class=n>chart</span> <span class=o>=</span> <span class=p>{</span>
+      <span class=p>{</span><span class=sc>&#39;a&#39;</span><span class=p>,</span> <span class=sc>&#39;o&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;b&#39;</span><span class=p>,</span> <span class=sc>&#39;a&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;c&#39;</span><span class=p>,</span> <span class=sc>&#39;f&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;d&#39;</span><span class=p>,</span> <span class=sc>&#39;u&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;e&#39;</span><span class=p>,</span> <span class=sc>&#39;g&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;f&#39;</span><span class=p>,</span> <span class=sc>&#39;y&#39;</span><span class=p>},</span>   <span class=p>{</span><span class=sc>&#39;g&#39;</span><span class=p>,</span> <span class=sc>&#39;n&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;h&#39;</span><span class=p>,</span> <span class=sc>&#39;k&#39;</span><span class=p>},</span>
+      <span class=p>{</span><span class=sc>&#39;i&#39;</span><span class=p>,</span> <span class=sc>&#39;e&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;j&#39;</span><span class=p>,</span> <span class=sc>&#39;z&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;k&#39;</span><span class=p>,</span> <span class=sc>&#39;t&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;l&#39;</span><span class=p>,</span> <span class=sc>&#39;b&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;m&#39;</span><span class=p>,</span> <span class=sc>&#39;d&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;n&#39;</span><span class=p>,</span> <span class=sc>&#39;p&#39;</span><span class=p>},</span>   <span class=p>{</span><span class=sc>&#39;o&#39;</span><span class=p>,</span> <span class=sc>&#39;l&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;p&#39;</span><span class=p>,</span> <span class=sc>&#39;m&#39;</span><span class=p>},</span>
+      <span class=p>{</span><span class=sc>&#39;q&#39;</span><span class=p>,</span> <span class=sc>&#39;j&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;r&#39;</span><span class=p>,</span> <span class=sc>&#39;q&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;s&#39;</span><span class=p>,</span> <span class=sc>&#39;c&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;t&#39;</span><span class=p>,</span> <span class=sc>&#39;i&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;u&#39;</span><span class=p>,</span> <span class=sc>&#39;w&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;v&#39;</span><span class=p>,</span> <span class=sc>&#39;x&#39;</span><span class=p>},</span>   <span class=p>{</span><span class=sc>&#39;w&#39;</span><span class=p>,</span> <span class=sc>&#39;s&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;x&#39;</span><span class=p>,</span> <span class=sc>&#39;v&#39;</span><span class=p>},</span>
+      <span class=p>{</span><span class=sc>&#39;y&#39;</span><span class=p>,</span> <span class=sc>&#39;r&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;z&#39;</span><span class=p>,</span> <span class=sc>&#39;h&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39; &#39;</span><span class=p>,</span> <span class=sc>&#39; &#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;,&#39;</span><span class=p>,</span> <span class=sc>&#39;,&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;.&#39;</span><span class=p>,</span> <span class=sc>&#39;.&#39;</span><span class=p>},</span> <span class=p>{</span><span class=sc>&#39;\&#39;&#39;</span><span class=p>,</span> <span class=sc>&#39;\&#39;&#39;</span><span class=p>},</span>
+  <span class=p>};</span>
+
+  <span class=k>auto</span> <span class=n>ciphertext</span> <span class=o>=</span> <span class=n>substitution_cipher</span><span class=p>(</span><span class=s>&#34;It can solve simple substitution ciphers often found in newspapers, including puzzles like cryptoquips&#34;</span><span class=p>,</span> <span class=n>chart</span><span class=p>);</span>
+  <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=n>ciphertext</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
+  <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></div><p>加密结果：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>ei fop clbxg cedmbg cwacieiwielp femkgqc lyigp ylwpu ep pgscmomgqc, epfbwuepn mwhhbgc betg fqrmiljwemc
+</code></pre></div><p>可以在 <a class=link href=https://www.quipqiup.com/ target=_blank rel=noopener>quipquip</a> 尝试解密。</p>
+<h2 id=总结>总结</h2>
+<p>Q：对称密码的本质成分</p>
+<p>明文、密文、密钥、加密算法、解密算法。</p>
+<p>Q：密码算法中的两个基本函数</p>
+<p>替代和置换。</p>
+<p>Q：用密码通信的两个人需要多少密钥</p>
+<p>1个（对称加密）或 2 个（公钥加密）。</p>
+<p>关于这点对书本有点困惑，实际经验告诉我需要至少4个密钥（发送方公钥、发送方私钥、接收方公钥、接收方私钥），书本里可能把一对公私钥算一个密钥。</p>
+<p>Q：分组密码和流密码的区别</p>
+<p>分组密码一次处理一组元素，一次输出一组元素。流密码连续处理输入元素，每次输出一个元素。</p>
+<p>Q：攻击密码的两种一般方法是什么</p>
+<p>密码分析和穷举。密码分析学攻击依赖于算法的性质、明文的一般特征或某些明密文对。这种攻击形式企图利用算法的特征来推导出特定的明文或使用的密钥。穷举法则是枚举所有可能的密钥，直到获得有意义的明文。</p>
+<p>Q：列出和定义基于攻击者所知信息的密码分析攻击类型</p>
+<ul>
+<li>唯密文攻击。已知算法和密文。</li>
+<li>已知明文攻击。已知算法、密文、明文。</li>
+<li>选择密文攻击。已知算法、密文、攻击者选择的明文和对应的密文。（攻击者可以控制待加密内容）</li>
+<li>选择明文攻击。已知算法、密文、攻击者选择的密文和对应的明文。（攻击者可以控制待解密内容）</li>
+<li>选择文本攻击。已知算法、密文、攻击者选择的密文和对应的明文、攻击者选择的明文和对应的密文。（攻击者可以自由加密/解密，但不知道密钥）</li>
+</ul>
+<p>Q：无条件安全密码和计算上安全的密码区别是什么</p>
+<p>无条件安全密码无法从密文分析出密钥，不可破译。</p>
+<p>计算上安全的密码满足两个条件之一：</p>
+<ol>
+<li>破译密文的代价大于密文信息的价值。</li>
+<li>破译密码的时间超过密文信息的有效期。</li>
+</ol>
+<p>Q：简要定义 Caesar 密码</p>
+<p><code>C = E(k, p) = (p + k) mod 26</code></p>
+<p><code>p = D(k, C) = (C - k) mod 26</code></p>
+<p>Q：简要定义单表代替密码</p>
+<p>允许字母任意替代，明文字母表和密文字母表是<a class=link href=https://baike.baidu.com/item/%E5%8F%8C%E5%B0%84/942799 target=_blank rel=noopener>双射</a>的。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/%E5%AF%86%E7%A0%81%E5%AD%A6%E5%85%A5%E9%97%A8/>密码学入门</a>
+<a href=/blog/tags/%E5%AF%86%E7%A0%81%E5%AD%A6/>密码学</a>
+<a href=/blog/tags/c++/>c++</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+</article>
+<aside class=related-contents--wrapper>
+</aside>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.1.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#0x01-对称密码模型>0x01 对称密码模型</a>
+<ol>
+<li><a href=#11-密码编码学>1.1 密码编码学</a></li>
+</ol>
+</li>
+<li><a href=#0x02-代替技术>0x02 代替技术</a>
+<ol>
+<li><a href=#21-caesar-凯撒密码>2.1 Caesar 凯撒密码</a></li>
+<li><a href=#22-单表代替密码>2.2 单表代替密码</a></li>
+<li><a href=#23-词频攻击>2.3 词频攻击</a></li>
+</ol>
+</li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
