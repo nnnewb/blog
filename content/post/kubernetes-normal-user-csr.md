@@ -1,7 +1,7 @@
 ---
 title: csr 方式创建 kubernetes 用户出了点差错
 date: 2021-07-19 09:52:38
-tags: ["kubernetes", "devops"]
+tags: ["kubernetes"]
 categories: kubernetes
 references:
   - title: 证书签名请求 | kubernetes

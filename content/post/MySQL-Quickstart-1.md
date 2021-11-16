@@ -3,7 +3,7 @@ title: MySQL 24小时入门笔记 - 1
 tags:
   - mysql
 categories:
-  - mysql
+  - sql
 date: 2018-06-23 02:24:00
 ---
 

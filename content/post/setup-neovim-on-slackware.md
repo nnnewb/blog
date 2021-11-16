@@ -2,7 +2,7 @@
 title: 在 slackware 上安装 neovim
 date: 2021-01-04 15:00:20
 categories:
-  - slackware
+  - linux运维
 tags:
   - slackware
   - vim

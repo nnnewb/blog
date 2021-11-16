@@ -3,8 +3,9 @@ title: 不常用的 Git 命令
 date: 2021-07-09 09:25:16
 tags:
 - git
+- 杂谈
 categories:
-- git
+- linux运维
 ---
 
 大概是不太常用的一些 Git 命令。

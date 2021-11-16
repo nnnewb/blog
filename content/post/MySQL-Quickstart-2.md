@@ -4,7 +4,7 @@ tags:
   - mysql
 date: 2018-06-23 15:41:00
 categories:
-  - mysql
+  - sql
 ---
 
 ## 查询

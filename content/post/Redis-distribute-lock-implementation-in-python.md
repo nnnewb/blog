@@ -6,7 +6,7 @@ tags:
   - lua
   - 分布式
 categories:
-  - redis
+  - python
 date: 2018-12-17 14:57:00
 ---
 

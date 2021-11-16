@@ -2,9 +2,9 @@
 title: 升级公司的 GitLab
 date: 2021-07-15 16:02:41
 tags:
-  - devops
+  - linux运维
 categories:
-  - devops
+  - linux运维
 ---
 
 公司目前跑的 gitlab 是很久以前部署的，当前版本 _8.4.2_ 。升级目标是 _13.12.Z_ 。部署方式是 docker 。

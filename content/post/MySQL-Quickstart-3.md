@@ -4,7 +4,7 @@ tags:
   - mysql
 date: 2018-06-23 21:51:00
 categories:
-  - mysql
+  - sql
 ---
 
 ## 插入

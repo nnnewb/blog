@@ -5,7 +5,7 @@ tags:
   - linux
   - slackware
 categories:
-  - slackware
+  - linux运维
 references:
   - title: slackware - configuration - System init
     url: http://www.slackware.com/config/init.php

@@ -4,7 +4,7 @@ tags:
   - mysql
 date: 2018-06-23 22:34:00
 categories:
-  - mysql
+  - sql
 ---
 
 ## 创建表

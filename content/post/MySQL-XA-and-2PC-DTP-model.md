@@ -4,7 +4,7 @@ date: 2021-07-09 09:29:22
 tags:
 - mysql
 categories:
-- mysql
+- sql
 ---
 
 关于 MySQL XA 事务和 2PC（两阶段提交）分布式事务处理模型（*Distributed Transaction Processing, DTP Model*）的学习笔记。

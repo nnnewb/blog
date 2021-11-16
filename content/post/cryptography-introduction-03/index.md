@@ -4,7 +4,7 @@ slug: cryptography-introduction-03
 date: 2021-11-16 11:31:00
 image: cover.jpg
 categories:
-- 密码学入门
+- 密码学
 tags:
 - 密码学入门
 - 密码学
@@ -25,7 +25,7 @@ tags:
 一个有 *m* 行，*n* 列的矩阵 *A* 的书写形式如下。
 $$
 A=\begin{bmatrix}
-	a_{11} & a_{12} & \dots & a_{1n} \\\\ a_{21} & a_{22} & \dots & a_{2n} \\\\ \vdots & \vdots & & \vdots \\\\ a_{m1} & a_{m2} & \dots & a_{mn} 
+	a_{11} & a_{12} & \dots & a_{1n} \\\\ a_{21} & a_{22} & \dots & a_{2n} \\\\ \vdots & \vdots & & \vdots \\\\ a_{m1} & a_{m2} & \dots & a_{mn}
 \end{bmatrix}
 $$
 
@@ -34,9 +34,9 @@ $$
 矩阵加减法规则如下。设有矩阵 *A*、*B* 如下。
 $$
 A=\begin{bmatrix}
-	a_{11} & a_{12} & \dots & a_{1n} \\\\ a_{21} & a_{22} & \dots & a_{2n} \\\\ \vdots & \vdots & & \vdots \\\\ a_{m1} & a_{m2} & \dots & a_{mn} 
+	a_{11} & a_{12} & \dots & a_{1n} \\\\ a_{21} & a_{22} & \dots & a_{2n} \\\\ \vdots & \vdots & & \vdots \\\\ a_{m1} & a_{m2} & \dots & a_{mn}
 \end{bmatrix},B=\begin{bmatrix}
-	b_{11} & b_{12} & \dots & b_{1n} \\\\ b_{21} & b_{22} & \dots & b_{2n} \\\\ \vdots & \vdots & & \vdots \\\\ b_{m1} & b_{m2} & \dots & b_{mn} 
+	b_{11} & b_{12} & \dots & b_{1n} \\\\ b_{21} & b_{22} & \dots & b_{2n} \\\\ \vdots & \vdots & & \vdots \\\\ b_{m1} & b_{m2} & \dots & b_{mn}
 \end{bmatrix}
 $$
 则计算 A±B 的规则如下。

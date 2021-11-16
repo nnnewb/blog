@@ -6,7 +6,6 @@ categories:
 - kubernetes
 tags:
 - kubernetes
-- devops
 ---
 
 ## 前言
