@@ -54,4 +54,14 @@ python 的 class 也被视作一个对象，定制一个 class 的构造过程�
 python3 里类的类型是type，type又继承自object，object的父类是自己，构成一个奇怪的闭环。其中，type本身是一个特殊的类，他是自己的实例。
 graph TB; type --&amp;gt; |inherite|object; type --&amp;gt; |instance-of| type; object --&amp;gt; |instance-of|type; other-cls --&amp;gt; |instance-of| type; other-cls --&amp;gt; |inherite| object; other-cls-instance --&amp;gt; |instance-of|other-cls; type有两种调用方式，一种是最常用的接受一个对象参数，返回该对象的类型，另一种是不怎么常用的，直接创建一个新的类型。
 # usage with one argument type(object) # 返回对象的类型，这里返回的是 `type` # usage with three arguments type(name, bases, attr) # 返回新创建的类型 2. meta class 元类语法如下
-class MyClass(basecls1, basecls2, metaclass=MetaClass, named1=arg, named2=arg): .</description></item></channel></rss>
+class MyClass(basecls1, basecls2, metaclass=MetaClass, named1=arg, named2=arg): .</description></item><item><title>python 实现 redis 分布式锁</title><link>https://nnnewb.github.io/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/</link><pubDate>Mon, 17 Dec 2018 14:57:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/</guid><description>Intro 分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。
+在单机并发的情况下，我们可以用 mutex，可以用 os 的文件锁，全局锁，多台服务器的并发就需要另一个持有并保护锁的角色了。
+概述如何使用 redis 实现一个分布式锁。
+为何是 Lua redis 保证了 lua 解释器执行脚本的事务性，即执行结果要么不可见，要么已完成。
+参考这篇文档。
+简单锁 简单锁指的是简单互斥锁，一旦锁定，则其他锁定请求都必须等待。
+加锁 直觉的想法是通过 redis 的键来保持锁，故准备一个用于锁定互斥的名字（比如说 mutex-1）然后指定为键。
+直接使用 set 是显然不正确的，如果临界区内程序崩溃或意外断网将导致死锁，所以 setnx 和 expire 是必选项。
+加锁需要判断锁的键为空，才能加锁，这两步必须保证原子性，要么都执行，要么一个都不执行。幸好 redis 提供了这方面保证，只要使用 lua 脚本的话。
+-- 加锁 if redis.call(&amp;#34;get&amp;#34;, KEYS[1]) == nil then if redis.call(&amp;#34;setnx&amp;#34;, KEYS[1], ARGV[1]) == 1 then redis.call(&amp;#34;expire&amp;#34;, KEYS[1], ARGV[2]) return 1 else return end end 上面的 lua 代码用 python 再封装一层，就是这样
+def lock(key, expire): redis.eval( &amp;#39;&amp;#39;&amp;#39; -- 加锁 if redis.</description></item></channel></rss>

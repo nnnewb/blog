@@ -18,7 +18,7 @@
 <div class="container main-container flex
 extended">
 <div id=article-toolbar>
-<a href=https://nnnewb.github.io/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
+<a href=/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
 <span>返回</span>
 </a>
 </div>
@@ -220,17 +220,41 @@ wrong pwd!
 <h2 id=0x03-静态分析---easy>0x03 静态分析 - easy</h2>
 <h3 id=31-主循环>3.1 主循环</h3>
 <p>在公司没IDA，用 <a class=link href=image/crackme-02/https://cutter.re/>Cutter</a> 打开，在上方输入框输入 <code>main</code> 跳转到 <code>main</code> 函数。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-1.png alt=image-20210914114426600></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-1.png>
+<img src=/blog/image/crackme-02/cm02-easy-1.png loading=lazy alt=image-20210914114426600>
+</a>
+<figcaption>image-20210914114426600</figcaption>
+</figure></p>
 <p>然后点击 <em>图表（main）</em> 进入类似 IDA 的控制流视图。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-2.png alt=image-20210914114547128></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-2.png>
+<img src=/blog/image/crackme-02/cm02-easy-2.png loading=lazy alt=image-20210914114547128>
+</a>
+<figcaption>image-20210914114547128</figcaption>
+</figure></p>
 <p>之后就能看到下面的控制流了。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-3.png alt></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-3.png>
+<img src=/blog/image/crackme-02/cm02-easy-3.png loading=lazy>
+</a>
+</figure></p>
 <p>easy难度下没有开启任何编译器优化，控制流和原始代码能直接对应上。瞧着困难很多对吧？</p>
 <p>先简单扫一眼，会发现很多分支直接跳回了<code>0x0040139d</code>，也就是从上往下数第二个代码块，基本每个跳转都是下一个块或跳回这个块。按照 <a class=link href=https://nnnewb.github.io/blog/p/crackme-01/ target=_blank rel=noopener>cm01</a>的经验，我们先找到关键的一跳。可以直接搜索字符串引用（<code>wrong pwd!</code>），也可以逐个代码块看下去。</p>
 <p>很快，右下角的关键跳出现在眼前。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-4.png alt=image-20210914152834262></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-4.png>
+<img src=/blog/image/crackme-02/cm02-easy-4.png loading=lazy alt=image-20210914152834262>
+</a>
+<figcaption>image-20210914152834262</figcaption>
+</figure></p>
 <p>接着回头看跳转条件。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-5.png alt=image-20210914153728179></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-5.png>
+<img src=/blog/image/crackme-02/cm02-easy-5.png loading=lazy alt=image-20210914153728179>
+</a>
+<figcaption>image-20210914153728179</figcaption>
+</figure></p>
 <p>虽然没有名字，但<code>fcn.00403ef4</code> 是老熟人了。三个参数，<code>ecx</code>、<code>eax</code>、<code>0x10</code>，返回结果和<code>0</code>做比较，<code>jne</code>条件跳转。</p>
 <ul>
 <li><code>cmp</code>指令，操作数相减（<code>dest</code>-<code>src</code>），结果存入标志位 <code>SF</code>和<code>ZF</code>。
@@ -243,15 +267,35 @@ wrong pwd!
 <li><code>jne</code>或<code>jnz</code>指令，非零跳转。<code>ZF</code>标志位为<code>1</code>时跳转。</li>
 </ul>
 <p>猜测这个函数应该是<code>strncmp</code>。继续往回看参数是怎么来的。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-6.png alt=image-20210914155544252></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-6.png>
+<img src=/blog/image/crackme-02/cm02-easy-6.png loading=lazy alt=image-20210914155544252>
+</a>
+<figcaption>image-20210914155544252</figcaption>
+</figure></p>
 <p><code>eax</code>来自<code>sub.02x_40298c</code>这个函数，后面两个脱裤子放屁的<code>mov</code>忽略。<code>ecx</code>则来来自<code>mov ecx,dword [ebp-10h]</code>这一行。</p>
 <p>先不着急分析函数，继续往回找，找到<code>[ebp-10h]</code>的来源。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-7.png alt=image-20210914161814604></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-7.png>
+<img src=/blog/image/crackme-02/cm02-easy-7.png loading=lazy alt=image-20210914161814604>
+</a>
+<figcaption>image-20210914161814604</figcaption>
+</figure></p>
 <p>在入口点附近，看到<code>[ebp-10]</code>被初始化成了0。</p>
 <p>因为没有很明确的路径，手动计算栈上偏移又非常麻烦，这里本应该掏出调试器——但出于学习练手的目的，还是先尝试计算下。首先回顾下简化的栈内存布局，从上往下增长，如图。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-8.png alt=stack-layout></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-8.png>
+<img src=/blog/image/crackme-02/cm02-easy-8.png loading=lazy alt=stack-layout>
+</a>
+<figcaption>stack-layout</figcaption>
+</figure></p>
 <p>接下来从<code>mov ebp,esp</code>开始，往下列出所有函数调用，捋一捋逻辑。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-9.png alt=image-20210914214920437></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-9.png>
+<img src=/blog/image/crackme-02/cm02-easy-9.png loading=lazy alt=image-20210914214920437>
+</a>
+<figcaption>image-20210914214920437</figcaption>
+</figure></p>
 <p>第一个框，<code>[esp+2ch+Ix]</code> 计算结果是 <code>[esp]</code>，也就是栈顶，栈顶设置为字符串 <code>username:</code>，接着调用一个未知函数。从参数判断我们先认为是一个输出字符串的函数。</p>
 <p>再看第二个框，<code>acrt_iob_func</code>，百度一下就会发现，<code>__acrt_iob_func</code>函数是定义于 c 运行库里的函数，作用是返回 <code>stdin/stdout/stderr</code> 。栈顶设置为0，所以获得的是 <code>stdin</code>。</p>
 <p>再看第三个框，<code>edx</code>和<code>ecx</code>赋值为栈上两个变量的地址，再为参数。按顺序就是<code>f(edx,ecx,stdin)</code>。暂时不明。函数返回值被赋值回了<code>[ebp-18h]</code>。</p>
@@ -266,7 +310,12 @@ wrong pwd!
 <span class=n>var_0c</span> <span class=o>=</span> <span class=n>unknown_func2</span><span class=p>(</span><span class=n>var_8</span><span class=p>,</span> <span class=n>var_18</span><span class=p>)</span>
 <span class=k>if</span> <span class=n>var_0c</span> <span class=o>&lt;=</span> <span class=mi>8</span><span class=p>:</span>
     <span class=o>...</span> <span class=c1># jbe 跳转执行</span>
-</code></pre></div><p><img src=/blog/image/crackme-02/cm02-easy-10.png alt=image-20210914223919137></p>
+</code></pre></div><p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-10.png>
+<img src=/blog/image/crackme-02/cm02-easy-10.png loading=lazy alt=image-20210914223919137>
+</a>
+<figcaption>image-20210914223919137</figcaption>
+</figure></p>
 <p>可以看出，当 <code>var_0c</code> 小于 8 时，提示 <code>username less than 8 letter</code> 。因此可以确定 <code>[ebp-0Ch]</code> 这个变量就是 <code>username</code> 字符串的长度，上一个函数会计算字符串长度返回。我们再根据这个发现修改下伪代码。</p>
 <div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=n>var</span> <span class=n>var_8</span> <span class=c1># 偏移值 ebp-8h</span>
 <span class=n>var</span> <span class=n>username_len</span> <span class=c1># 偏移值 ebp-0Ch</span>
@@ -284,12 +333,27 @@ wrong pwd!
 <div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>cmp</span> <span class=p>[</span><span class=no>ebp-0Ch</span><span class=p>],</span> <span class=mi>0</span>
 <span class=nf>jnz</span> <span class=no>...</span>
 </code></pre></div><p>这次是比较用户名长度和0，非0跳转。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-11.png alt=image-20210914224625891></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-11.png>
+<img src=/blog/image/crackme-02/cm02-easy-11.png loading=lazy alt=image-20210914224625891>
+</a>
+<figcaption>image-20210914224625891</figcaption>
+</figure></p>
 <p>可以看到为零时，经过一个未知函数 <code>sub_4036FC(var_8)</code> 后，跳回开头。</p>
 <p>继续看正确流程，<code>jmp $+5</code> ，<code>$</code> 表示当前正在执行的代码在代码段内的偏移量，+5就是从当前代码开始往后跳过5个字节，我们直接看IDA分析好的跳转位置。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-12.png alt=image-20210914225052452></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-12.png>
+<img src=/blog/image/crackme-02/cm02-easy-12.png loading=lazy alt=image-20210914225052452>
+</a>
+<figcaption>image-20210914225052452</figcaption>
+</figure></p>
 <p>又是非常熟悉的代码，和读取 <code>username</code> 的分析方式相同，以相同的顺序调用相同的函数，可以得到<code>var_14</code>是<code>serial_len</code>，<code>Str1</code>可能是<code>serial</code>字符串指针。不做重复分析，继续往下看。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-13.png alt=image-20210914225322787></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-13.png>
+<img src=/blog/image/crackme-02/cm02-easy-13.png loading=lazy alt=image-20210914225322787>
+</a>
+<figcaption>image-20210914225322787</figcaption>
+</figure></p>
 <p>右边的代码块是关于长度的判断，分析方法不再重复。左侧代码就是我们的关键跳转了，其中出现两个函数调用。</p>
 <div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>mov</span>     <span class=no>eax</span><span class=p>,</span> <span class=p>[</span><span class=no>ebp</span><span class=err>+</span><span class=no>var_C</span><span class=p>]</span>
 <span class=nf>mov</span>     <span class=no>ecx</span><span class=p>,</span> <span class=p>[</span><span class=no>ebp</span><span class=err>+</span><span class=no>Block</span><span class=p>]</span>
@@ -310,7 +374,12 @@ wrong pwd!
 <p>下一步分析序列号生成函数。</p>
 <h3 id=32-生成序列号>3.2 生成序列号</h3>
 <p>先看下控制流全览，能依稀分辨出三个循环。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-14.png alt=generate></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-14.png>
+<img src=/blog/image/crackme-02/cm02-easy-14.png loading=lazy alt=generate>
+</a>
+<figcaption>generate</figcaption>
+</figure></p>
 <p>自动分析出的变量表</p>
 <div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=c>; var uint32_t var_1ch @ ebp-0x1c
 </span><span class=c>; var int32_t var_18h @ ebp-0x18
@@ -533,22 +602,67 @@ wrong pwd!
 <p>调试的目标是确认生成序列号的算法，把分析出的伪代码中还不清楚用途的未知函数，分析出作用。</p>
 <h3 id=41-x32dbg>4.1 x32dbg</h3>
 <p>打开调试器后，先找到关键跳，在工具栏点击字符串工具图标，在下方搜索栏输入<code>wrong pwd!</code></p>
-<p><img src=/blog/image/crackme-02/cm02-easy-15.png alt=image-20210915140718400></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-15.png>
+<img src=/blog/image/crackme-02/cm02-easy-15.png loading=lazy alt=image-20210915140718400>
+</a>
+<figcaption>image-20210915140718400</figcaption>
+</figure></p>
 <p>跳到引用位置。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-18.png alt=image-20210915111455604></p>
-<p><img src=/blog/image/crackme-02/cm02-easy-19.png alt=image-20210915111621678></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-18.png>
+<img src=/blog/image/crackme-02/cm02-easy-18.png loading=lazy alt=image-20210915111455604>
+</a>
+<figcaption>image-20210915111455604</figcaption>
+</figure></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-19.png>
+<img src=/blog/image/crackme-02/cm02-easy-19.png loading=lazy alt=image-20210915111621678>
+</a>
+<figcaption>image-20210915111621678</figcaption>
+</figure></p>
 <p>之后可以按g，进入控制流视图，不过这个控制流视图有点不好看，我们也可以直接参考静态分析中的汇编，直接找到函数，并在入口下断点。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-20.png alt=image-20210915112358449></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-20.png>
+<img src=/blog/image/crackme-02/cm02-easy-20.png loading=lazy alt=image-20210915112358449>
+</a>
+<figcaption>image-20210915112358449</figcaption>
+</figure></p>
 <p>尝试随便输入一点内容，调试器命中。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-21.png alt=image-20210915112552389></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-21.png>
+<img src=/blog/image/crackme-02/cm02-easy-21.png loading=lazy alt=image-20210915112552389>
+</a>
+<figcaption>image-20210915112552389</figcaption>
+</figure></p>
 <p>接下来就可以用左上角的单步调试了。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-22.png alt=image-20210915140939909></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-22.png>
+<img src=/blog/image/crackme-02/cm02-easy-22.png loading=lazy alt=image-20210915140939909>
+</a>
+<figcaption>image-20210915140939909</figcaption>
+</figure></p>
 <p>不做更多介绍，汇编的分析已经进行过一次。这次我们找到对输入 &ldquo;abc&rdquo; 的正确序列号，完成一次解密。</p>
-<p>只需要在断点处点击<img src=/blog/image/crackme-02/cm02-easy-23.png alt=image-20210915141120060>按钮，然后观察<code>eax</code>寄存器。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-24.png alt=image-20210915141405302></p>
+<p>只需要在断点处点击<figure>
+<a href=/blog/image/crackme-02/cm02-easy-23.png>
+<img src=/blog/image/crackme-02/cm02-easy-23.png loading=lazy alt=image-20210915141120060>
+</a>
+<figcaption>image-20210915141120060</figcaption>
+</figure>按钮，然后观察<code>eax</code>寄存器。</p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-24.png>
+<img src=/blog/image/crackme-02/cm02-easy-24.png loading=lazy alt=image-20210915141405302>
+</a>
+<figcaption>image-20210915141405302</figcaption>
+</figure></p>
 <p>抄出来（居然不能右键复制后面的字符串），内容是<code>4447467073727d7c</code>。</p>
 <p>接着继续运行，再把抄出来的答案复制进去看看。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-25.png alt=image-20210915141838395></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-25.png>
+<img src=/blog/image/crackme-02/cm02-easy-25.png loading=lazy alt=image-20210915141838395>
+</a>
+<figcaption>image-20210915141838395</figcaption>
+</figure></p>
 <p>到这里，我们拿到了一个可以用的序列号。</p>
 <h2 id=0x05-注册机>0x05 注册机</h2>
 <h3 id=51-python-脚本注册机>5.1 Python 脚本注册机</h3>
@@ -604,20 +718,55 @@ wrong pwd!
 <h2 id=0x06-修改-exe>0x06 修改 exe</h2>
 <h3 id=61-x32dbg-修改关键跳>6.1 x32dbg 修改关键跳</h3>
 <p>用调试器打开后找到决定serial是否正确的关键跳转，右键二进制选择用NOP填充，确认即可。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-26.png alt=image-20210915150907420></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-26.png>
+<img src=/blog/image/crackme-02/cm02-easy-26.png loading=lazy alt=image-20210915150907420>
+</a>
+<figcaption>image-20210915150907420</figcaption>
+</figure></p>
 <p>修改后效果如图。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-27.png alt=image-20210915150953046></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-27.png>
+<img src=/blog/image/crackme-02/cm02-easy-27.png loading=lazy alt=image-20210915150953046>
+</a>
+<figcaption>image-20210915150953046</figcaption>
+</figure></p>
 <p>接着把修改后的exe保存下来，在文件菜单里选择补丁。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-28.png alt=image-20210915151220354></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-28.png>
+<img src=/blog/image/crackme-02/cm02-easy-28.png loading=lazy alt=image-20210915151220354>
+</a>
+<figcaption>image-20210915151220354</figcaption>
+</figure></p>
 <p>全选，点修补文件，选择路径保存。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-29.png alt=image-20210915151322628></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-29.png>
+<img src=/blog/image/crackme-02/cm02-easy-29.png loading=lazy alt=image-20210915151322628>
+</a>
+<figcaption>image-20210915151322628</figcaption>
+</figure></p>
 <p>我保存在<code>cm02-easy-patched.exe</code>，接着我们试试运行。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-30.png alt=image-20210915151903611></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-30.png>
+<img src=/blog/image/crackme-02/cm02-easy-30.png loading=lazy alt=image-20210915151903611>
+</a>
+<figcaption>image-20210915151903611</figcaption>
+</figure></p>
 <p>遗憾的是被x32dbg补丁功能导出的文件需要管理员权限运行，为了能截到图，图中用了名为<code>sudo</code>的工具命令，可以用<code>scoop install sudo</code>来安装<code>sudo</code>，点击去<a class=link href=https://scoop.sh target=_blank rel=noopener>scoop首页</a>。</p>
 <h3 id=62-反编译器修改关键跳>6.2 反编译器修改关键跳</h3>
 <p>以Cutter为例，找到<code>jne</code>指令后，右键修改为<code>nop</code>即可。记得先备份。</p>
-<p><img src=/blog/image/crackme-02/cm02-easy-31.png alt=image-20210915152428449></p>
-<p><img src=/blog/image/crackme-02/cm02-easy-32.png alt=image-20210915152609774></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-31.png>
+<img src=/blog/image/crackme-02/cm02-easy-31.png loading=lazy alt=image-20210915152428449>
+</a>
+<figcaption>image-20210915152428449</figcaption>
+</figure></p>
+<p><figure>
+<a href=/blog/image/crackme-02/cm02-easy-32.png>
+<img src=/blog/image/crackme-02/cm02-easy-32.png loading=lazy alt=image-20210915152609774>
+</a>
+<figcaption>image-20210915152609774</figcaption>
+</figure></p>
 <p>修改后也能实现和x32导出一样的效果，而且不用管理员权限。</p>
 <h2 id=结论>结论</h2>
 <p>总得有个结论。</p>
@@ -708,7 +857,7 @@ wrong pwd!
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.1.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.5.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>
