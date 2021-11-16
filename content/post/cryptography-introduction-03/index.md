@@ -251,7 +251,7 @@ $$
 
 首先给定一个密码矩阵 *A*。
 $$
-\begin{bmatrix}
+A=\begin{bmatrix}
 	1 & 2 \\\\	3 & 4
 \end{bmatrix}
 $$
@@ -261,15 +261,15 @@ $$
 将明文转换成数字（ASCII），两个一组。比如 `Th` 就是 `84 104` ，写成矩阵形式就是这样。
 
 $$
-\begin{bmatrix}
+P=\begin{bmatrix}
 	84 \\\\    104
 \end{bmatrix}
 $$
 
-将明文矩阵 *P* 左乘密码矩阵 *A*，*C=AP*，我们就得到了密文。
+将密码矩阵 *A* 左乘明文矩阵 *P* ，*C=AP*，我们就得到了密文。
 
 $$
-\begin{bmatrix}
+C=AP=\begin{bmatrix}
 	1 & 2 \\\\	3 & 4
 \end{bmatrix}
 \begin{bmatrix}
@@ -287,7 +287,7 @@ $$
 2x2 矩阵的逆矩阵求解方法看前面 1.9，求得逆矩阵如下。
 
 $$
-\begin{bmatrix}
+A^{-1}=\begin{bmatrix}
 	-2 & 1 \\\\	1.5 & -0.5
 \end{bmatrix}
 $$
@@ -295,7 +295,7 @@ $$
 然后使用逆矩阵左乘密文：
 
 $$
-\begin{bmatrix}
+P=A^{-1}C=\begin{bmatrix}
 	-2 & 1 \\\\	1.5 & -0.5
 \end{bmatrix}
 \begin{bmatrix}
