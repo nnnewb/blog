@@ -1,0 +1,306 @@
+<!doctype html><html lang=zh-cn>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 因为工作需要，得在自己搭建的集群里部署一个 Elasticsearch 。又因为是云端的集群，在 k8s 外用 docker 单独起一个 ES 明显更难维护（但部署更简单），于是选择用 ECK 。
+ECK 就是 Elastic Cloud on Kubernetes 的缩写，可以理解成部署在 Kubernetes 上的 Elasticsearch 。当然不止 ES 。
+部署 ES 的过程遇到几个问题记录下怎么解决的。
+ ES 使用自签名证书，导致 HTTP 不能连接。 ECK 需要安装 IK 分词插件。 ECK 默认密码每次部署都重新生成，而且默认用户权限过大。 ECK 默认没配 PVC ，数据没有持久化。  接下来逐个解决。
+0x01 自签名证书 自签名证书解决方法有几个
+ 改客户端，让客户端用自签名证书连接。很麻烦。 生成一个固定的证书，让ES和客户端都用这个证书，客户端和ES都要改。很麻烦。 禁用 ES 的自签名证书。  考虑到是私有的测试环境，不搞这些烦人的东西，直接禁用。
+修改 YAML 如下。
+apiVersion:elasticsearch.k8s.elastic.co/v1kind:Elasticsearchmetadata:name:elasticsearchspec:http:tls:selfSignedCertificate:disabled:true注意 spec.http.tls.selfSignedCertificate.disabled 这个字段。
+参考文档：Orchestrating Elastic Stack applications - Access Elastic Stack services - TLS certificates"><title>简单的ECK部署</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/>
+<link rel=stylesheet href=/blog/scss/style.min.css><meta property="og:title" content="简单的ECK部署">
+<meta property="og:description" content="前言 因为工作需要，得在自己搭建的集群里部署一个 Elasticsearch 。又因为是云端的集群，在 k8s 外用 docker 单独起一个 ES 明显更难维护（但部署更简单），于是选择用 ECK 。
+ECK 就是 Elastic Cloud on Kubernetes 的缩写，可以理解成部署在 Kubernetes 上的 Elasticsearch 。当然不止 ES 。
+部署 ES 的过程遇到几个问题记录下怎么解决的。
+ ES 使用自签名证书，导致 HTTP 不能连接。 ECK 需要安装 IK 分词插件。 ECK 默认密码每次部署都重新生成，而且默认用户权限过大。 ECK 默认没配 PVC ，数据没有持久化。  接下来逐个解决。
+0x01 自签名证书 自签名证书解决方法有几个
+ 改客户端，让客户端用自签名证书连接。很麻烦。 生成一个固定的证书，让ES和客户端都用这个证书，客户端和ES都要改。很麻烦。 禁用 ES 的自签名证书。  考虑到是私有的测试环境，不搞这些烦人的东西，直接禁用。
+修改 YAML 如下。
+apiVersion:elasticsearch.k8s.elastic.co/v1kind:Elasticsearchmetadata:name:elasticsearchspec:http:tls:selfSignedCertificate:disabled:true注意 spec.http.tls.selfSignedCertificate.disabled 这个字段。
+参考文档：Orchestrating Elastic Stack applications - Access Elastic Stack services - TLS certificates">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="linux运维"><meta property="article:tag" content="kubernetes"><meta property="article:tag" content="elasticsearch"><meta property="article:published_time" content="2021-11-30T11:13:00+08:00"><meta property="article:modified_time" content="2021-11-30T11:13:00+08:00">
+<meta name=twitter:title content="简单的ECK部署">
+<meta name=twitter:description content="前言 因为工作需要，得在自己搭建的集群里部署一个 Elasticsearch 。又因为是云端的集群，在 k8s 外用 docker 单独起一个 ES 明显更难维护（但部署更简单），于是选择用 ECK 。
+ECK 就是 Elastic Cloud on Kubernetes 的缩写，可以理解成部署在 Kubernetes 上的 Elasticsearch 。当然不止 ES 。
+部署 ES 的过程遇到几个问题记录下怎么解决的。
+ ES 使用自签名证书，导致 HTTP 不能连接。 ECK 需要安装 IK 分词插件。 ECK 默认密码每次部署都重新生成，而且默认用户权限过大。 ECK 默认没配 PVC ，数据没有持久化。  接下来逐个解决。
+0x01 自签名证书 自签名证书解决方法有几个
+ 改客户端，让客户端用自签名证书连接。很麻烦。 生成一个固定的证书，让ES和客户端都用这个证书，客户端和ES都要改。很麻烦。 禁用 ES 的自签名证书。  考虑到是私有的测试环境，不搞这些烦人的东西，直接禁用。
+修改 YAML 如下。
+apiVersion:elasticsearch.k8s.elastic.co/v1kind:Elasticsearchmetadata:name:elasticsearchspec:http:tls:selfSignedCertificate:disabled:true注意 spec.http.tls.selfSignedCertificate.disabled 这个字段。
+参考文档：Orchestrating Elastic Stack applications - Access Elastic Stack services - TLS certificates">
+</head>
+<body class="article-page has-toc">
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex
+extended">
+<div id=article-toolbar>
+<a href=/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
+<span>返回</span>
+</a>
+</div>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/kubernetes/>
+kubernetes
+</a>
+</header>
+<h2 class=article-title>
+<a href=/blog/p/simple-eck-cluster-deployment/>简单的ECK部署</a>
+</h2>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2021年 11月 30日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 2 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>因为工作需要，得在自己搭建的集群里部署一个 Elasticsearch 。又因为是云端的集群，在 k8s 外用 docker 单独起一个 ES 明显更难维护（但部署更简单），于是选择用 ECK 。</p>
+<p>ECK 就是 Elastic Cloud on Kubernetes 的缩写，可以理解成部署在 Kubernetes 上的 Elasticsearch 。当然不止 ES 。</p>
+<p>部署 ES 的过程遇到几个问题记录下怎么解决的。</p>
+<ol>
+<li>ES 使用自签名证书，导致 HTTP 不能连接。</li>
+<li>ECK 需要安装 IK 分词插件。</li>
+<li>ECK 默认密码每次部署都重新生成，而且默认用户权限过大。</li>
+<li>ECK 默认没配 PVC ，数据没有持久化。</li>
+</ol>
+<p>接下来逐个解决。</p>
+<h2 id=0x01-自签名证书>0x01 自签名证书</h2>
+<p>自签名证书解决方法有几个</p>
+<ol>
+<li>改客户端，让客户端用自签名证书连接。很麻烦。</li>
+<li>生成一个固定的证书，让ES和客户端都用这个证书，客户端和ES都要改。很麻烦。</li>
+<li>禁用 ES 的自签名证书。</li>
+</ol>
+<p>考虑到是私有的测试环境，不搞这些烦人的东西，直接禁用。</p>
+<p>修改 YAML 如下。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>apiVersion</span><span class=p>:</span><span class=w> </span><span class=l>elasticsearch.k8s.elastic.co/v1</span><span class=w>
+</span><span class=w></span><span class=nt>kind</span><span class=p>:</span><span class=w> </span><span class=l>Elasticsearch</span><span class=w>
+</span><span class=w></span><span class=nt>metadata</span><span class=p>:</span><span class=w>
+</span><span class=w>  </span><span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>elasticsearch</span><span class=w>
+</span><span class=w></span><span class=nt>spec</span><span class=p>:</span><span class=w>
+</span><span class=w>  </span><span class=nt>http</span><span class=p>:</span><span class=w>
+</span><span class=w>    </span><span class=nt>tls</span><span class=p>:</span><span class=w>
+</span><span class=w>      </span><span class=nt>selfSignedCertificate</span><span class=p>:</span><span class=w>
+</span><span class=w>        </span><span class=nt>disabled</span><span class=p>:</span><span class=w> </span><span class=kc>true</span><span class=w>
+</span></code></pre></div><p>注意 <code>spec.http.tls.selfSignedCertificate.disabled</code> 这个字段。</p>
+<p>参考文档：<a class=link href=https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-tls-certificates.html target=_blank rel=noopener>Orchestrating Elastic Stack applications - Access Elastic Stack services - TLS certificates</a></p>
+<h2 id=0x02-安装-ik-分词组件>0x02 安装 IK 分词组件</h2>
+<p>官方文档提供的安装插件思路是利用 initContainer 。参考文档：<a class=link href=https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-init-containers-plugin-downloads.html target=_blank rel=noopener>init containers for plugin downloads</a> 。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>spec</span><span class=p>:</span><span class=w>
+</span><span class=w>  </span><span class=nt>nodeSets</span><span class=p>:</span><span class=w>
+</span><span class=w>  </span>- <span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>default</span><span class=w>
+</span><span class=w>    </span><span class=nt>count</span><span class=p>:</span><span class=w> </span><span class=m>3</span><span class=w>
+</span><span class=w>    </span><span class=nt>podTemplate</span><span class=p>:</span><span class=w>
+</span><span class=w>      </span><span class=nt>spec</span><span class=p>:</span><span class=w>
+</span><span class=w>        </span><span class=nt>initContainers</span><span class=p>:</span><span class=w>
+</span><span class=w>        </span>- <span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>install-plugins</span><span class=w>
+</span><span class=w>          </span><span class=nt>command</span><span class=p>:</span><span class=w>
+</span><span class=w>          </span>- <span class=l>sh</span><span class=w>
+</span><span class=w>          </span>- -<span class=l>c</span><span class=w>
+</span><span class=w>          </span>- <span class=p>|</span><span class=sd>
+</span><span class=sd>            </span><span class=w>            </span><span class=l>bin/elasticsearch-plugin install --batch repository-gcs</span><span class=w>
+</span></code></pre></div><p>initContainer 容器默认会继承自下面的内容：</p>
+<ul>
+<li>没有另外指定的情况下，继承主容器的镜像(我的例子中，就是 <code>Elasticsearch:7.9.1</code>)</li>
+<li>主容器的 volume 挂载，如果 initContainer 有同名同路径的 volume 则优先用 initContainer 的。</li>
+<li>POD 名称和 IP 。</li>
+</ul>
+<h2 id=0x03-添加自定义用户>0x03 添加自定义用户</h2>
+<p>有好几种方式：</p>
+<ol>
+<li>官方文档中的方法：<a class=link href=https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-users-and-roles.html target=_blank rel=noopener>k8s users and roles</a>，比较稳定，但还是挺麻烦的。</li>
+<li>修改 <code>[es-cluster-name]-es-elastic-user</code> 这个 <code>secret</code>，好处是简单，但要求必须先创建 secret 再创建 ES ，单个 YAML 去 <code>create -f</code> 的情况下不友好。</li>
+<li>基于第2节中利用 initContainer 的做法和官方文档里提到的 <code>elasticsearch-users</code> 命令行工具，直接在 initContainer 里创建指定用户名密码的用户。不确定这个做法会不会在多节点 ECK 里出问题，毕竟这等于是每个节点都创建了一次用户。不过我只需要单节点，所以也还过得去。</li>
+</ol>
+<p>最终决定用第 3 种方法，因为做一个单节点集群简单不费事，多节点的话，目前开的服务器配置也吃不消。（其实是搞完才仔细读文档，第 1 种方法其实也不算太麻烦&mldr;）</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>spec</span><span class=p>:</span><span class=w>
+</span><span class=w>  </span><span class=nt>nodeSets</span><span class=p>:</span><span class=w>
+</span><span class=w>  </span>- <span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>default</span><span class=w>
+</span><span class=w>    </span><span class=nt>count</span><span class=p>:</span><span class=w> </span><span class=m>3</span><span class=w>
+</span><span class=w>    </span><span class=nt>podTemplate</span><span class=p>:</span><span class=w>
+</span><span class=w>        </span><span class=nt>spec</span><span class=p>:</span><span class=w>
+</span><span class=w>          </span><span class=nt>initContainers</span><span class=p>:</span><span class=w>
+</span><span class=w>          </span>- <span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>donviewclass-initialize</span><span class=w>
+</span><span class=w>            </span><span class=nt>command</span><span class=p>:</span><span class=w>
+</span><span class=w>            </span>- <span class=l>sh</span><span class=w>
+</span><span class=w>            </span>- -<span class=l>c</span><span class=w>
+</span><span class=w>            </span>- <span class=p>|</span><span class=sd>
+</span><span class=sd>              ./bin/elasticsearch-plugin install -batch https://ghproxy.com/https://github.com/medcl/elasticsearch-analysis-ik/releases/download/v7.9.1/elasticsearch-analysis-ik-7.9.1.zip
+</span><span class=sd>              ./bin/elasticsearch-users useradd tsdonviewclass -p tsdonviewclass -r superuser</span><span class=w>              
+</span></code></pre></div><p><code>./bin/elasticsearch-users useradd tsdonviewclass -p tsdonviewclass -r superuser</code> 主要就是增加这一句。同样是因为懒，权限直接给了 superuser 。</p>
+<p>参考文档：<a class=link href=https://www.elastic.co/guide/en/elasticsearch/reference/current/users-command.html target=_blank rel=noopener>elasticsearch-users</a> 。</p>
+<h2 id=0x04-配置pvc>0x04 配置PVC</h2>
+<p>依然是参考官方文档来：<a class=link href=https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-volume-claim-templates.html target=_blank rel=noopener>k8s-volume-claim-templates</a>。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>spec</span><span class=p>:</span><span class=w>
+</span><span class=w>  </span><span class=nt>nodeSets</span><span class=p>:</span><span class=w>
+</span><span class=w>    </span>- <span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>default</span><span class=w>
+</span><span class=w>      </span><span class=nt>count</span><span class=p>:</span><span class=w> </span><span class=m>1</span><span class=w>
+</span><span class=w>      </span><span class=nt>config</span><span class=p>:</span><span class=w>
+</span><span class=w>        </span><span class=nt>node.store.allow_mmap</span><span class=p>:</span><span class=w> </span><span class=kc>false</span><span class=w>
+</span><span class=w>      </span><span class=nt>volumeClaimTemplates</span><span class=p>:</span><span class=w>
+</span><span class=w>        </span>- <span class=nt>metadata</span><span class=p>:</span><span class=w>
+</span><span class=w>            </span><span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>elasticsearch-data</span><span class=w> </span><span class=c># Do not change this name unless you set up a volume mount for the data path.</span><span class=w>
+</span><span class=w>          </span><span class=nt>spec</span><span class=p>:</span><span class=w>
+</span><span class=w>            </span><span class=nt>accessModes</span><span class=p>:</span><span class=w>
+</span><span class=w>              </span>- <span class=l>ReadWriteOnce</span><span class=w>
+</span><span class=w>            </span><span class=nt>resources</span><span class=p>:</span><span class=w>
+</span><span class=w>              </span><span class=nt>requests</span><span class=p>:</span><span class=w>
+</span><span class=w>                </span><span class=nt>storage</span><span class=p>:</span><span class=w> </span><span class=l>5Gi</span><span class=w>
+</span><span class=w>            </span><span class=nt>storageClassName</span><span class=p>:</span><span class=w> </span><span class=l>local-path</span><span class=w>
+</span></code></pre></div><p>注意 <code>volumeClaimTemplates</code> 下 <code>metadata.name</code> 不要变，除非你自己在 <code>podTemplate</code> 里覆写挂载字段。</p>
+<p>其他的 <code>spec</code> 下内容和通常的 PVC 一样，可以参考 <a class=link href=https://kubernetes.io/zh/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims target=_blank rel=noopener>Kubernetes - PersistentVolumeClaims</a> 。</p>
+<p>值得注意的是 ECK 默认在集群节点数量 scaled down 时删除 PVC ，对应的 PV 可能保留，具体看<a class=link href=https://kubernetes.io/docs/concepts/storage/storage-classes/#reclaim-policy target=_blank rel=noopener>存储类的回收策略</a>。ECK 的 CRD 里也给了相关的配置项。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>apiVersion</span><span class=p>:</span><span class=w> </span><span class=l>elasticsearch.k8s.elastic.co/v1</span><span class=w>
+</span><span class=w></span><span class=nt>kind</span><span class=p>:</span><span class=w> </span><span class=l>Elasticsearch</span><span class=w>
+</span><span class=w></span><span class=nt>metadata</span><span class=p>:</span><span class=w>
+</span><span class=w>  </span><span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>es</span><span class=w>
+</span><span class=w></span><span class=nt>spec</span><span class=p>:</span><span class=w>
+</span><span class=w>  </span><span class=nt>version</span><span class=p>:</span><span class=w> </span><span class=m>7.15.2</span><span class=w>
+</span><span class=w>  </span><span class=nt>volumeClaimDeletePolicy</span><span class=p>:</span><span class=w> </span><span class=l>DeleteOnScaledownOnly</span><span class=w>
+</span><span class=w>  </span><span class=nt>nodeSets</span><span class=p>:</span><span class=w>
+</span><span class=w>  </span>- <span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>default</span><span class=w>
+</span><span class=w>    </span><span class=nt>count</span><span class=p>:</span><span class=w> </span><span class=m>3</span><span class=w>
+</span></code></pre></div><p>注意 <code>volumeClaimDeletePolicy: DeleteOnScaledownOnly</code> 。可选的策略包括：</p>
+<ul>
+<li><code>DeleteOnScaledownAndClusterDeletion</code></li>
+<li><code>DeleteOnScaledownOnly</code></li>
+</ul>
+<p>默认策略是 <code>DeleteOnScaledownAndClusterDeletion</code> ，集群删除和 scaled down 时删除 PVC。</p>
+<p>如果是一次性的部署，可以直接用 <code>emptyDir</code> 作为存储类，不用管数据丢不丢。</p>
+<h2 id=总结>总结</h2>
+<p>这几步配置下来，一个开发用的 ES 集群就算是配完了，资源给够就能开始玩了。</p>
+<p>讲道理我不太会运维 ES 啊，ES 这东西实在有点重量级，现阶段的能力也就只能看文档这里那里配一下，在上面开发什么的。真要遇到大问题还得抓瞎。</p>
+<p>就先这样吧。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/linux%E8%BF%90%E7%BB%B4/>linux运维</a>
+<a href=/blog/tags/kubernetes/>kubernetes</a>
+<a href=/blog/tags/elasticsearch/>elasticsearch</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/kubernetes-manually-install-by-kubeadm/>
+<div class=article-details>
+<h2 class=article-title>kubeadm安装实验集群记录</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/k3s-renew-client-ca-file-the-lazy-way/>
+<div class=article-details>
+<h2 class=article-title>k3s更新客户端证书的偷懒方法</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/csr-%E6%96%B9%E5%BC%8F%E5%88%9B%E5%BB%BA-kubernetes-%E7%94%A8%E6%88%B7%E5%87%BA%E4%BA%86%E7%82%B9%E5%B7%AE%E9%94%99/>
+<div class=article-details>
+<h2 class=article-title>csr 方式创建 kubernetes 用户出了点差错</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
+<div id=vssue></div>
+<script src=https://unpkg.com/vue/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"简单的ECK部署",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.5.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#0x01-自签名证书>0x01 自签名证书</a></li>
+<li><a href=#0x02-安装-ik-分词组件>0x02 安装 IK 分词组件</a></li>
+<li><a href=#0x03-添加自定义用户>0x03 添加自定义用户</a></li>
+<li><a href=#0x04-配置pvc>0x04 配置PVC</a></li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
