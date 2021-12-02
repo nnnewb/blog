@@ -1,5 +1,6 @@
 ---
 title: MySQL XA 事务和分布式事务处理模型：2阶段提交
+slug: mysql-xa-distributed-transaction-processing-model-2pc
 date: 2021-07-09 09:29:22
 tags:
 - mysql
