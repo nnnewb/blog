@@ -1,4 +1,284 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 09 Dec 2021 17:11:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>一个s表达式求值器</title><link>https://nnnewb.github.io/blog/p/a-s-exp-evaluator/</link><pubDate>Thu, 09 Dec 2021 17:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/a-s-exp-evaluator/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 13 Dec 2021 16:20:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>基于栈的虚拟机</title><link>https://nnnewb.github.io/blog/p/stack-based-virtual-machine-for-minilang/</link><pubDate>Mon, 13 Dec 2021 16:20:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/stack-based-virtual-machine-for-minilang/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>之前写了个s表达式求值器，很简陋，直接在抽象语法树上执行。只是这样的话其实还没啥意思，所以再试试改进成在基于栈的虚拟机上执行。&lt;/p>
+&lt;h2 id="0x01-虚拟机模型">0x01 虚拟机模型&lt;/h2>
+&lt;p>首先得承认对这些语言层级的虚拟机不熟，基本是随便设计的。&lt;/p>
+&lt;h3 id="对象模型">对象模型&lt;/h3>
+&lt;p>虚拟机指令操作的目标是 &lt;strong>对象&lt;/strong> ，包括内建的对象和用户定义的对象，虚拟机指令操作的基本单位也是对象。&lt;/p>
+&lt;p>目前关注的是内建的对象，简单抽象出了几个基本类型。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">Object&lt;/span> &lt;span class="kd">interface&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nf">TypeName&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">string&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">UInt&lt;/span> &lt;span class="kt">uint64&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">u&lt;/span> &lt;span class="nx">UInt&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">TypeName&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="s">&amp;#34;UInt&amp;#34;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">Float&lt;/span> &lt;span class="kt">float64&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">f&lt;/span> &lt;span class="nx">Float&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">TypeName&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="s">&amp;#34;Float&amp;#34;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">Boolean&lt;/span> &lt;span class="kt">bool&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">b&lt;/span> &lt;span class="nx">Boolean&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">TypeName&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="s">&amp;#34;boolean&amp;#34;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">String&lt;/span> &lt;span class="kt">string&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span> &lt;span class="nx">String&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">TypeName&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="s">&amp;#34;string&amp;#34;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">Symbol&lt;/span> &lt;span class="kt">string&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span> &lt;span class="nx">Symbol&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">TypeName&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="s">&amp;#34;symbol&amp;#34;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">Nil&lt;/span> &lt;span class="kd">struct&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">n&lt;/span> &lt;span class="nx">Nil&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">TypeName&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="s">&amp;#34;nil&amp;#34;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>省略了一部分，领会精神即可。上面定义的 &lt;code>Symbol&lt;/code> 类型其实就是 &lt;code>#ident&lt;/code> 这种语法元素，目的是保持语义上的简洁。&lt;/p>
+&lt;p>比如说 &lt;code>(let a b)&lt;/code>，在 minilang 里解释成以&lt;code>a&lt;/code>和&lt;code>b&lt;/code>作为参数，调用&lt;code>let&lt;/code>函数，&lt;code>a&lt;/code>和&lt;code>b&lt;/code>都会被求值。&lt;code>let&lt;/code>是一个内置函数，在当前环境里定义一个新的变量并设初值。&lt;/p>
+&lt;p>可实际写代码的人想要的可能是 &lt;em>定义a，初始化为b&lt;/em>。这种情况下我们不希望&lt;code>a&lt;/code>被求值，而是字面意思：标识符&lt;code>a&lt;/code>，传给&lt;code>let&lt;/code>函数。这种情况下就可以用 &lt;code>(let #a b)&lt;/code> ，&lt;code>#a&lt;/code> 表示一个 &lt;code>Symbol&lt;/code> 类型的字面量。&lt;/p>
+&lt;p>或许有人会注意到本质上来说&lt;code>#a&lt;/code>是个语法糖，也可以被写成 &lt;code>(quote &amp;quot;a&amp;quot;)&lt;/code> 这样的形式。&lt;code>quota&lt;/code> 定义为将字符串构造成 &lt;code>Symbol&lt;/code> 对象的函数。&lt;/p>
+&lt;h3 id="指令集">指令集&lt;/h3>
+&lt;p>有了基本的对象模型，再定义最基本的指令。因为考虑将代码也视作数据，所以目前的想法还是把控制结构也做成内置函数，因此指令集里不需要太多转移指令。&lt;/p>
+&lt;p>暂定的指令集如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">OpCode&lt;/span> &lt;span class="kt">int32&lt;/span>
+&lt;span class="kd">const&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="nx">RESERVED&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="kc">iota&lt;/span>
+&lt;span class="c1">// CALL &amp;lt;STR&amp;gt;
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 压栈下一条指令的地址，跳转到指定位置
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">CALL&lt;/span>
+&lt;span class="c1">// RET &amp;lt;OBJ&amp;gt;
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 取栈顶的对象作为跳转地址，压栈返回值
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">RET&lt;/span>
+&lt;span class="c1">// LOAD &amp;lt;STR&amp;gt;
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 读取局部环境里的变量压栈
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">LOAD&lt;/span>
+&lt;span class="c1">// PUSH &amp;lt;NUM&amp;gt;
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 压栈对象
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">PUSH&lt;/span>
+&lt;span class="c1">// POP &amp;lt;NUM&amp;gt;
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 出栈一定数量的对象，出栈的对象直接丢弃
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">POP&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">o&lt;/span> &lt;span class="nx">OpCode&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">String&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;span class="s">&amp;#34;RESERVED&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s">&amp;#34;CALL&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s">&amp;#34;RET&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s">&amp;#34;LOAD&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s">&amp;#34;PUSH&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s">&amp;#34;POP&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="p">}[&lt;/span>&lt;span class="nx">o&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>除了最初的 &lt;code>RESERVED&lt;/code> 是故意占用了零值，剩下的就是有效的指令了。&lt;/p>
+&lt;p>写过 x86 汇编的话会看的很不习惯，因为完全没考虑寻址。&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>CALL&lt;/code> 指令的操作数对象是字符串的时候，在本地环境寻找对应名称的内建函数；
+&lt;ul>
+&lt;li>或者，操作数是 UINT 的话，压栈下一条指令地址后跳转到指定位置，和 x86 汇编类似；&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>&lt;code>RET&lt;/code> 把当前栈顶的变量(UINT)当成下一个指令的地址&lt;/li>
+&lt;li>&lt;code>LOAD&lt;/code> 在本地环境寻找对应名称的变量压栈&lt;/li>
+&lt;/ul>
+&lt;p>剩余略。其实可以看出直接对机器编程中的寻址被替换成了根据变量名（字符串）查找本地环境，很多高层级的概念（对象、字符串）被糅杂在里面。&lt;/p>
+&lt;h2 id="0x02-编译">0x02 编译&lt;/h2>
+&lt;p>接下来是把抽象语法树翻译成指令序列。&lt;/p>
+&lt;h3 id="字面量翻译">字面量翻译&lt;/h3>
+&lt;p>因为 minilang 的指令直接操作对象，所以能很省事地把字面量都构造成相应地对象。对于更复杂的对象，也可以编译成构造指令，当然目前不涉及。&lt;/p>
+&lt;p>举个例子，列表字面量 &lt;code>#(display hello)&lt;/code>。可以在编译过程里直接构造出 &lt;code>List&lt;/code> 对象，然后生成一个 &lt;code>PUSH List{}&lt;/code> 指令，这样做的好处是更简单，效率会更好一点，毕竟少几个解释执行的指令。相应的限制是不能引用环境里的变量，因为在构造字面量对象的过程里还没有进入运行时环境。&lt;/p>
+&lt;p>比如说 &lt;code>#(display name)&lt;/code>，如果编译成 &lt;code>PUSH List{display, name}&lt;/code>，那么&lt;code>name&lt;/code>在此刻就不能被求值，必须延迟到执行的时候才能求值&lt;code>name&lt;/code>。这里又涉及编译期的计算，比如我可以定义一个编译阶段执行的指令格式 &lt;code>[elem...]&lt;/code>，编译的时候对 &lt;code>[elem...]&lt;/code>求值，求值结果写进编译出的指令里。也是后话。&lt;/p>
+&lt;p>编译成指令的好处是之后要做 JIT 或者全量编译成本地代码的话，不需要重新处理这个字面量，写一堆 case 把字面量编译成几个函数调用。&lt;/p>
+&lt;p>扯远了，先前我们拿 &lt;code>gocc&lt;/code> 生成好了语法树，接下来就是简单地做一下翻译。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="k">case&lt;/span> &lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Boolean&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">UInt&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Float&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Symbol&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Quoted&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">String&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nx">instructions&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">instructions&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nf">push&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">vm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ObjectFromLiteral&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">node&lt;/span>&lt;span class="p">)))&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>其中 &lt;code>vm.ObjectFromLiteral(node)&lt;/code> 就是负责把从抽象语法树节点构造出对象实例的函数。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">ObjectFromLiteral&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">node&lt;/span> &lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Node&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nx">Object&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">switch&lt;/span> &lt;span class="nx">node&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">node&lt;/span>&lt;span class="p">.(&lt;/span>&lt;span class="kd">type&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Float&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nf">Float&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">node&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">UInt&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nf">UInt&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">node&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">String&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nf">String&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">node&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Boolean&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nf">Boolean&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">node&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Quoted&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nx">lst&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">List&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">n&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">node&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">GetValue&lt;/span>&lt;span class="p">().([]&lt;/span>&lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Node&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">lst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">underlying&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">lst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">underlying&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nf">ObjectFromLiteral&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">n&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">lst&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Symbol&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nf">Symbol&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">node&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;unexpected ast node in ToValue %v(%T)&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">node&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">node&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>Quoted&lt;/code> 表示列表字面量。这个函数本身很简单很直白，限制是对于非字面量的节点不能求值（比如 Identifier、函数调用都只能在运行时求值）。&lt;/p>
+&lt;h3 id="函数调用翻译">函数调用翻译&lt;/h3>
+&lt;p>接着就是重头戏，函数调用的翻译。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="k">case&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">List&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nx">elements&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">node&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">GetValue&lt;/span>&lt;span class="p">().([]&lt;/span>&lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Node&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">elements&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nb">make&lt;/span>&lt;span class="p">([]&lt;/span>&lt;span class="nx">vm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Instruction&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 参数从右到左压栈
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="nx">i&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">elements&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="nx">i&lt;/span> &lt;span class="p">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="nx">i&lt;/span>&lt;span class="o">--&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Compile&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">elements&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nx">i&lt;/span>&lt;span class="p">]);&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">instructions&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">instructions&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="o">...&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 压入参数数量
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">instructions&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">instructions&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nf">push&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">vm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">UInt&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">elements&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)))&lt;/span>
+&lt;span class="c1">// 插入调用语句
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">callee&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">elements&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">ident&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">callee&lt;/span>&lt;span class="p">.(&lt;/span>&lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Identifier&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">instructions&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">instructions&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">vm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Instruction&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;span class="nx">OpCode&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">vm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CALL&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="nx">Operand&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="nx">vm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Object&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="nx">vm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Symbol&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ident&lt;/span>&lt;span class="p">)},&lt;/span>
+&lt;span class="p">})&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>谈函数调用的编译前必须先确定好调用约定。这里采用了和 cdecl 类似的调用约定，参数从右往左压栈，同时在最左添加一个参数数量的参数，就像是 &lt;code>object f(object argc, object ...argv)&lt;/code> 一样，领会精神。&lt;/p>
+&lt;p>函数的返回值一律包装成 object 返回，不允许多返回值（但可以考虑加个解构语法之类的糖），返回值也通过栈传递。&lt;/p>
+&lt;p>整个函数调用的过程可以描述为：&lt;/p>
+&lt;ol>
+&lt;li>调用方参数压栈&lt;/li>
+&lt;li>调用方参数数量压栈&lt;/li>
+&lt;li>调用方返回地址压栈&lt;/li>
+&lt;li>调用方跳转到函数入口（或者进入内置函数）&lt;/li>
+&lt;li>被调方弹出返回地址&lt;/li>
+&lt;li>被调方弹出所有参数&lt;/li>
+&lt;li>被调方压栈返回值&lt;/li>
+&lt;li>被调方跳转至返回地址&lt;/li>
+&lt;/ol>
+&lt;p>一句话概括就是被调方清栈，返回值放在栈顶。对于内置函数，步骤5-8都要在内置函数里完成。之后做用户定义 &lt;code>procedure&lt;/code> 的话就要在 &lt;code>procedure&lt;/code> 编译结果里加上平栈的代码了。现在还在纠结 &lt;code>POP&lt;/code> 指令直接把弹出的对象给丢弃了，该怎么暂存返回地址。实在不行就改成调用方清栈得了。&lt;/p>
+&lt;h2 id="0x03-虚拟机抽象">0x03 虚拟机抽象&lt;/h2>
+&lt;p>虚拟机理解为一个状态容器，包括指令空间（指令集合和指令指针）、数据空间（栈、本地变量），给一个简单的构造器。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">MiniVM&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">Stack&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="nx">Object&lt;/span> &lt;span class="c1">// 栈空间，包括传参和本地变量都存放在这里
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">Top&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="c1">// 栈顶地址
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">Locals&lt;/span> &lt;span class="kd">map&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="nx">Object&lt;/span> &lt;span class="c1">// 本地变量，从这里查找变量和可调用的对象
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">IP&lt;/span> &lt;span class="nx">UInt&lt;/span> &lt;span class="c1">// Instruction Pointer 指令指针
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">Instructions&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="nx">Instruction&lt;/span> &lt;span class="c1">// 程序指令集合
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">NewMiniVM&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">instructions&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="nx">Instruction&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">MiniVM&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">MiniVM&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;span class="nx">Stack&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">make&lt;/span>&lt;span class="p">([]&lt;/span>&lt;span class="nx">Object&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="nx">Top&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="nx">IP&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="nx">Instructions&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">instructions&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="nx">Locals&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">make&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kd">map&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="nx">Object&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后定义每个指令的执行逻辑。这里其实有点像是设计模式里的命令模式（Commnad Pattern）。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">MiniVM&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">instCall&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span> &lt;span class="nx">Instruction&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Errorf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;invalid CALL instruction: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">sym&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">].(&lt;/span>&lt;span class="nx">Symbol&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">proc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">LookupProc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">string&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">sym&lt;/span>&lt;span class="p">));&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">proc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">isBuiltin&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Push&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nf">UInt&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">IP&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">proc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Builtin&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="nx">proc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Location&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Push&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nf">UInt&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">IP&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">IP&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nf">UInt&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">proc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Location&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;invalid Procedure object&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;invalid CALL instruction operand %v&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">MiniVM&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">instRet&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span> &lt;span class="nx">Instruction&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Errorf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;invalid RET instruction: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">returnAddress&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Pop&lt;/span>&lt;span class="p">().(&lt;/span>&lt;span class="nx">UInt&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">IP&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">returnAddress&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Push&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">MiniVM&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">instPush&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span> &lt;span class="nx">Instruction&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">||&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">&amp;gt;&lt;/span> &lt;span class="mi">1&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Errorf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;invalid PUSH instruction: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Push&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">MiniVM&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">instPop&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span> &lt;span class="nx">Instruction&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">||&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">&amp;gt;&lt;/span> &lt;span class="mi">1&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Errorf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;invalid POP instruction: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Pop&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">MiniVM&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">instLoad&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span> &lt;span class="nx">Instruction&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">||&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">&amp;gt;&lt;/span> &lt;span class="mi">1&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Errorf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;invalid LOAD instruction: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">].(&lt;/span>&lt;span class="nx">Symbol&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">v&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Locals&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">string&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">name&lt;/span>&lt;span class="p">)];&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Push&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">v&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Errorf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;undefined name %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">name&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Errorf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;unexpected operand for instruction LOAD %v(%T)&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Operand&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">MiniVM&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">ExecNextInstruction&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">IP&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;gt;=&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Instructions&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">ErrNoMoreInstructions&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">inst&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Instructions&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">IP&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="k">switch&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">OpCode&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nx">CALL&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">instCall&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nx">RET&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">instRet&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nx">PUSH&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">instPush&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nx">POP&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">instPop&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nx">LOAD&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">instLoad&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">inst&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Errorf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;unexpected opcode %v&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">inst&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">OpCode&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">IP&lt;/span>&lt;span class="o">++&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="0x04-结果展示">0x04 结果展示&lt;/h2>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 275;
+flex-basis: 660px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/stack-based-virtual-machine-for-minilang/image-20211213160751960.png" data-size="154x56">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/stack-based-virtual-machine-for-minilang/image-20211213160751960.png"
+width="154"
+height="56"
+srcset="https://nnnewb.github.io/blog/blog/p/stack-based-virtual-machine-for-minilang/image-20211213160751960_hub5ba10952ea39a099fde4f51e1c00d4b_2964_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/stack-based-virtual-machine-for-minilang/image-20211213160751960_hub5ba10952ea39a099fde4f51e1c00d4b_2964_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20211213160751960">
+&lt;/a>
+&lt;figcaption>image-20211213160751960&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>PS：这个 &lt;code>+&lt;/code> 也是函数。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>这个简单的 VM 写的时候脑子里想的都是 x86 汇编和 Python 的类型，所以内置类型定义就很粗暴，指令 OpCode 定义也是想当然。写成这样当然还是不满意的，都费了这么大劲了，简简单单做个 JIT 不过分吧？&lt;/p>
+&lt;p>但讲老实的，我还真不知道不用 CGO 的情况下，我就算是拿 &lt;code>syscall&lt;/code> 这个包分配好了读写执行的空间也成功汇编出了机器码，也不知道怎么去调 Go 里定义的函数和数据结构。这一点看，要是一开始拿 C 写的话，问题就会好解决很多：够底层嘛，不用担心移植性和运行时的封装。&lt;/p>
+&lt;p>不过也不是真的一点办法也没有，干脆把内建类型和函数全部拿 C 或者 minilang 自己实现就好了，定义好数据结构，minilang 编译出来的指令全是调用自己或者调用C函数，再想翻译到汇编指令就简单很多了。到了这一步，直接拿 minilang 写一个编译自己的编译器也不是不行。&lt;/p></description></item><item><title>一个s表达式求值器</title><link>https://nnnewb.github.io/blog/p/a-s-exp-evaluator/</link><pubDate>Thu, 09 Dec 2021 17:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/a-s-exp-evaluator/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>翻没看过的藏书的时候找出一本《SICP》的 PDF（PS：已经买了正版书），想起曾经拿 Rust 写玩具解释器，结果现在连 Rust 本身都已经快忘光了。&lt;/p>
 &lt;p>所以就当怀旧，写个很简单的玩具，s表达式求值器。&lt;/p>
 &lt;h2 id="技术栈">技术栈&lt;/h2>
