@@ -1,4 +1,19 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>kubernetes on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/kubernetes/</link><description>Recent content in kubernetes on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 30 Nov 2021 11:13:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/kubernetes/index.xml" rel="self" type="application/rss+xml"/><item><title>简单的ECK部署</title><link>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</link><pubDate>Tue, 30 Nov 2021 11:13:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</guid><description>前言 因为工作需要，得在自己搭建的集群里部署一个 Elasticsearch 。又因为是云端的集群，在 k8s 外用 docker 单独起一个 ES 明显更难维护（但部署更简单），于是选择用 ECK 。
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>kubernetes on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/kubernetes/</link><description>Recent content in kubernetes on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 27 Dec 2021 15:21:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/kubernetes/index.xml" rel="self" type="application/rss+xml"/><item><title>排查一个kubectl无反应的问题</title><link>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</link><pubDate>Mon, 27 Dec 2021 15:21:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</guid><description>懒得分段了，就当做是讲个故事吧。
+背景大概是这样。
+内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。
+今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。
+所以，当当当~当~，整一个持续部署呗，反正是个纯前端项目，不用部署配套的后端代码，写个dockerfile再写个helm chart就差不多了，ci调了调构建镜像就完事，不过因为ci部署需要访问集群，所以又改了下.kube/config，删了之前尝试csr方式添加用户的时候加多的 user 和 context ，复制了一份挂载到 runner 容器里。
+然后&amp;hellip;&amp;hellip;问题就来了。
+同事忽然告诉我办公室的服务挂了，于是下意识地打出kgp，卡住。
+等了一会儿，还是卡住。
+又等了一会儿，坐不住了。试了下kubectl cluster-info，继续卡住。
+开始慌了，想起今天的机器有点卡，先看看 free -h 有没有内存泄漏之类的问题导致阻塞，结果发现并没有，于是继续看 htop，cpu使用率也比较正常。再看df -h | grep -vE 'shm|overlay'，发现硬盘使用率96%（估计硬盘主控想死的心都有了，揪着4%的可用空间想把PE数平均到各个区块恐怕不容易）。
+找到问题后松了口气，十有八九是又出现 evicted 了。二话不说直接 docker system df，看到30多G的 build cache 顿时惊了，肯定不是go的构建缓存（手动挂载优化了），那就是 node_modules 又立奇功了。node_modules=黑洞果然不是吹的。
+清理完使用率恢复到63%，但依然有种不安感萦绕于心，于是再次尝试kgp，卡住。
+等了一会儿，喝口水，继续卡着。
+又等了一会儿，淦。
+想了想，journalctl -r -u k3s看看日志，并没有什么发现，倒是注意到很多linkerd之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。
+6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.</description></item><item><title>简单的ECK部署</title><link>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</link><pubDate>Tue, 30 Nov 2021 11:13:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</guid><description>前言 因为工作需要，得在自己搭建的集群里部署一个 Elasticsearch 。又因为是云端的集群，在 k8s 外用 docker 单独起一个 ES 明显更难维护（但部署更简单），于是选择用 ECK 。
 ECK 就是 Elastic Cloud on Kubernetes 的缩写，可以理解成部署在 Kubernetes 上的 Elasticsearch 。当然不止 ES 。
 部署 ES 的过程遇到几个问题记录下怎么解决的。
 ES 使用自签名证书，导致 HTTP 不能连接。 ECK 需要安装 IK 分词插件。 ECK 默认密码每次部署都重新生成，而且默认用户权限过大。 ECK 默认没配 PVC ，数据没有持久化。 接下来逐个解决。

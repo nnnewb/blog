@@ -1,4 +1,53 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Sat, 25 Dec 2021 10:37:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>在raspbian上手动编译vim8.2</title><link>https://nnnewb.github.io/blog/p/build-vim8.2-manually-on-raspbian/</link><pubDate>Sat, 25 Dec 2021 10:37:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/build-vim8.2-manually-on-raspbian/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 27 Dec 2021 15:21:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>排查一个kubectl无反应的问题</title><link>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</link><pubDate>Mon, 27 Dec 2021 15:21:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</guid><description>&lt;p>懒得分段了，就当做是讲个故事吧。&lt;/p>
+&lt;p>背景大概是这样。&lt;/p>
+&lt;p>内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。&lt;/p>
+&lt;p>今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。&lt;/p>
+&lt;p>所以，当当当~当~，整一个持续部署呗，反正是个纯前端项目，不用部署配套的后端代码，写个dockerfile再写个helm chart就差不多了，ci调了调构建镜像就完事，不过因为ci部署需要访问集群，所以又改了下&lt;code>.kube/config&lt;/code>，删了之前尝试&lt;code>csr&lt;/code>方式添加用户的时候加多的 user 和 context ，复制了一份挂载到 runner 容器里。&lt;/p>
+&lt;p>然后&amp;hellip;&amp;hellip;问题就来了。&lt;/p>
+&lt;p>同事忽然告诉我办公室的服务挂了，于是下意识地打出&lt;code>kgp&lt;/code>，卡住。&lt;/p>
+&lt;p>等了一会儿，还是卡住。&lt;/p>
+&lt;p>又等了一会儿，坐不住了。试了下&lt;code>kubectl cluster-info&lt;/code>，继续卡住。&lt;/p>
+&lt;p>开始慌了，想起今天的机器有点卡，先看看 &lt;code>free -h&lt;/code> 有没有内存泄漏之类的问题导致阻塞，结果发现并没有，于是继续看 &lt;code>htop&lt;/code>，cpu使用率也比较正常。再看&lt;code>df -h | grep -vE 'shm|overlay'&lt;/code>，发现硬盘使用率96%（估计硬盘主控想死的心都有了，揪着4%的可用空间想把PE数平均到各个区块恐怕不容易）。&lt;/p>
+&lt;p>找到问题后松了口气，十有八九是又出现 evicted 了。二话不说直接 &lt;code>docker system df&lt;/code>，看到30多G的 build cache 顿时惊了，肯定不是go的构建缓存（手动挂载优化了），那就是 node_modules 又立奇功了。node_modules=黑洞果然不是吹的。&lt;/p>
+&lt;p>清理完使用率恢复到63%，但依然有种不安感萦绕于心，于是再次尝试&lt;code>kgp&lt;/code>，卡住。&lt;/p>
+&lt;p>等了一会儿，喝口水，继续卡着。&lt;/p>
+&lt;p>又等了一会儿，淦。&lt;/p>
+&lt;p>想了想，&lt;code>journalctl -r -u k3s&lt;/code>看看日志，并没有什么发现，倒是注意到很多&lt;code>linkerd&lt;/code>之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。&lt;/p>
+&lt;pre>&lt;code class="language-log" data-lang="log"> 6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.685149 794 container_gc.go:85] attempting to delete unused containers
+7 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.687723 794 image_gc_manager.go:321] attempting to delete unused images
+8 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.782390 794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
+9 12月 25 21:16:17 office k3s[794]: W1225 13:16:17.939242 794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
+10 12月 25 21:16:17 office k3s[794]: I1225 13:16:17.939267 794 container_gc.go:85] attempting to delete unused containers
+11 12月 25 21:16:17 office k3s[794]: I1225 13:16:17.941771 794 image_gc_manager.go:321] attempting to delete unused images
+12 12月 25 21:16:18 office k3s[794]: I1225 13:16:18.033724 794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
+13 12月 25 21:16:28 office k3s[794]: W1225 13:16:28.214032 794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
+&lt;/code>&lt;/pre>&lt;p>这个是老问题了，一直没去研究怎么解决。&lt;/p>
+&lt;pre>&lt;code class="language-log" data-lang="log"> 154 12月 25 21:21:55 office k3s[794]: I1225 13:21:55.021937 794 image_gc_manager.go:304] [imageGCManager]: Disk usage on image filesystem is at 95% which is over the high threshold (85%). Trying to free 182 155 12月 25 21:21:55 office k3s[794]: E1225 13:21:55.025140 794 kubelet.go:1292] Image garbage collection failed multiple times in a row: failed to garbage collect required amount of images. Wanted to free
+&lt;/code>&lt;/pre>&lt;p>这次搜了下，应该是 &lt;code>docker system prune&lt;/code> 造成 &lt;code>kubelet&lt;/code> 找不到可回收的镜像才报错（猜测），不过依然不能解释为啥 &lt;code>kubectl&lt;/code> 没反应。于是继续翻了会儿日志，搜索错误，但始终没有什么结果。&lt;/p>
+&lt;p>但是同事还要干活，没辙了，先重启下服务器吧。群里说了一声要重启了，等了一会儿跑&lt;code>sudo reboot&lt;/code>，重启完连接，继续&lt;code>kgp&lt;/code>，卡住。&lt;/p>
+&lt;p>嗯&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>早有预料。&lt;/p>
+&lt;p>&lt;code>journalctl -r -u k3s --boot&lt;/code> 看看重启后的日志，发现还是老一套的问题，&lt;code>docker&lt;/code> 手动处理镜像和容器造成的和 kubernetes 的管理机制的冲突，各种找不到镜像或者容器的警告，还有一些错误和trace，但没有一个能解释为什么&lt;code>kubectl&lt;/code>没有反应。。。&lt;/p>
+&lt;p>直到在&lt;code>kubectl&lt;/code>的终端里按下了ctrl+c，在顺手&lt;code>clear&lt;/code>之前看到了一行请输入用户名（eng）&amp;hellip;&lt;/p>
+&lt;p>警觉。&lt;/p>
+&lt;p>忽然想起来，因为 &lt;code>kubectl&lt;/code> 这破玩意儿是没有颜色输出的，用习惯了各种彩色输出的命令行工具，&lt;code>kubectl&lt;/code>就格外不顺眼。所以在发现&lt;code>kubecolors&lt;/code>后，我就直接把&lt;code>kubectl&lt;/code>配置成了&lt;code>kubecolor&lt;/code>的别名。&lt;/p>
+&lt;p>所以&amp;hellip;&amp;hellip;难道是&lt;code>kubecolor&lt;/code>的问题？&lt;/p>
+&lt;p>&lt;code>whereis kubectl&lt;/code>找到&lt;code>kubectl&lt;/code>的绝对路径之后，尝试手动运行&lt;code>/usr/local/bin/kubectl cluster-info&lt;/code>，再次出现了那个输入用户名的提示，顿时开始怀疑起&lt;code>.kube/config&lt;/code>配置有问题，正好在出现问题之前改过了&lt;code>.kube/config&lt;/code>，这里出问题的嫌疑就很吉尔大。&lt;/p>
+&lt;p>于是打开&lt;code>.kube/config&lt;/code>，检查了一下集群的用户配置，发现果然，是我手欠把办公室集群的用户给删了。草。&lt;/p>
+&lt;p>急忙从&lt;code>/etc/rancher/k3s/k3s.yaml&lt;/code>复制下用户证书配置，贴进去，再运行&lt;code>kgp&lt;/code>果然屁事没有了。&lt;/p>
+&lt;p>所以总结如下。&lt;/p>
+&lt;ol>
+&lt;li>别被表面的问题迷惑。&lt;/li>
+&lt;li>自己犯傻的几率大于基础设施/常用工具犯傻的几率。&lt;/li>
+&lt;li>遇到问题解决步骤很重要，准确的方向可以省很多时间。
+&lt;ol>
+&lt;li>先确定故障表现和复现条件&lt;/li>
+&lt;li>确定故障点（出现在网络、网关还是应用、数据库），弄清楚是不是新问题&lt;/li>
+&lt;li>再排查相关配置是否正确，回忆是否有做过相关修改变更&lt;/li>
+&lt;li>再排查故障点日志，必要的时候参考下代码，毕竟有的时候日志没写清楚错误的上下文&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;/ol></description></item><item><title>在raspbian上手动编译vim8.2</title><link>https://nnnewb.github.io/blog/p/build-vim8.2-manually-on-raspbian/</link><pubDate>Sat, 25 Dec 2021 10:37:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/build-vim8.2-manually-on-raspbian/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>raspbian上自带的vim版本还是低了点，像是&lt;code>coc.nvim&lt;/code>之类的插件弹警告就搞得很烦。我寻思自己编译一个吧。&lt;/p>
 &lt;h2 id="0x01-下载源码">0x01 下载源码&lt;/h2>
 &lt;p>从&lt;a class="link" href="https://www.vim.org/download.php" target="_blank" rel="noopener"
