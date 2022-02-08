@@ -1,4 +1,130 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 27 Dec 2021 15:21:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>排查一个kubectl无反应的问题</title><link>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</link><pubDate>Mon, 27 Dec 2021 15:21:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</guid><description>&lt;p>懒得分段了，就当做是讲个故事吧。&lt;/p>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 31 Dec 2021 18:30:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>记一次API响应时间优化</title><link>https://nnnewb.github.io/blog/p/an-api-response-time-optimize/</link><pubDate>Fri, 31 Dec 2021 18:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/an-api-response-time-optimize/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析优化下性能。&lt;/p>
+&lt;h2 id="0x01-性能分析">0x01 性能分析&lt;/h2>
+&lt;h3 id="预判">预判&lt;/h3>
+&lt;p>下手前预估下可能存在瓶颈的地方。对于这次下手的接口（&lt;code>get_users&lt;/code>），整个实现也没几行代码，只有两三个查询，数据量也不大，但是耗时有80ms+。&lt;/p>
+&lt;p>其他接口有快有慢，并没有表现出同时增加耗时，而且开发服务器架在内网，排除网络原因，大概还是服务本身的存在的问题。于是考虑瓶颈在数据库或代码中，但具体肯定是要看代码去分析的。既然判断是代码里的问题，那下一步就是测量下耗时情况了。&lt;/p>
+&lt;p>对于go，&lt;code>pprof&lt;/code>虽然是个不错的主意，但实话说部署在 kubernetes 里，配 &lt;code>pprof&lt;/code> 去拉结果有点麻烦，而且还有点点用不惯。正好这个项目里早就配置了 &lt;code>opentracing&lt;/code>+&lt;code>jaeger&lt;/code>做分布式跟踪，所以就直接抄一下 opentelemetry 的 &lt;a class="link" href="https://github.com/seslattery/otelsql/blob/master/otelsql.go" target="_blank" rel="noopener"
+>otelsql&lt;/a> ，把SQL查询的详细耗时情况记录下来，就可以开始分析了。&lt;/p>
+&lt;h3 id="opentracing收集数据">opentracing收集数据&lt;/h3>
+&lt;p>&lt;code>otelsql&lt;/code> 原理是用 &lt;a class="link" href="https://github.com/ngrok/sqlmw" target="_blank" rel="noopener"
+>sqlmw&lt;/a> 在 sql 驱动层级上进行包装&lt;code>sql ==&amp;gt; sqlmw.Driver{mysql.Driver}&lt;/code> 。go的&lt;code>sql&lt;/code>调用&lt;code>sqlmw.Driver&lt;/code>，&lt;code>sqlmw.Driver&lt;/code>调用&lt;code>mysql.Driver&lt;/code>，如此而已，具体不解释。&lt;/p>
+&lt;p>从&lt;code>otelsql&lt;/code>借鉴下思路即可，现在 &lt;code>opentracing&lt;/code> 已经和 &lt;code>opencensus&lt;/code> 合并成了 &lt;code>opentelemetry&lt;/code>，但项目也没法说升级就升级，毕竟项目架构设计稀烂，太多地方和 &lt;code>opentracing&lt;/code>、&lt;code>jaeger-client&lt;/code> 强耦合了。把&lt;code>otelsql&lt;/code>里用&lt;code>sqlmw&lt;/code>的部分抄出来，改成&lt;code>opentracing&lt;/code>的方式创建&lt;code>span&lt;/code>完事。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">in&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">sqlInterceptor&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">ConnExecContext&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">conn&lt;/span> &lt;span class="nx">driver&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">ExecerContext&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">query&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">args&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="nx">driver&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">NamedValue&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">driver&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Result&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">span&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ctx&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">opentracing&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">StartSpanFromContext&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;ConnExecContext&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">defer&lt;/span> &lt;span class="nx">span&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Finish&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="nx">span&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">LogKV&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;sql.query&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">query&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">conn&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ExecContext&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">query&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">args&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>如此一来， 当go的&lt;code>sql&lt;/code>库访问数据库的时候，就会在&lt;code>jaeger&lt;/code>里记录一个&lt;code>span&lt;/code>，可以清晰地看到耗时情况。&lt;/p>
+&lt;h3 id="分析">分析&lt;/h3>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 207;
+flex-basis: 497px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728.png" data-size="1166x563">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728.png"
+width="1166"
+height="563"
+srcset="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20211231103911728">
+&lt;/a>
+&lt;figcaption>image-20211231103911728&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>收集到耗时情况后开始观察，注意到两个问题：&lt;/p>
+&lt;ol>
+&lt;li>&lt;code>ConnectorConnect&lt;/code> 在每个请求前出现，每次耗时 2ms 左右。但 &lt;code>sql&lt;/code> 是有连接池的，这里每次执行查询都产生一次连接显然不对劲。&lt;/li>
+&lt;li>&lt;code>StmtQueryContext&lt;/code> 出现一个耗时极长的查询，占据接近1/2的请求耗时，这条查询就是主要瓶颈。&lt;/li>
+&lt;/ol>
+&lt;p>慢查询的SQL如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">select&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">count&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">from&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">user&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">where&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">role&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">and&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">create_timestamp&lt;/span>&lt;span class="o">&amp;gt;?&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">and&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">create_timestamp&lt;/span>&lt;span class="o">&amp;lt;?&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>是一个简单的 &lt;code>select count(1)&lt;/code> 查询，初步考虑是 &lt;code>where&lt;/code> 里少了索引。&lt;/p>
+&lt;h2 id="0x02-优化">0x02 优化&lt;/h2>
+&lt;h3 id="索引优化">索引优化&lt;/h3>
+&lt;p>既然少索引，那就考虑下加索引。看了下数据库，&lt;code>role&lt;/code>和&lt;code>create_timestamp&lt;/code>字段都没有索引，于是先分别加上了索引，再 &lt;code>explain&lt;/code> ，发现查询类型已经变成了 &lt;code>ref&lt;/code> 。再运行查询，发现耗时依然有 20ms+。&lt;/p>
+&lt;p>参考 &lt;a class="link" href="https://dev.mysql.com/doc/refman/5.7/en/multiple-column-indexes.html" target="_blank" rel="noopener"
+>multiple-column index&lt;/a> 中的话：&lt;/p>
+&lt;blockquote>
+&lt;p>MySQL can use multiple-column indexes for queries that test all the columns in the index, or queries that test just the first column, the first two columns, the first three columns, and so on. If you specify the columns in the right order in the index definition, a single composite index can speed up several kinds of queries on the same table.&lt;/p>
+&lt;/blockquote>
+&lt;p>文档中还说：&lt;/p>
+&lt;blockquote>
+&lt;p>If a multiple-column index exists on &lt;code>col1&lt;/code> and &lt;code>col2&lt;/code>, the appropriate rows can be fetched directly. If separate single-column indexes exist on &lt;code>col1&lt;/code> and &lt;code>col2&lt;/code>, the optimizer attempts to use the Index Merge optimization (see &lt;a class="link" href="https://dev.mysql.com/doc/refman/5.7/en/index-merge-optimization.html" target="_blank" rel="noopener"
+>Section 8.2.1.3, “Index Merge Optimization”&lt;/a>), or attempts to find the most restrictive index by deciding which index excludes more rows and using that index to fetch the rows.&lt;/p>
+&lt;/blockquote>
+&lt;p>也就是说，如果&lt;code>role&lt;/code>和&lt;code>create_timestamp&lt;/code>分别有索引，&lt;code>mysql&lt;/code>会尝试用 &lt;em>Index Merge Optimization&lt;/em> 算法来优化查询。但如果有多列索引的话，就能直接获取（文档里的场景能直接获取，但上文的 &lt;code>count(1)&lt;/code> 查询应该不行）。&lt;/p>
+&lt;p>于是加上多列索引，再&lt;code>explain&lt;/code>，发现查询类型变成了&lt;code>range&lt;/code>，实际执行发现查询耗时降低至 5ms 左右。&lt;/p>
+&lt;h3 id="连接池优化">连接池优化&lt;/h3>
+&lt;p>go的&lt;code>sql&lt;/code>包自带连接池应该是比较清楚的。原本怀疑是不是对&lt;code>sql.DB&lt;/code>这个结构的用法有问题，但翻了下源码，发现&lt;code>sql.DB.ExecContext&lt;/code>之类的接口都会通过连接池取连接，完成后返回连接池。所以理论上来说都应该走连接池的连接，而不是每次查询都创建——除非连接池里没有可用的连接了。另外也谷歌了一圈，&lt;code>sql.DB&lt;/code> 似乎也没有什么特别的最佳实践，并没有人提到要手动&lt;code>DB.Conn&lt;/code>取连接后自己处理。&lt;/p>
+&lt;p>于是初步怀疑下是不是哪里设置了连接池属性出了问题。通过排查源码中设置连接池属性的地方，发现一个自己埋下的坑。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="k">if&lt;/span> &lt;span class="nx">env&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DEBUG&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">mysqldb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">SetMaxIdleConns&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">cfg&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">mysql&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ParseDSN&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">host&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">cfg&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">mysql&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Config&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nf">StartObverseSQLConnPool&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">cfg&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DBName&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">mysqlDB&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">time&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Duration&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">time&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Second&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>因为我司这个项目没有配置 metrics 收集和分析，自然也没收集服务的连接池情况。所以当初入职后遇到一个奇怪的连接池耗尽，服务假死，调用栈全部卡在连接池上的问题时，为了判断是不是出现连接泄露，写了个goroutine去监测连接池里连接获取和释放的情况&amp;hellip;&lt;/p>
+&lt;p>为了调试方便，还把&lt;code>SetMaxIdleConns&lt;/code>设置为了0。&lt;/p>
+&lt;p>于是初步怀疑就是这个原因导致连接池罢工，将整段调试代码注释掉之后，再次访问接口，响应时间降低至9.8ms。&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 190;
+flex-basis: 458px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407.png" data-size="212x111">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407.png"
+width="212"
+height="111"
+srcset="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20211231110219407">
+&lt;/a>
+&lt;figcaption>image-20211231110219407&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>最大头的耗时依然是&lt;code>count(1)&lt;/code>查询。&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 355;
+flex-basis: 854px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414.png" data-size="1559x438">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414.png"
+width="1559"
+height="438"
+srcset="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20211231110316414">
+&lt;/a>
+&lt;figcaption>image-20211231110316414&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>默认情况下 IdleConn 只有 2，超时也比较短。实际参数应该根据业务访问情况来安排。我这也没什么好的计算公式。连接池参数有问题会影响单条SQL的基本耗时，请求里三四条查询，每条加上几个ms，整个请求时间就拖长了十几ms。在微服务系统里影响还可能放大，别的服务要是多次调用，积累的时延可能就要上百ms了。&lt;/p>
+&lt;h3 id="缓存优化">缓存优化&lt;/h3>
+&lt;p>进一步的优化思路就是做缓存。是为了提高服务响应速度，也是为了提高负载能力、减轻查询压力，保护 MySQL 服务。过去年轻无知犯过错，就是考虑性能的时候只关注到了自己写的代码，认为代码跑得快重要——比如把 C 的执行性能吹上天。但事情从来不是这么简单——辩证法说实事求是，要具体问题具体分析。后端从来不是“我的代码”这么简单，如果不能从整个系统的角度出发发现问题，那就算是 CPU 成精了也没辙。&lt;/p>
+&lt;p>对于实时性要求不高的接口，将数据缓存一段时间是绝对没问题的。不过因为做缓存是个系统性的事情——要考虑缓存更新的嘛，也不是每个接口都适合缓存，实时性有要求或者查询太复杂的话宁可考虑换成 ES 一类的分布式系统，把压力分摊到更多机器上。当然也意味着要花更多的钱，更难维护。&lt;/p>
+&lt;p>我司项目就是个很沙雕的例子，因为最初就没设计缓存，连SQL都在用手工拼接，现在干脆变成了混用 &lt;code>xorm&lt;/code> 和 &lt;code>sql&lt;/code>。虽然也可以考虑下用 &lt;code>sqlmw&lt;/code> 插个缓存，但毕竟没验证过，做第一个吃螃蟹的也意味着要第一个背锅。&lt;/p>
+&lt;p>总之，要做那可简单了，直接调 &lt;code>redis&lt;/code> 客户端（已经包装过一个 &lt;code>cachetools&lt;/code>）设置下缓存，给个时限就完了。缓存过期的时候加个 &lt;code>redlock&lt;/code>，让其他客户端先返回旧数据，更新完解锁，所有客户端都返回新数据。&lt;/p>
+&lt;p>更系统化的处理，就要考虑下怎么做一个或多个更通用（对业务场景而言更通用，而不是真的对 &lt;em>所有&lt;/em> 场景都通用）的缓存层——在SQL驱动层做缓存？ORM层缓存？在请求/响应中做缓存？业务/数据访问层（如&lt;code>DAO&lt;/code>）做缓存？缓存用什么键？怎么覆盖尽可能多的查询场景？整个重构的工程量如何把握？值不值得？&lt;/p>
+&lt;h2 id="结论">结论&lt;/h2>
+&lt;p>收集性能数据的主要方式：&lt;/p>
+&lt;ul>
+&lt;li>metrics&lt;/li>
+&lt;li>pprof&lt;/li>
+&lt;li>opentracing/opentelemetry&lt;/li>
+&lt;/ul>
+&lt;p>优化手段：&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>explain&lt;/code> 分析查询、优化和建立索引&lt;/li>
+&lt;li>优化连接池参数&lt;/li>
+&lt;li>加缓存&lt;/li>
+&lt;/ul>
+&lt;p>还有最重要的，&lt;strong>具体问题具体分析&lt;/strong>。&lt;/p></description></item><item><title>排查一个kubectl无反应的问题</title><link>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</link><pubDate>Mon, 27 Dec 2021 15:21:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</guid><description>&lt;p>懒得分段了，就当做是讲个故事吧。&lt;/p>
 &lt;p>背景大概是这样。&lt;/p>
 &lt;p>内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。&lt;/p>
 &lt;p>今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。&lt;/p>
