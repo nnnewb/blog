@@ -1,4 +1,146 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 11 Feb 2022 15:07:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>AVL树</title><link>https://nnnewb.github.io/blog/p/avl-tree/</link><pubDate>Fri, 11 Feb 2022 15:07:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/avl-tree/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 14 Feb 2022 10:53:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>B树</title><link>https://nnnewb.github.io/blog/p/b-tree/</link><pubDate>Mon, 14 Feb 2022 10:53:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/b-tree/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>B树和B树的变体（B+树）因为对磁盘IO/缓存友好的原因，常被用做数据库索引和文件系统的数据结构。&lt;/p>
+&lt;p>这篇博客主要是写一下B树如何插入和搜索，节点分裂机制以及如何自平衡。&lt;/p>
+&lt;h2 id="节点结构">节点结构&lt;/h2>
+&lt;p>B树和一般的二叉搜索树在节点结构上有很大区别。B树是一种多路搜索树，B树的节点可以有多个后继节点，一个节点会保存多个键。单个节点最多保存M个键的B树称作M阶B树。&lt;/p>
+&lt;p>一个简单的 B 树节点结构如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">class&lt;/span> &lt;span class="nc">BTreeNode&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">parent&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s1">&amp;#39;BTreeNode&amp;#39;&lt;/span>
+&lt;span class="n">entries&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">int&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="n">children&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="s1">&amp;#39;BTreeNode&amp;#39;&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>B树要求除根节点外，每个节点最少包含&lt;code>M/2&lt;/code>个元素，非叶子节点的 &lt;code>children&lt;/code> 数量是 &lt;code>len(entries)+1&lt;/code>。根节点不要求最少元素数量，其他约束不变。&lt;/p>
+&lt;h2 id="插入节点">插入节点&lt;/h2>
+&lt;p>B树要求新的键只能在叶子节点上插入。如果叶子节点的键数量超过了上限&lt;code>M&lt;/code>，则叶子节点执行 &lt;strong>分裂&lt;/strong> 操作，将键分成三部分：中位数，小于中位数的部分，大于中位数的部分。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="c1"># 分裂前&lt;/span>
+&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="c1"># 分裂后&lt;/span>
+&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">],&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">,[&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>中位数插入父节点，小于中位数的部分或大于中位数的部分创建新的子节点，插入父级节点。以插入元素 1-7 为例，图示如下。&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 245;
+flex-basis: 589px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112.png" data-size="526x214">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112.png"
+width="526"
+height="214"
+srcset="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112_hu5b12e769ccfd98fac492b0d669d71565_6441_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112_hu5b12e769ccfd98fac492b0d669d71565_6441_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="元素1-6">
+&lt;/a>
+&lt;figcaption>元素1-6&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 271;
+flex-basis: 650px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231.png" data-size="580x214">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231.png"
+width="580"
+height="214"
+srcset="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231_hu367bf5992fa3acb17c83fa3ae5854998_8699_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231_hu367bf5992fa3acb17c83fa3ae5854998_8699_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="插入元素7">
+&lt;/a>
+&lt;figcaption>插入元素7&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>对于中位数在 &lt;code>entries&lt;/code> 中间的情况不会更麻烦，只要记住新节点保存的都是大于中位数的部分，在&lt;code>entries&lt;/code>插入键之后，找到对应的&lt;code>children&lt;/code>下标插入即可。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">def&lt;/span> &lt;span class="nf">add_child&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">child&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;非叶子节点添加新元素
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Args:
+&lt;/span>&lt;span class="s2"> entry (int): 新元素
+&lt;/span>&lt;span class="s2"> child (BTreeNode): 分裂出的新孩子
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="c1"># 遍历寻找比新 entry 更大的元素，如果不存在，则新 entry 添加到最后&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">enumerate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">insert&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="o">+&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">child&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">insert&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">grow&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">entry&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">child&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">grow&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>完整代码会在文末给出。&lt;/p>
+&lt;h2 id="自平衡">自平衡&lt;/h2>
+&lt;p>B树是一种自平衡树，B树做到自平衡的方式比较特别。下面的内容都是我个人对B树的理解，偏见警告。&lt;/p>
+&lt;p>一般的二叉搜索树插入元素时，会把元素插入到叶子节点上，叶子节点就变成了中间节点，子树会随着插入的元素增长而变高，于是在子树之间出现不平衡。也就是说，一般的二叉搜索树生长方向是向下，往叶子方向扩展。&lt;/p>
+&lt;p>但B树正好相反：叶子节点不会变成中间节点，只会分裂兄弟节点，向父级节点插入键。而父级节点也会因为键超过&lt;code>M&lt;/code>而分裂，一直到根节点。根节点分裂则会产生新的根，原来的根变成两个兄弟节点，树的高度随之上升。也就是说，B树的生长高度是向上的，插入操作对树高度的影响最终体现为根节点的分裂。&lt;/p>
+&lt;p>删除节点的规则也设计为保持这一特性，删除键对树高度的影响最终会体现为根节点和子节点合并，使得树高度降低。&lt;/p>
+&lt;h2 id="搜索">搜索&lt;/h2>
+&lt;p>B树的搜索和二叉搜索树差不多，不同的是节点会表示多个键，所以二叉搜索树中的比较操作会变成在多个键里查找值，并在中间节点没找到的时候递归搜索子节点。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">search&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">bool&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">enumerate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">True&lt;/span>
+&lt;span class="c1"># 如果没找到，而且当前元素比搜索值要大了&lt;/span>
+&lt;span class="c1"># 就从小于当前元素的子节点里递归搜索&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="ow">and&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">search&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">entry&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="c1"># 没有比搜索的键大的值，则从末尾的子节点（大于本节点全部键）递归搜索&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">search&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">entry&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">False&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="分裂和需要注意的问题">分裂和需要注意的问题&lt;/h2>
+&lt;p>分裂节点写起来很简单，比 AVL 旋转要好懂很多。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">grow&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="c1"># 检查和处理分裂&lt;/span>
+&lt;span class="c1"># B-Tree 的增长方向是横向+纵向，横向是扩展兄弟节点，纵向是往根节点方向生长&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">MAXIMUM_ENTRIES&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">middle&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">MIDDLE_ENTRY_IDX&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="n">split_entries&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">MIDDLE_ENTRY_IDX&lt;/span>&lt;span class="o">+&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">:]&lt;/span>
+&lt;span class="n">split_children&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">MIDDLE_CHILD_IDX&lt;/span>&lt;span class="p">:]&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">[:&lt;/span>&lt;span class="n">MIDDLE_ENTRY_IDX&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">[:&lt;/span>&lt;span class="n">MIDDLE_CHILD_IDX&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="n">split_node&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">BTreeNode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">split_node&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">split_entries&lt;/span>
+&lt;span class="n">split_node&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">split_children&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="n">child&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">split_children&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">child&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">split_node&lt;/span>
+&lt;span class="c1"># 中间节点分裂的情况&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">add_child&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">middle&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">split_node&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="c1"># 根节点分裂，生成新的根节点&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">BTreeNode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kc">None&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">split_node&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">split_node&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="n">middle&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>主要注意：&lt;/p>
+&lt;ol>
+&lt;li>选择合适的中位数。如果&lt;code>M&lt;/code>是奇数，&lt;code>M+1&lt;/code>除二没有余数，也选不出中位数。&lt;/li>
+&lt;li>新节点（&lt;code>split_node&lt;/code>和&lt;code>split_children&lt;/code>）都需要重新调整&lt;code>parent&lt;/code>属性，不要漏了。&lt;/li>
+&lt;li>中间节点的分裂要向上添加一个&lt;code>entry&lt;/code>和&lt;code>child&lt;/code>，分别表示键和大于这个键的节点。
+&lt;ol>
+&lt;li>这是个递归过程，上级节点也可能发生分裂，一直到根分裂。&lt;/li>
+&lt;li>这个过程会保留原节点（&lt;code>self&lt;/code>），可以理解为&lt;code>children&lt;/code>的下标&lt;code>i&lt;/code>表示&lt;code>children[i]&lt;/code>这棵子树所有键小于&lt;code>entries[i]&lt;/code>。&lt;code>children[-1]&lt;/code>没有对应的&lt;code>entries&lt;/code>下标，表示的是大于节点所有键的子树，相当于是二叉搜索树中的右子树。&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;li>根节点分裂会导致树的根发生改变，完成插入操作后需要重新确定根节点指针，不然会导致搜索出错或再次分裂的时候往错误的节点添加键，破坏搜索树的性质。&lt;/li>
+&lt;/ol>
+&lt;h2 id="b树性能">B树性能&lt;/h2>
+&lt;p>B树的性能优势来自树的高度增长相对比较慢，选择合适的阶可以减少磁盘IO次数。另外就是一个节点包含多个键，提高键的储存密度，更符合局部性原理，相对于二叉搜索树来说对CPU缓存也更较友好。&lt;/p>
+&lt;p>对这个场景我能想到的几个关键因素主要有：&lt;/p>
+&lt;ul>
+&lt;li>内存缓存。尽可能榨干可用的内存，避免频繁进行磁盘IO。&lt;/li>
+&lt;li>局部性原理。&lt;/li>
+&lt;/ul>
+&lt;p>其中局部性原理又分几项。&lt;/p>
+&lt;p>一个是内存的分页机制，在内存紧张的情况下如果节点集合大小不是一页的整数倍的话，会产生更多的缺页异常，造成更频繁地读盘（考虑使用了交换分区或 windows 页文件，又或者 &lt;code>mmap&lt;/code> 等方式读取）。&lt;/p>
+&lt;p>另一个是CPU的高速缓存，如果结构填不满或者超出cache line 大小的话都会有影响。&lt;/p>
+&lt;p>当然，最后还是具体问题具体分析。给这篇博客找资料的时候看到的这篇文章很不错 &lt;a class="link" href="http://igoro.com/archive/gallery-of-processor-cache-effects/" target="_blank" rel="noopener"
+>gallery of processor cache effects&lt;/a>，挺喜欢的。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>b树是多路搜索树。&lt;/p>
+&lt;p>b树插入节点总是在叶子，b树向根方向生长。&lt;/p>
+&lt;p>b树通过节点分裂和合并实现自平衡。&lt;/p>
+&lt;p>b树搜索和一般的二叉搜索树差别不大。&lt;/p>
+&lt;p>以及b树性能优势来自树更矮，节点更少，键更集中，符合局部性原理，减少磁盘io次数，合适的阶让结构对缓存更友好。&lt;/p></description></item><item><title>AVL树</title><link>https://nnnewb.github.io/blog/p/avl-tree/</link><pubDate>Fri, 11 Feb 2022 15:07:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/avl-tree/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>还记得很久以前学数据结构只看到二叉树，讲到平衡，但平衡方法当时看纸质书手头也没有实验环境，后来就没继续学下去。现在有闲就重新捡起来学一下。先从AVL树继续看。&lt;/p>
 &lt;h2 id="avl树">AVL树&lt;/h2>
 &lt;p>AVL 树是以提出者名字命名的，Adelson-Velskii &amp;amp; Landis，俄国人，后来移居以色列。人怎么样不管啦。&lt;/p>
