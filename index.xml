@@ -1,4 +1,401 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 14 Feb 2022 10:53:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>B树</title><link>https://nnnewb.github.io/blog/p/b-tree/</link><pubDate>Mon, 14 Feb 2022 10:53:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/b-tree/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 15 Feb 2022 17:11:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>CPU缓存、缺页和伪共享</title><link>https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/</link><pubDate>Tue, 15 Feb 2022 17:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美哉。结合下面的参考文章大概聊一下。&lt;/p>
+&lt;ul>
+&lt;li>&lt;a class="link" href="http://igoro.com/archive/gallery-of-processor-cache-effects/" target="_blank" rel="noopener"
+>Gallery of Processor Cache Effects&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h2 id="缓存行">缓存行&lt;/h2>
+&lt;h3 id="介绍">介绍&lt;/h3>
+&lt;p>首先，缓存行&lt;strong>不是&lt;/strong>“行”，这是对 &lt;em>cache line&lt;/em> 的直译，&lt;em>cache line&lt;/em> 和 &lt;em>cache block&lt;/em> 是同义的，忽略这个“行”字即可。&lt;/p>
+&lt;p>cache line 指的是 CPU 高速缓存（L1~L3）中的一个缓存块，通常大小在 32/64/128 bytes ，现在常见的应该是 64 bytes 。cache line 之所以重要，是因为这是 CPU 访问主存的必经之路，频繁访问主存数据的场合，或者并发编程时，cache line 的影响还是不容忽视的。&lt;/p>
+&lt;h3 id="简单的基准测试">简单的基准测试&lt;/h3>
+&lt;p>光是说 cache line 多重要没有卵用，写个 demo 看看 cache line 的影响更直观。来一个最简单不过的单链表遍历。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;chrono&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;cstddef&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;functional&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iterator&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;ostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;string&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">chrono&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">typedef&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="nc">_data&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">struct&lt;/span> &lt;span class="nc">_data&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="n">mydata&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">string&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">start&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">fn&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">stop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">name&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">milliseconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stop&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">start&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// 一次分配，内存连续
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">list1&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">new&lt;/span> &lt;span class="n">mydata&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">64&lt;/span>&lt;span class="p">];&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">64&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">list1&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">];&lt;/span>
+&lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">list1&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// 分别分配，内存不连续
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">list2&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">new&lt;/span> &lt;span class="n">mydata&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">cur2&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list2&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">64&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">cur2&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">new&lt;/span> &lt;span class="n">mydata&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">cur2&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">cur2&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 遍历连续的链表
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;first&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">*=&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="c1">// 遍历不连续的链表
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;second&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list2&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">*=&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>为了体现出差异，一共遍历了 &lt;code>1024*1024*64&lt;/code>个元素，每个元素 8 个字节，一共是512M数据。&lt;/p>
+&lt;p>结果如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">weakptr  数据结构  ♥ 09:42  clang++.exe -m32 -O2 main.cpp -o main.exe
+weakptr  数据结构  ♥ 09:43  ./main.exe
+first: 2ms
+second: 239ms
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>启用了&lt;code>O2&lt;/code>级别优化的情况下，遍历连续分配和不连续分配的链表时，速度相差达到了惊人的一百多倍。&lt;/p>
+&lt;p>是&lt;code>O2&lt;/code>优化掉了第一种连续分配的链表遍历吗？&lt;code>-O0&lt;/code> 禁止优化看看。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">weakptr  数据结构  ♥ 09:44  clang++.exe -m32 -O0 main.cpp -o main.exe
+weakptr  数据结构  ♥ 09:45  ./main.exe
+first: 3ms
+second: 262ms
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>并没有任何改善。&lt;/p>
+&lt;p>因为考虑是和内存相关，影响内存访问性能的因素可以很自然想到缓存和缺页这两条。&lt;/p>
+&lt;p>缓存指的是 cache line，一般说 false sharing 的时候提加 padding 对齐比较多。另一个情况就是遍历的时候，如果数据比较密集，那从主存刷新 cache line 就会更少，缓存利用更充分。所以像是数组这样的连续内存遍历速度通常远比链表之类的结构快。&lt;/p>
+&lt;p>缺页又是另一个问题，缺页异常发生的几个常见场景包括：第一次访问分配好的内存，访问被交换到硬盘上的内存，&lt;code>mmap&lt;/code> ，以及&lt;code>SIGSEGV&lt;/code>等情况。一般来说的话，连续的内存分配下一次缺页可以得到连续的N个元素，不连续的分配第一次访问N个元素，最坏的情况下可能就要N次缺页异常。&lt;/p>
+&lt;h3 id="缺页异常">缺页异常&lt;/h3>
+&lt;p>先看缺页。这里使用微软的 Process Explorer 来观察 Page Fault 的出现情况。为了有效观察到page fault发生，我修改了一下代码，在 &lt;code>time_it&lt;/code> 函数里添加上了简单的 page fault 观测。&lt;/p>
+&lt;p>&lt;em>提示，也可以用 Process Explorer 等工具观测程序运行时的 Page Fault 数量，但直接在代码里嵌入观测还是最准确的。如果有更好用的性能分析工具的话当然更好。&lt;/em>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="n">DWORD&lt;/span> &lt;span class="nf">getPageFaultCount&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">proc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">GetCurrentProcess&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">PROCESS_MEMORY_COUNTERS&lt;/span> &lt;span class="n">counters&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">GetProcessMemoryInfo&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">proc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">counters&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">counters&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">FALSE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">cerr&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;GetProcessMemoryInfo failed, error &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">GetLastError&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">counters&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">PageFaultCount&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">string&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">before&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">getPageFaultCount&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">start&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">fn&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">stop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">after&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">getPageFaultCount&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">name&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">milliseconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stop&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">start&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms, page fault count: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">after&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">before&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后对两个用例进行测试。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">initialization-1: 337ms, page fault count: 131329
+initialization-2: 3591ms, page fault count: 265660
+iteration-1: 3ms, page fault count: 0
+iteration-2: 294ms, page fault count: 0
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以清晰地看到，在链表的初始化阶段，非连续分配的链表产生了连续分配的链表差不多两倍的 page fault，耗时接近十倍——我还得澄清一下这不是在暗示十倍的耗时都是 page fault 造成的，但 page fault 在其中也消耗了一部分资源总归是毫无疑问的。&lt;/p>
+&lt;p>但随后的迭代阶段里并没有新的 page fault 产生，因为 两次 512M 的分配再加上循环new，堆维护指针的开销，差不多1.5G，还没有耗尽可用内存。&lt;/p>
+&lt;p>排除 page fault 的影响后，现在考虑另一个影响因素：缓存。&lt;/p>
+&lt;h3 id="缓存行-1">缓存行&lt;/h3>
+&lt;p>关于缓存的分析这里使用了 Intel VTune Profiler 作为分析工具，来提取缓存命中情况。为了让VTune抓取更多信息来分析，对benchmark代码再次修改，遍历一次改成遍历100次。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;iteration-2&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">list2&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list2&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">*=&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>并将连续内存分配和不连续分配分成&lt;code>benchmark1.cpp&lt;/code>和&lt;code>benchmark2.cpp&lt;/code>，分别用&lt;code>-m32 -O0 -g&lt;/code> 参数编译，放进 VTune 分析内存访问性能。&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 152;
+flex-basis: 366px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328.png" data-size="507x332">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328.png"
+width="507"
+height="332"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328_hu3571708b5c5bc5793cda86111950dfc6_32684_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328_hu3571708b5c5bc5793cda86111950dfc6_32684_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="benchmark1">
+&lt;/a>
+&lt;figcaption>benchmark1&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 162;
+flex-basis: 388px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825.png" data-size="551x340">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825.png"
+width="551"
+height="340"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825_hu652bea774cd469a5f99b0baeb69059e1_36904_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825_hu652bea774cd469a5f99b0baeb69059e1_36904_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="benchmark2">
+&lt;/a>
+&lt;figcaption>benchmark2&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>观察图中的 LLC Miss Count 可以发现，Benchmark2 的缓存未命中次数远大于 benchmark1 ，平均时延 Average Latency 高出 13 个cycles 。这如何影响性能呢？继续观察下图 Bottom-up 中的分析。&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 1288;
+flex-basis: 3092px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599.png" data-size="1559x121">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599.png"
+width="1559"
+height="121"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599_huaeb1369d8df5f047d5d55e74be805100_32485_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599_huaeb1369d8df5f047d5d55e74be805100_32485_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="benchmark1">
+&lt;/a>
+&lt;figcaption>benchmark1&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 1716;
+flex-basis: 4119px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956.png" data-size="1562x91">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956.png"
+width="1562"
+height="91"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956_hu1b3074ff876521e620d7b28b0f9399ed_27911_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956_hu1b3074ff876521e620d7b28b0f9399ed_27911_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="benchmark2">
+&lt;/a>
+&lt;figcaption>benchmark2&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>能发现，在benchmark1（连续分配链表遍历测试）中，初始化耗时和遍历耗时相仿，都在300ms左右。初始化耗时可能主要来自缺页，每次遍历整个链表仅3ms左右，LLC Miss Count 为 0。这说明缓存完美地发挥了作用。&lt;/p>
+&lt;p>在 benchmark2 （循环分配节点，不连续）中，初始化耗时1.4秒，100次遍历耗时26.461秒，而且注意，LLC Miss Count 高达 47,603,332 。将这个数字除以循环次数，大约等于每个节点访问都会产生 0.7 个 LLC Miss 。&lt;/p>
+&lt;p>为什么会发生这种事？&lt;/p>
+&lt;p>benchmark1 一次 new 出连续的 &lt;code>1024 * 1024 * 64&lt;/code> 个元素，每个元素 8 个字节，连续排列，而且构造链表时是按顺序头尾相连的。所以遍历 benchmark1 的链表时，填充好的 cache line (设为 64字节)一共有8个链表元素且连续，预取机制同时拿了下一个 cache line ，因此 CPU 几乎不用傻等主存给数据，只需要不断一个 cache line 接一个 cache line 读写即可，效率极高。&lt;/p>
+&lt;p>而 benchmark2 相反，因为链表中的每个元素都是独立分配的，依据 allocator 算法不同表现会有区别，但比较明确的是元素不大可能是在内存中连续分配。在遍历链表时，取下一个链表元素 &lt;code>cur=cur-&amp;gt;next &lt;/code> 后，&lt;code>cur&lt;/code> 指向的地址大概率并不在已缓存的 cache line 中，因此每次循环里 CPU 都不得不从主存取数。可是主存取数是L1/L2 缓存取数耗时的成百上千倍，效率极低。&lt;/p>
+&lt;h3 id="伪共享">伪共享&lt;/h3>
+&lt;p>继续之前再说说伪共享。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;cstddef&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;thread&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;functional&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;chrono&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">chrono&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">string&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">start&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">fn&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">stop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">name&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">milliseconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stop&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">start&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">f&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">10000000&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">data&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;iteration&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">a&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">b&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">c&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kr">thread&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">threads&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">a&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">b&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">c&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">d&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="p">};&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">t&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">threads&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">t&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">join&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>依然是一个很简单的 benchmark，输出如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">iteration: 172ms
+iteration: 176ms
+iteration: 181ms
+iteration: 177ms
+iteration: 182ms
+iteration: 179ms
+... 略
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>一个非常简单的操作，4线程无锁，无 &lt;code>volatile&lt;/code> 递增不同的四个变量，几乎看不出有什么约束导致性能低下的问题。我们通过 Intel VTune 来看看。&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 196;
+flex-basis: 471px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690.png" data-size="1453x740">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690.png"
+width="1453"
+height="740"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690_hu046c5a587cbc915571865660d4965e46_142205_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690_hu046c5a587cbc915571865660d4965e46_142205_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="false sharing - intel VTune">
+&lt;/a>
+&lt;figcaption>false sharing - intel VTune&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 196;
+flex-basis: 471px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953.png" data-size="1453x740">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953.png"
+width="1453"
+height="740"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953_hu63d8a1f13a9b918520d7739e38733940_101530_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953_hu63d8a1f13a9b918520d7739e38733940_101530_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="stall">
+&lt;/a>
+&lt;figcaption>stall&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>可以看到，VTune 提示CPU花费了大量时间在傻等 cache line 写入主存。&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 1775;
+flex-basis: 4261px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789.png" data-size="1101x62">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789.png"
+width="1101"
+height="62"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789_hua004026a68d2e492c13f4a22525e40fe_14051_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789_hua004026a68d2e492c13f4a22525e40fe_14051_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="hot spot">
+&lt;/a>
+&lt;figcaption>hot spot&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>函数 f 出现了海量的 loads/store 操作。&lt;/p>
+&lt;p>在前文中我们聊了 cache line 的作用，这里也能看到 LLC Miss 为 0，那么为什么运行性能会这么差呢？&lt;/p>
+&lt;p>这个问题还得回到 cache line 上。在多核系统中，cache line 还要求 &lt;strong>一致性&lt;/strong> ，一旦写 cache line 中的任意字节，都会让 &lt;strong>整个&lt;/strong> cache line 标记为失效。在基准测试代码里，四个 int 变量被连续分配在栈上，也就是说 cache line 极有可能将这四个变量中的多个保存在同一 cache line 内。任意一个线程修改了其中一个变量，都会导致 cache line 被标为失效，其他线程或核心想要访问这四个变量之一都不得不从主存重新取数。&lt;/p>
+&lt;p>这么做的原因是为了保证数据一致性。CPU0 修改了 cache line 中的数据，还没有写回主存，其他 CPU 都不清楚 CPU0 做了什么修改，只能等待 CPU0 写回主存（或者L3），再重新从主存（或L3）取数。但我们都知道a、b、c、d并不是共享的，每个线程都只访问自己的那个变量。这种问题被称作&lt;strong>伪共享&lt;/strong>。&lt;/p>
+&lt;p>在 VTune 中的表现，就是上图中海量的 Loads/Stores 操作。&lt;/p>
+&lt;p>如何解决呢？&lt;/p>
+&lt;p>很简单，让每个线程要操作的变量填满整个 cache line，防止因为cache line 里混入和其他线程要修改的变量造成伪共享。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">typedef&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int8_t&lt;/span> &lt;span class="n">_before&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">60&lt;/span>&lt;span class="p">];&lt;/span>
+&lt;span class="kt">int32_t&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">int8_t&lt;/span> &lt;span class="n">_after&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">60&lt;/span>&lt;span class="p">];&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">f&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">10000000&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">data&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;iteration&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">value&lt;/span> &lt;span class="n">a&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">},&lt;/span> &lt;span class="n">b&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">},&lt;/span> &lt;span class="n">c&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">},&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">};&lt;/span>
+&lt;span class="kr">thread&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">threads&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">a&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">b&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">c&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">d&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="p">};&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">t&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">threads&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">t&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">join&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>将原本的 int 改成前后各有 60 字节填充的结构（前60字节防止 value 混入别人的 cache line，后60字节防止value后的变量混入cache line，124字节，对齐后128字节）。这个解决方法是典型的 &lt;strong>用空间换时间&lt;/strong> 。再次运行基准测试，可以看到运行时间缩短了数倍。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">iteration: 15ms
+iteration: 21ms
+iteration: 20ms
+iteration: 18ms
+iteration: 20ms
+iteration: 22ms
+iteration: 20ms
+iteration: 19ms
+iteration: 20ms
+iteration: 20ms
+... 略
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="cache-line-原理">cache line 原理&lt;/h3>
+&lt;p>Intel 在 2016 年发表的一篇文章，&lt;a class="link" href="https://www.intel.com/content/www/us/en/developer/articles/technical/how-memory-is-accessed.html" target="_blank" rel="noopener"
+>How Memory Is Accessed&lt;/a>这样写道。&lt;/p>
+&lt;blockquote>
+&lt;p>Programming modern computers rarely requires an understanding of underlying hardware and software; consequently, most programmers do not know how the memory subsystem works.&lt;/p>
+&lt;p>However, such lack of knowledge can ultimately produce a 10x or worse slowdown in application performance – especially since the arrival of &lt;a class="link" href="http://software.intel.com/en-us/articles/what-s-new-about-modern-hardware" target="_blank" rel="noopener"
+>new hardware technologies&lt;/a>.&lt;/p>
+&lt;p>&amp;hellip;&lt;/p>
+&lt;p>The accesses propagating through the memory subsystem are a combination of a specific request and the needed physical addresses and, perhaps, data.&lt;/p>
+&lt;p>Data moves around most of the memory subsystem in 64-byte quantities called &lt;em>cache lines&lt;/em>. A &lt;em>cache entry&lt;/em>, which is some transistors that can store a physical address and a cache line, is filled when a cache line is copied into it. Pages are evenly divided into cache lines – the first 64 bytes of a 4096-byte page is a cache line, with the 64 bytes stored together in a cache entry; the next 64 bytes is the next cache line, etc.&lt;/p>
+&lt;p>Each cache line may:&lt;/p>
+&lt;ul>
+&lt;li>Not be cached&lt;/li>
+&lt;li>Occupy an entry in one cache&lt;/li>
+&lt;li>Be duplicated in several caches&lt;/li>
+&lt;/ul>
+&lt;p>Cores, I/O devices, and other devices send requests to caches to either read or write a cache entry for a physical address. The lowest six bits of the physical address are not sent – they are used by the core to select the bytes within the cache line. The core sends separate requests for each cache line it needs.&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Reads&lt;/strong> – If a cache has the requested physical address in a cache entry, the cache returns the data. If not, the cache requests the data from deeper in the memory subsystem and evicts some cache entry to make room. If the evicted cache entry has been modified, it must be written to the deeper memory subsystem as part of this eviction. This means a stream of reads may slow down because an earlier set of writes must be pushed deeper into the memory subsystem. A small queue of written data buffers the communication from the sender to the receiver.&lt;/li>
+&lt;li>&lt;strong>Writes&lt;/strong> – If the cache does not have the cache line in a cache entry, the cache reads it from deeper in the memory subsystem. It evicts some other physical address from its cache entry to make room for this cache line. The read is necessary to get all the 64 bytes, because the write is probably changing only some of them. The first time a cache entry is written, the cache entries of this physical address in all other caches are invalidated. This action makes the first write on a cache entry more expensive than later writes.&lt;/li>
+&lt;/ul>
+&lt;/blockquote>
+&lt;p>CPU访问主存时并不是直接从主存取数，而是先读入高速缓存，也就是在CPU的规格说明中提到的 L1/L2/L3 缓存。而且，CPU也不会傻乎乎地只从主存取一个字节、4个字节或8个字节，而是取更多数据放入缓存。&lt;/p>
+&lt;p>为什么？因为 &lt;em>局部性原理&lt;/em> 。CPU设计者假设程序访问一个地址，则很快也会访问这个地址附近的其他地址。&lt;/p>
+&lt;p>这儿有个表格 &lt;em>Numbers everyone should know&lt;/em>：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext"> 0.5 ns - CPU L1 dCACHE reference
+1 ns - speed-of-light (a photon) travel a 1 ft (30.5cm) distance
+5 ns - CPU L1 iCACHE Branch mispredict
+7 ns - CPU L2 CACHE reference
+71 ns - CPU cross-QPI/NUMA best case on XEON E5-46*
+100 ns - MUTEX lock/unlock
+100 ns - own DDR MEMORY reference
+135 ns - CPU cross-QPI/NUMA best case on XEON E7-*
+202 ns - CPU cross-QPI/NUMA worst case on XEON E7-*
+325 ns - CPU cross-QPI/NUMA worst case on XEON E5-46*
+10,000 ns - Compress 1K bytes with Zippy PROCESS
+20,000 ns - Send 2K bytes over 1 Gbps NETWORK
+250,000 ns - Read 1 MB sequentially from MEMORY
+500,000 ns - Round trip within a same DataCenter
+10,000,000 ns - DISK seek
+10,000,000 ns - Read 1 MB sequentially from NETWORK
+30,000,000 ns - Read 1 MB sequentially from DISK
+150,000,000 ns - Send a NETWORK packet CA -&amp;gt; Netherlands
+| | | |
+| | | ns|
+| | us|
+| ms|
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>具体数字依赖于具体的硬件平台，这个表格可以对访问速度建立大概的映像。当 L1/L2 缓存未命中，CPU不得不继续向更远、延时更长的设备寻求数据，每个 LLC Miss 都意味着 CPU 不得不花上成百上千倍的时间等待填充 cache line。而 LLC Miss 出现的频率越高，则意味着 CPU 执行的效率越低——绝大部分时间都在等待主存的数据。&lt;/p>
+&lt;p>更糟糕的是，有时候 CPU 真的就是傻等(stall)，不专门分析甚至都不知道程序根本没跑出应有的速度。&lt;/p>
+&lt;blockquote>
+&lt;p>Modern cores use both &lt;a class="link" href="https://en.wikipedia.org/wiki/Out-of-order_execution" target="_blank" rel="noopener"
+>out-of-order execution&lt;/a> and &lt;a class="link" href="https://en.wikipedia.org/wiki/Hyper-threading" target="_blank" rel="noopener"
+>hyperthreading&lt;/a> to find and to do something useful while other instructions wait for data to be fetched.&lt;/p>
+&lt;p>If nothing useful can be done, the core stalls. Unfortunately, the OS is almost unaware of the stall: the application appears to be running, and it is hard to tell if the application is slower than it should be. You need tools to examine &lt;a class="link" href="https://en.wikipedia.org/wiki/Hardware_performance_counter" target="_blank" rel="noopener"
+>hardware performance counters&lt;/a> to see stall details.&lt;/p>
+&lt;/blockquote>
+&lt;p>回顾基准测试代码，仅仅是连续分配内存就可以获得百倍的性能改善，超值。&lt;/p>
+&lt;p>引用前文来给 cache line 小节结尾：&lt;/p>
+&lt;blockquote>
+&lt;p>However, such lack of knowledge can ultimately produce a 10x or worse slowdown in application performance – especially since the arrival of &lt;a class="link" href="http://software.intel.com/en-us/articles/what-s-new-about-modern-hardware" target="_blank" rel="noopener"
+>new hardware technologies&lt;/a>.&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>什么是 cache line？&lt;/p>
+&lt;blockquote>
+&lt;p>Data moves around most of the memory subsystem in 64-byte quantities called &lt;em>cache lines&lt;/em>.&lt;/p>
+&lt;/blockquote>
+&lt;p>cache line 如何影响性能？&lt;/p></description></item><item><title>B树</title><link>https://nnnewb.github.io/blog/p/b-tree/</link><pubDate>Mon, 14 Feb 2022 10:53:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/b-tree/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>B树和B树的变体（B+树）因为对磁盘IO/缓存友好的原因，常被用做数据库索引和文件系统的数据结构。&lt;/p>
 &lt;p>这篇博客主要是写一下B树如何插入和搜索，节点分裂机制以及如何自平衡。&lt;/p>
 &lt;h2 id="节点结构">节点结构&lt;/h2>
