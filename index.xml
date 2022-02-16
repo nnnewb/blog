@@ -1,4 +1,291 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 15 Feb 2022 17:11:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>CPU缓存、缺页和伪共享</title><link>https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/</link><pubDate>Tue, 15 Feb 2022 17:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 16 Feb 2022 16:00:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>分支预测对执行效率和安全的影响</title><link>https://nnnewb.github.io/blog/p/how-branch-prediction-effects-executoin-performance-and-security/</link><pubDate>Wed, 16 Feb 2022 16:00:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/how-branch-prediction-effects-executoin-performance-and-security/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>还是从 &lt;em>Igor Ostrvsky&lt;/em> 的博客里发现的一篇有意思的文章，&lt;a class="link" href="http://igoro.com/archive/fast-and-slow-if-statements-branch-prediction-in-modern-processors/" target="_blank" rel="noopener"
+>Fast and slow if-statements: branch prediction in modern processors&lt;/a> 开始。&lt;/p>
+&lt;h2 id="分支预测对性能的影响">分支预测对性能的影响&lt;/h2>
+&lt;h3 id="介绍">介绍&lt;/h3>
+&lt;p>&lt;a class="link" href="https://zh.wikipedia.org/wiki/%E5%88%86%E6%94%AF%E9%A0%90%E6%B8%AC%E5%99%A8" target="_blank" rel="noopener"
+>分支预测器 - Wikipedia&lt;/a> 我直接抄一段。&lt;/p>
+&lt;blockquote>
+&lt;p>在&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e9%9b%bb%e8%85%a6%e6%9e%b6%e6%a7%8b" target="_blank" rel="noopener"
+>计算机体系结构&lt;/a>中，&lt;strong>分支预测器&lt;/strong>（英语：Branch predictor）是一种&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e6%95%b8%e4%bd%8d%e9%9b%bb%e8%b7%af" target="_blank" rel="noopener"
+>数字电路&lt;/a>，在分支指令执行结束之前猜测哪一路&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e5%88%86%e6%94%af_%28%e8%a8%88%e7%ae%97%e6%a9%9f%e7%a7%91%e5%ad%b8%29" target="_blank" rel="noopener"
+>分支&lt;/a>将会被执行，以提高处理器的&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e6%8c%87%e4%bb%a4%e6%b5%81%e6%b0%b4%e7%ba%bf" target="_blank" rel="noopener"
+>指令流水线&lt;/a>的性能。使用分支预测器的目的，在于改善&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e6%8c%87%e4%bb%a4%e7%ae%a1%e7%b7%9a%e5%8c%96" target="_blank" rel="noopener"
+>指令流水线&lt;/a>的流程，就像一家公司的员工提前预测公司所需要的东西，即交付不同单位进行准备工作，而那各个部门之间的等待交办的时间大大地缩短，整个公司的效率就会提高了。现代使用&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e6%8c%87%e4%bb%a4%e7%ae%a1%e7%b7%9a%e5%8c%96" target="_blank" rel="noopener"
+>指令流水线&lt;/a>处理器的性能能够提高，分支预测器对于现今的指令流水线微处理器获得高性能是非常关键的技术。&lt;/p>
+&lt;/blockquote>
+&lt;p>现代 CPU 的分支预测没有 &lt;em>Igor Ostrvsky&lt;/em> 的博客里写的分支预测器那么傻了，实际上，那篇博客里的代码在 i5-6600 的环境下跑起来，&lt;code>TTFF&lt;/code>或者&lt;code>TTTTFFFF&lt;/code>甚至比&lt;code>TTTT&lt;/code>还要快。那篇博客创作于 2010 年， 而 Skylake 架构在 2015 年替代 Broadwell 架构，而现在是 2022年， Intel 已经发布了 GoldenCove ，AMD 也要发 Zen 4了。内容过时不可避免。&lt;/p>
+&lt;p>所以这篇博客主要还是聊一下分支预测对性能的影响，但大概总结不出 Igor Ostrvsky 的博客里的规律。顺带一提，不要随便针对分支预测优化，要是有人看了 Igor Ostrvsky 那篇博客费了老大功夫优化成连续 T/F 分支，换上新 CPU 之后性能还倒退这能找谁说理去。针对微架构分支预测失败回退做优化我还在爆栈上看到个回答很有意思，&lt;a class="link" href="https://stackoverflow.com/questions/49932119/avoid-stalling-pipeline-by-calculating-conditional-early" target="_blank" rel="noopener"
+>avoid stalling pipeline by calculating conditional early&lt;/a> ，很难想到还能用这种办法榨干 CPU 的每一滴性能。&lt;/p>
+&lt;h3 id="基准测试">基准测试&lt;/h3>
+&lt;p>这个基准测试的主要目的是体现出分支预测失败对执行时间的影响，测试方法是喂 10MB 的随机 T/F ，为 T 时计数器 +1。除了输入数据外测试代码一样。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;functional&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;chrono&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;vector&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;cstdlib&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">chrono&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">string&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">uint32_t&lt;/span> &lt;span class="n">loops&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">milliseconds&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">lowest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">highest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">loops&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">start&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">fn&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">stop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">milliseconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stop&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">start&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">sum&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">lowest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">lowest&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="nl">d&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">min&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">lowest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">highest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">max&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">highest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; avg: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">sum&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">loops&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; best: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">lowest&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; worst: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">highest&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; total: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">sum&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">srand&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">seconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="n">time_since_epoch&lt;/span>&lt;span class="p">()).&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">());&lt;/span>
+&lt;span class="n">vector&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">int&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">always_true&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">unpredictable&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">always_true&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">resize&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">10&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">unpredictable&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">resize&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">10&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nl">i&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">unpredictable&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">rand&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">%&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;always true&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">always_true&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">i&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">always_true&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="n">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;unpredictable&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">unpredictable&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">i&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">unpredictable&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>使用 clang++ 编译&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="c1"># clang version 13.0.0&lt;/span>
+&lt;span class="c1"># Target: x86_64-pc-windows-msvc&lt;/span>
+&lt;span class="c1"># Thread model: posix&lt;/span>
+&lt;span class="c1"># InstalledDir: C:\Program Files\LLVM\bin&lt;/span>
+clang++.exe -m32 -O0 -g -std&lt;span class="o">=&lt;/span>c++20 .&lt;span class="se">\b&lt;/span>ranch-prediction-1.cpp -o branch-prediction-1.exe
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>统计平均、最佳、最差耗时，输出结果如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">always true avg: 120ms best: 116ms worst: 246ms total: 12056ms
+unpredictable avg: 191ms best: 184ms worst: 265ms total: 19115ms
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以看到，数据量相同的情况下，输入数据是随机 T/F 的平均耗时比总为真的耗时高出 50%，总耗时多出 7 秒左右（差不多也是50%多一点）。可想而知，如果输入数据更有规律（比如前半段都是T后半段都是F），数据量不变的情况下，性能也会有相当不错的提高。&lt;/p>
+&lt;p>顺便我还要说一下这个基准测试不够好，应该每个测试循环都生成一次随机数输入的。&lt;/p>
+&lt;h3 id="分支预测扮演的角色">分支预测扮演的角色&lt;/h3>
+&lt;p>这还得从CPU执行指令的过程说起。这里聊的 CPU 执行一条指令需要经过下面的步骤，称作流水线。计算机组成原理课应该有说。&lt;/p>
+&lt;ul>
+&lt;li>取指 (fetch)&lt;/li>
+&lt;li>译码 (decode)&lt;/li>
+&lt;li>执行 (算数指令走 ALU)&lt;/li>
+&lt;li>访问主存 (Load/Store)&lt;/li>
+&lt;li>写回&lt;/li>
+&lt;/ul>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 212;
+flex-basis: 509px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531.png" data-size="1237x583">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531.png"
+width="1237"
+height="583"
+srcset="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531_hud9ed14138f8676bf12375622c7bab6ae_181582_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531_hud9ed14138f8676bf12375622c7bab6ae_181582_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="单周期处理器和流水线处理器">
+&lt;/a>
+&lt;figcaption>单周期处理器和流水线处理器&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>更简化一点的话可以把ALU算数运算和访存都算作指令的“执行”阶段，CPU就是在不断循环执行这四个动作。&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 104;
+flex-basis: 250px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg.png" data-size="500x479">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg.png"
+width="500"
+height="479"
+srcset="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="4阶段流水线">
+&lt;/a>
+&lt;figcaption>4阶段流水线&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>流水线处理器为了充分利用硬件，在译码上一条指令时，就开始取指下一条指令了，执行速度可以是单周期处理器的很多倍。显然流水线越长，每个阶段的耗时越短，整体执行的效率就越高。&lt;/p>
+&lt;p>如果指令一直按顺序执行，流水线只要不断加长加快就能获得更高的性能，但“分支”打破了这个美梦。一个简短的例子如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nl">loop:&lt;/span>
+&lt;span class="nf">inc&lt;/span> &lt;span class="no">eax&lt;/span>
+&lt;span class="nf">cmp&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">ebx&lt;/span>
+&lt;span class="nf">jne&lt;/span> &lt;span class="no">loop&lt;/span>
+&lt;span class="nf">call&lt;/span> &lt;span class="no">exit&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>CPU 从 &lt;code>cmp eax,ebx&lt;/code> 开始，取指 &lt;code>jne loop&lt;/code>。译码 &lt;code>jne loop&lt;/code> 时，问题来了，接下来是取指 &lt;code>call exit&lt;/code> 还是 &lt;code>inc eax&lt;/code>？&lt;/p>
+&lt;p>此时我们还不知道 &lt;code>cmp eax,ebx&lt;/code> 的结果，CPU 能做的事情只有：傻等(stall)，或者猜测下一条要执行的指令是什么(predict)。&lt;/p>
+&lt;p>现代处理器的流水线长度可以达到几十，如果 CPU 遇到需要上一条指令的结果来继续下一条指令就开始等，那么流水线就不得不闲置到上一条指令完成，结果就是分支指令的代价会是其他指令的几十倍，对循环语句来说是个噩耗。&lt;/p>
+&lt;p>影响流水线效率的还有其他元素，比如说上面的 取值-译码-执行-写回 过程里，四个阶段的执行速度也是不同的。通常取值和译码的速度更慢，执行写回更快。如何尽可能让每个执行单元都不浪费时间等待，也是个难题。&lt;/p>
+&lt;p>关于流水线，&lt;a class="link" href="https://plantegg.github.io/2021/05/16/Perf_IPC%E4%BB%A5%E5%8F%8ACPU%E5%88%A9%E7%94%A8%E7%8E%87/" target="_blank" rel="noopener"
+>Perf IPC 以及 CPU 利用率&lt;/a> 这篇文章感觉不错。&lt;/p>
+&lt;p>继续说。既然让流水线退化到单周期不可取，那就瞎猜一个，先把流水线填满再说呗，反正不会比傻等更差了。于是就有了分支预测器：虽然是瞎猜，但尽可能猜得准一点总没坏处。&lt;/p>
+&lt;h3 id="减少分支预测失败的损失">减少分支预测失败的损失&lt;/h3>
+&lt;p>实话说我不确定这个代价有多大，因为没法控制失败率，不知道现在正在用的 CPU 的分支预测器是怎么工作的。&lt;/p>
+&lt;p>直接构造随机的 T/F 序列是一种办法，前面的基准测试已经验证了随机 T/F 干扰分支预测会产生接近 50% 的多余开销。那么有没有办法降低分支预测失败的损失呢？怎么让 CPU 更早发现到分支预测失败，减少要抛弃、清空的流水线长度？&lt;/p>
+&lt;p>参考前面爆栈的链接 &lt;a class="link" href="https://stackoverflow.com/questions/49932119/avoid-stalling-pipeline-by-calculating-conditional-early" target="_blank" rel="noopener"
+>avoid stalling pipeline by calculating conditional early&lt;/a> ，我简单写一个基准测试看看。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;functional&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;chrono&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;vector&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;cstdlib&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;random&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">chrono&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">milliseconds&lt;/span> &lt;span class="nf">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">start&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">fn&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">stop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">milliseconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stop&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">start&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">string&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">uint32_t&lt;/span> &lt;span class="n">loops&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">milliseconds&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">lowest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">highest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">loops&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">fn&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">sum&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">lowest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">lowest&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="nl">d&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">min&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">lowest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">highest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">max&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">highest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; avg: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">sum&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">loops&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; best: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">lowest&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; worst: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">highest&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; total: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">sum&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">typedef&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="nc">my_node&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_node&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_node&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">next&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">nullptr&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{}&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="n">my_node&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">typedef&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="nc">my_list&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">length&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_node&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">head&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_node&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">last&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_list&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="n">length&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">head&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">nullptr&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">last&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">nullptr&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">append&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">head&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="k">nullptr&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">head&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">new&lt;/span> &lt;span class="n">my_node&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">last&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">head&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">last&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">new&lt;/span> &lt;span class="n">my_node&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">last&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">last&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">length&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="n">my_list&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">sum_sentinel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">my_list&lt;/span> &lt;span class="n">list&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">head&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">cur&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="k">nullptr&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">sum_counter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">my_list&lt;/span> &lt;span class="n">list&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_node&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">head&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">list&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">length&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">vector&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">my_list&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">lists&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">lists&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">resize&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">10000000&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">random_device&lt;/span> &lt;span class="n">rd&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">mt19937&lt;/span> &lt;span class="n">gen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">rd&lt;/span>&lt;span class="p">());&lt;/span>
+&lt;span class="n">uniform_int_distribution&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">int&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">10&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nl">list&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">lists&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">node_count&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">gen&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">node_count&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">list&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;sentinel&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">lists&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">list&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">lists&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum_sentinel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">list&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="n">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;counter&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">lists&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">list&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">lists&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum_counter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">list&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>输出结果&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">sentinel avg: 471ms best: 470ms worst: 502ms total: 47178ms
+counter avg: 407ms best: 402ms worst: 512ms total: 40726ms
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>这简直是黑魔法！&lt;code>sum_counter&lt;/code>明显需要执行更多的指令，但执行速度比指令更少的&lt;code>sum_sentinel&lt;/code>平均快70ms！&lt;/p>
+&lt;p>造成慢的原因是一样的，因为分支预测失败，我们以上面的4阶段流水线来分析，假设每个阶段要一个时钟周期，等CPU发现取错了指令（比如译码完了&lt;code>add&lt;/code>，发现&lt;code>cur!=nullptr&lt;/code>是F），于是浪费了两个时钟周期。这被称为 &lt;em>front end bubble&lt;/em> 。参考 cloud flare 的这篇博客，&lt;a class="link" href="https://blog.cloudflare.com/branch-predictor/" target="_blank" rel="noopener"
+>branch predictor&lt;/a> 。这个 &lt;em>front end&lt;/em> 指的是 CPU 微架构中流水线的前端，形象地看，流水线就像是一节一节的水管，指令填满每一节水管，流向下一节。分支预测失败就像是中间一节水管突然空了，后面的指令继续推着空气（预测错误的指令）往前走，就成了水管里的一个泡泡。&lt;/p>
+&lt;p>但 &lt;code>sum_counter&lt;/code> 快的原因更神奇：因为指令排列的顺序，让分支预测依赖的指令更早进入流水线，因此分支指令进入流水线后，分支预测会更快发现预测错误。见下面的汇编代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="err">&amp;lt;&lt;/span>&lt;span class="nf">sum_sentinel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">list_head&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">&amp;gt;&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nf">test&lt;/span> &lt;span class="no">rsi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">rsi&lt;/span>
+&lt;span class="nf">je&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="no">fe&lt;/span> &lt;span class="err">&amp;lt;&lt;/span>&lt;span class="no">sum_sentinel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">list_head&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0x1e&lt;/span>&lt;span class="err">&amp;gt;&lt;/span>
+&lt;span class="nf">xor&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">eax&lt;/span>
+&lt;span class="nl">loop:&lt;/span>
+&lt;span class="nf">add&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">DWORD&lt;/span> &lt;span class="no">PTR&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">rsi&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="c">; --- 1
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="no">rsi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">QWORD&lt;/span> &lt;span class="no">PTR&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">rsi&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0x8&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="c">; --- 2
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">test&lt;/span> &lt;span class="no">rsi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">rsi&lt;/span> &lt;span class="c">; --- 3
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">jne&lt;/span> &lt;span class="no">loop&lt;/span> &lt;span class="c">; --- 4
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">cdqe&lt;/span> &lt;span class="c">; --- 5
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">ret&lt;/span> &lt;span class="c">; --- 6
+&lt;/span>&lt;span class="c">&lt;/span>
+&lt;span class="err">&amp;lt;&lt;/span>&lt;span class="nf">sum_counter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">list_head&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">&amp;gt;&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nf">test&lt;/span> &lt;span class="no">edi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">edi&lt;/span>
+&lt;span class="nf">jle&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="no">d0&lt;/span> &lt;span class="err">&amp;lt;&lt;/span>&lt;span class="no">sum_counter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">list_head&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0x20&lt;/span>&lt;span class="err">&amp;gt;&lt;/span>
+&lt;span class="nf">xor&lt;/span> &lt;span class="no">edx&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">edx&lt;/span>
+&lt;span class="nf">xor&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">eax&lt;/span>
+&lt;span class="nl">loop:&lt;/span>
+&lt;span class="nf">add&lt;/span> &lt;span class="no">edx&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">0x1&lt;/span> &lt;span class="c">; --- 1
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">add&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">DWORD&lt;/span> &lt;span class="no">PTR&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">rsi&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="c">; --- 2
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="no">rsi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">QWORD&lt;/span> &lt;span class="no">PTR&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">rsi&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0x8&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="c">; --- 3
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">cmp&lt;/span> &lt;span class="no">edi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">edx&lt;/span> &lt;span class="c">; --- 4
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">jne&lt;/span> &lt;span class="no">loop&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="c">; --- 5
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">cdqe&lt;/span> &lt;span class="c">; --- 6
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">ret&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>想象有一颗 CPU 有 5 级流水线（&lt;code>IF&lt;/code>、&lt;code>ID&lt;/code>、&lt;code>EX&lt;/code>、&lt;code>MEM&lt;/code>、&lt;code>WB&lt;/code>），如上标注的顺序执行。&lt;/p>
+&lt;p>在 &lt;code>sum_sentinel&lt;/code> 中，开始对 (5) 取指时，(1)才完成写回。对(6)取指时，(2)才写回。等到(3)写回，CPU才发现错误，于是从(4)往后的4级流水线全部作废清空，空泡形成。按每一级1周期算的话，就浪费了4个周期。&lt;/p>
+&lt;p>在&lt;code>sum_counter&lt;/code>中，对(5)取指时，(1)已经写回。(4)依赖的寄存器数据就绪，立刻就能确定分支预测结果正确与否，没有浪费时钟周期。&lt;/p>
+&lt;p>——以上都是想象中的 CPU ，想象中的流水线，实际上的流水线在哪个阶段才能发现分支预测错误，清空流水线，我也不知道。这里能提出的一个论点就是：尽早让分支依赖的数据就绪，尽快让 CPU 发现预测结果不正确，&lt;strong>可能可以&lt;/strong>降低分支预测失败的损失。话不能说满。而且针对分支预测器做优化不值得，Igor Ostrvsky 的博客前车之鉴在那里，过几年新架构 CPU 分支预测器说不定就不是这个规律了也不一定。&lt;/p>
+&lt;h2 id="分支预测对安全的影响">分支预测对安全的影响&lt;/h2>
+&lt;h3 id="spectre">spectre&lt;/h3>
+&lt;p>也许有人会想CPU和安全有什么关系，这不是搞笑吗。但实际上对 CPU 漏洞的利用早已有之，对现代 CPU 高效运行的重要特性：缓存、乱序执行、分支预测进行攻击。近些年最著名的就有 &lt;a class="link" href="https://meltdownattack.com/meltdown.pdf" target="_blank" rel="noopener"
+>Meltdown&lt;/a> 和 &lt;a class="link" href="https://spectreattack.com/spectre.pdf" target="_blank" rel="noopener"
+>Spectre&lt;/a> 。&lt;/p>
+&lt;p>在 &lt;a class="link" href="https://spectreattack.com/spectre.pdf" target="_blank" rel="noopener"
+>Spectre Attacks: Exploiting Speculative Execution&lt;/a> 论文里这样写道：&lt;/p>
+&lt;blockquote>
+&lt;p>Modern processors use branch prediction and speculative execution to maximize performance. For example, if the destination of a branch depends on a memory value that is in the process of being read, CPUs will try to guess the destination and attempt to execute ahead. When the memory value finally arrives, the CPU either discards or commits the speculative computation. Speculative logic is unfaithful in how it executes, can access the victim’s memory and registers, and can perform operations with measurable side effects.&lt;/p>
+&lt;/blockquote>
+&lt;p>现代处理器使用分支预测和推测执行来最大化性能。举例来说，如果确定目标分支依赖于读取内存里的值，CPU会在执行前猜测其目标。当内存里的值抵达CPU，CPU要么抛弃，要么提交推测执行的结果。而推测执行的逻辑是不安全的，可能访问到受害程序的内存和寄存器，执行有明显副作用的操作。&lt;/p>
+&lt;p>Meltdown 和 Spectre 的利用方式很类似，利用乱序执行或分支预测让 CPU 加载一块不属于自己的内存到缓存，而 CPU 发现分支预测失败或乱序执行无效时，并不会抛弃这块缓存。之后再通过瞬态指令创建一个旁路，取得缓存里的数据，就成功利用CPU绕开了隔离机制，非法读取到了任意一块内存。&lt;/p>
+&lt;p>&lt;a class="link" href="https://razorpay.com/blog/meltdown-paper-summary/" target="_blank" rel="noopener"
+>meltdown paper summary&lt;/a> 可以读一下。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>就是聊天，我也不敢说写得有多少对，写博客的过程里东查西找，最后写完有个基本映像就很开心了。&lt;/p>
+&lt;p>分支预测对性能有影响，比起 cache line 的影响更小，而且优化价值不大，特意做优化反而可能在未来砸自己脚趾头。但分支预测又确实在现代cpu里起到了相当重要的作用，流水线造得再长，分支预测次次都错，那再长的流水线也和单周期没啥区别。&lt;/p>
+&lt;p>这篇感觉没啥好总结的，反正写完是对计算机了解更深了一点就对啦。&lt;/p></description></item><item><title>CPU缓存、缺页和伪共享</title><link>https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/</link><pubDate>Tue, 15 Feb 2022 17:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美哉。结合下面的参考文章大概聊一下。&lt;/p>
 &lt;ul>
 &lt;li>&lt;a class="link" href="http://igoro.com/archive/gallery-of-processor-cache-effects/" target="_blank" rel="noopener"
