@@ -1,4 +1,146 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 21 Feb 2022 16:32:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>protogen代码生成</title><link>https://nnnewb.github.io/blog/p/protogen-code-generation/</link><pubDate>Mon, 21 Feb 2022 16:32:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/protogen-code-generation/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 23 Feb 2022 17:30:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>gRPC-Gateway 用作多个 gRPC 服务的网关</title><link>https://nnnewb.github.io/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/</link><pubDate>Wed, 23 Feb 2022 17:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>众所周知，API网关是微服务架构的重要组件，起到一个整流过滤的作用。虽然 gRPC-Gateway 要啥没啥，和 API 网关的模式也扯不上太多关系，但总之先起个高调。&lt;/p>
+&lt;p>然后就是真正遇到的问题了。在旧的架构里，gRPC-Gateway 的用法，是对每个需要暴露 HTTP 服务的 gRPC 服务都起一个对应的 gRPC-Gateway 。最早的做法是 gRPC-Gateway 服务单独作为一个 POD ，gRPC 服务实现也单独一个 POD 。后来我改成了 Gateway 和 服务在同一个 POD 内，起两个 container 。&lt;/p>
+&lt;p>之前的做法都存在一个问题，就是 gRPC-Gateway 要分配少量的 CPU 和内存配额，虽然每个 gRPC-Gateway 服务分到的内存和CPU都很少，但架不住服务多，内存和 CPU 的配额都占用了不少，实际用到的少得可怜，大部分配额都是浪费。&lt;/p>
+&lt;p>下面具体分析下怎么把 gateway 单独提取成一个 POD，给所有 gRPC 服务当网关，同时保持负载均衡发挥作用，提供无缝扩容。&lt;/p>
+&lt;h2 id="实现网关">实现网关&lt;/h2>
+&lt;h3 id="官方demo">官方demo&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// Create a client connection to the gRPC server we just started
+&lt;/span>&lt;span class="c1">// This is where the gRPC-Gateway proxies the requests
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="nx">conn&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">grpc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">DialContext&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Background&lt;/span>&lt;span class="p">(),&lt;/span>
+&lt;span class="s">&amp;#34;0.0.0.0:8080&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="nx">grpc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">WithBlock&lt;/span>&lt;span class="p">(),&lt;/span>
+&lt;span class="nx">grpc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">WithTransportCredentials&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">insecure&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewCredentials&lt;/span>&lt;span class="p">()),&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalln&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Failed to dial server:&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">gwmux&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">runtime&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServeMux&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="c1">// Register Greeter
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="nx">err&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">helloworldpb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">RegisterGreeterHandler&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Background&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="nx">gwmux&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">conn&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalln&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Failed to register gateway:&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">gwServer&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Server&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;span class="nx">Addr&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s">&amp;#34;:8090&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="nx">Handler&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">gwmux&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Println&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Serving gRPC-Gateway on http://0.0.0.0:8090&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalln&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">gwServer&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ListenAndServe&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>核心逻辑在这两行：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="nx">gwmux&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">runtime&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServeMux&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="c1">// Register Greeter
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="nx">err&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">helloworldpb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">RegisterGreeterHandler&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Background&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="nx">gwmux&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">conn&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalln&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Failed to register gateway:&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>gwmux&lt;/code>是 gRPC-Gateway 的运行时 &lt;code>mux&lt;/code> 实例，可以理解成路由。 标准库的 &lt;code>http&lt;/code> 包也有自己的 &lt;code>mux&lt;/code> ，但 gRPC-Gateway 项目自己实现了一个。看到 &lt;code>gwmux&lt;/code>应该就能想到这肯定是注册路由，理论上来说——如果你有多个 gRPC 服务，而且 url 没有冲突的话，注册多个服务到路由上应该是没有问题的。&lt;/p>
+&lt;p>所以剩下的问题就是这个 &lt;code>RegisterGreeterHandler&lt;/code> 内是不是我们预期的那样，类似 &lt;code>mux&lt;/code> 注册路由的用法？&lt;/p>
+&lt;h3 id="registerxxxhandlerclient-实现">RegisterXXXHandlerClient 实现&lt;/h3>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 914;
+flex-basis: 2194px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918.png" data-size="1207x132">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918.png"
+width="1207"
+height="132"
+srcset="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918_huae7e9726eb83dcb6808b9604bde89ea7_31321_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918_huae7e9726eb83dcb6808b9604bde89ea7_31321_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="RegisterXXXHandlerClient实现">
+&lt;/a>
+&lt;figcaption>RegisterXXXHandlerClient实现&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>顺着 &lt;code>RegisterXXXHandler&lt;/code>很快就能找到实现，&lt;code>RegisterXXXHandlerClient&lt;/code>。&lt;code>Handle&lt;/code>的用法正如预期的那样，是一个类似 &lt;code>http.ServeMux&lt;/code> 的对象。处理函数里的逻辑很清晰。&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 277;
+flex-basis: 666px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463.png" data-size="1167x420">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463.png"
+width="1167"
+height="420"
+srcset="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463_hu5863f8bc3c05d0c34f00482d4fdc41e8_65629_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463_hu5863f8bc3c05d0c34f00482d4fdc41e8_65629_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="HandleFunc">
+&lt;/a>
+&lt;figcaption>HandleFunc&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;p>函数体可以简单划分成两部分：&lt;/p>
+&lt;ul>
+&lt;li>构造和发送请求
+&lt;ul>
+&lt;li>根据请求的 &lt;code>Content-Type&lt;/code> 选择 &lt;code>Marshaler&lt;/code> 。&lt;/li>
+&lt;li>构造请求上下文，从HTTP请求里提取&lt;code>grpc-metadata&lt;/code>开头的元数据到 &lt;code>context&lt;/code> 里。&lt;/li>
+&lt;li>&lt;code>request_XXX_0&lt;/code> 反序列化 HTTP 请求体到 protobuf 生成的结构，并发送请求。&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>构造和返回响应
+&lt;ul>
+&lt;li>从响应元数据里构造上下文&lt;/li>
+&lt;li>构造和返回 HTTP 响应&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>整个流程是无状态也和 &lt;code>gwmux&lt;/code> 本身无绑定的。换言之，理论上来说完全可以把所有 gRPC-Gateway 生成的 &lt;code>Register&lt;/code> 函数注册到同一个 &lt;code>gwmux&lt;/code> 上。&lt;/p>
+&lt;h3 id="backend和注册">Backend和注册&lt;/h3>
+&lt;p>出于清晰化的考虑，Gateway 服务的构造过程我写成了 Builder 模式。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">registerHandlerFn&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">mux&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">runtime&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">ServeMux&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">conn&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">grpc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">ClientConn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">err&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">GRPCBackend&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">RegisterHandlerFunc&lt;/span> &lt;span class="nx">registerHandlerFn&lt;/span>
+&lt;span class="nx">BackendAddr&lt;/span> &lt;span class="kt">string&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">DonviewGRPCGatewayServer&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">Serve&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">mux&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">runtime&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServeMux&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">muxOptions&lt;/span>&lt;span class="o">...&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">backend&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">backends&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">conn&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">grpc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">DialContext&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">TODO&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="nx">backend&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">BackendAddr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">dialOptions&lt;/span>&lt;span class="o">...&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">err&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">backend&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">RegisterHandlerFunc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">TODO&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="nx">mux&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">conn&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">var&lt;/span> &lt;span class="nx">handler&lt;/span> &lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Handler&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">mux&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">wrapperFn&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">httpHandlerWrappers&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">handler&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nf">wrapperFn&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">handler&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ListenAndServe&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Sprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;0.0.0.0:%d&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">port&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nx">handler&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>所有 gRPC 后端被注册到 &lt;code>s.backends&lt;/code> ，在开始服务的时候调用 &lt;code>Serve&lt;/code> 函数，把 gRPC 服务注册到 &lt;code>mux&lt;/code> 里。因为事前确保了服务路由不会重叠，理论上来说注册完就能用。&lt;/p>
+&lt;h2 id="负载均衡">负载均衡&lt;/h2>
+&lt;p>最初的架构里，一个 gRPC-Gateway 服务对应一个 gRPC 服务，请求进入服务的过程是从云服务提供商的 LB =&amp;gt; kubernetes service (load balancer) =&amp;gt; gateway =&amp;gt; ClusterIP =&amp;gt; gRPC Server 。&lt;/p>
+&lt;p>后来改成一个 POD 包含 gateway 和 gRPC 两个 container 后，gateway 访问 gRPC 服务就不在经过 ClusterIP 这一层代理了，路径变成云服务商的 LB =&amp;gt; kubernetes service (load balancer) =&amp;gt; gateway =&amp;gt; gRPC Server 。&lt;/p>
+&lt;p>最后是现在的版本，网关统一成一个容器，路径和上述一样。&lt;/p>
+&lt;p>三者的区别在于负载均衡的时机。Kubernetes 的 ClusterIP 是同样具备负载均衡能力的，最初架构中负载均衡一共进行了三次，从云服务商的LB到主机端口（kubernetes），kubernetes再次负载均衡，转发到 gateway。gateway再经由 ClusterIP 转发至 gRPC 服务，每一次转发都经历一次负载均衡，分别提供了虚拟主机的扩容能力、gateway服务的扩容能力、gRPC服务的扩容能力。&lt;/p>
+&lt;p>第二版修改去掉了 gateway 到 gRPC 服务的负载均衡，变成了直连，延迟表现上理论上来说会有改善，但我没做过基准测试，所以这个“理论上”也只是凭感觉说。但可以明确的是 gateway 会额外占据资源配额，造成浪费，不好说值不值，个人感觉没太大意义。&lt;/p>
+&lt;p>第三版，统一了 gateway，还是三次负载均衡。不过Gateway对资源配额的使用效率会更好一点，依然保持了主机、gateway、gRPC 服务的可伸缩性。&lt;/p>
+&lt;p>&lt;figure
+class="gallery-image"
+style="
+flex-grow: 24;
+flex-basis: 59px"
+>
+&lt;a href="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894.png" data-size="176x714">
+&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894.png"
+width="176"
+height="714"
+srcset="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894_huca7a171cf394f94ea2cc15092e42ada3_10452_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894_huca7a171cf394f94ea2cc15092e42ada3_10452_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="三次LB">
+&lt;/a>
+&lt;figcaption>三次LB&lt;/figcaption>
+&lt;/figure>&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>单从理论上来说这样设计应该是 OK 的，但是 gRPC-Gateway 官方对负载均衡没有说法，对能不能注册多个 gRPC 服务到一个 &lt;code>mux&lt;/code> 上也没有官方的文档说明，很难说这帮人能不能保证向后兼容，万一之后的版本不支持注册到一个 &lt;code>mux&lt;/code> 上了，到时候改起来就麻烦了，比较坏的情况就是你得自己写一个 &lt;code>protoc-gen-gateway&lt;/code> 这样的玩意儿来生成一个自己的网关。&lt;/p>
+&lt;p>此外还有一个缺陷，gRPC-Gateway 到 gRPC Server 的负载均衡由 Kubernetes ClusterIP 提供，但是 &lt;a class="link" href="https://stackoverflow.com/questions/49888133/kubernetes-service-cluster-ip-how-is-this-internally-load-balanced-across-diffe" target="_blank" rel="noopener"
+>ClusterIP 的负载均衡算法是 Round Robin/Random&lt;/a> ，并不支持根据负载或其他维度的测量数据来决定如何均衡负载，未来如果需要根据负载情况分发请求，可能还得在网关到 gRPC 服务之间加个负载均衡组件，再提供一个服务发现/注册中心来帮助调度。&lt;/p></description></item><item><title>protogen代码生成</title><link>https://nnnewb.github.io/blog/p/protogen-code-generation/</link><pubDate>Mon, 21 Feb 2022 16:32:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/protogen-code-generation/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>最大的问题其实是 proto 直接生成的 swagger 不好用，过去的 gRPC 写法只在服务端，客户端没享受到静态类型定义的接口的快乐，而且手工写的文档还有一堆很无语的问题，整个系统维护起来蛋疼无比。&lt;/p>
 &lt;p>后来解决办法也简单，代码生成，缺什么生成什么，先后经历了用 &lt;code>go&lt;/code> + proto解析写改成用 &lt;code>typescript&lt;/code> 写，再改回 &lt;code>go&lt;/code> + &lt;code>protogen&lt;/code>，一番折腾下来最后还是用 &lt;code>protogen&lt;/code> 最简单舒服。&lt;/p>
 &lt;p>这篇博客主要就是介绍下 &lt;code>protogen&lt;/code> 配上 go 模板能做到的事情。&lt;/p>
