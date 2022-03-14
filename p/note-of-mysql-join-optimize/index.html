@@ -1,0 +1,383 @@
+<!doctype html><html lang=zh-cn>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 长话短说，这个性能问题是上周修一个bug的时候企图偷懒引入的。因为 xorm 在连接查询的时候模型结构必须是和 join 的顺序保持一致，中间还不能有遗漏，不然查询结果填充到结构里的时候就会错位。
+而业务里这个条件又是可选的——用户不传的时候不需要 INNER JOIN；但为了让 xorm 开心，同时尽量别把整个函数签名和返回类型都改了把影响范围搞太大，所以就偷了个懒：既然 xorm 要 JOIN ，那就 LEFT JOIN加个恒假的条件呗。于是就顺手写下了下面的代码。
+LEFTJOINtblON1&amp;lt;&amp;gt;1没啥问题对吧？我当时也这么想的。
+问题 好了，问题来了。先把整个 SQL写下来。
+SELECT*FROMaINNERJOINbONa.resource_id=b.idLEFTJOINcON1&amp;lt;&amp;gt;1LEFTJOINdONd.resource_id=a.resource_idLEFTJOINeONe.resource_id=a.resource_idWHEREa.result!=4ANDb.resource_type=2limit10offset0;整个查询的实际耗时是 919ms。
+why ?
+性能分析 查询慢了第一反应还是是不是没索引，于是先看看 explain 的结果。
+   id select_type table partitions type possible_keys key key_len ref rows     1 SIMPLE a  ALL IDX_a_resource_id    456   1 SIMPLE b  eq_ref PRIMARY PRIMARY 8 a.resource_id 1   1 SIMPLE d  ref IDX_d_resource_id IDX_d_resource_id 8 a."><title>记一次MySQL JOIN优化</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/>
+<link rel=stylesheet href=/blog/scss/style.min.css><meta property="og:title" content="记一次MySQL JOIN优化">
+<meta property="og:description" content="前言 长话短说，这个性能问题是上周修一个bug的时候企图偷懒引入的。因为 xorm 在连接查询的时候模型结构必须是和 join 的顺序保持一致，中间还不能有遗漏，不然查询结果填充到结构里的时候就会错位。
+而业务里这个条件又是可选的——用户不传的时候不需要 INNER JOIN；但为了让 xorm 开心，同时尽量别把整个函数签名和返回类型都改了把影响范围搞太大，所以就偷了个懒：既然 xorm 要 JOIN ，那就 LEFT JOIN加个恒假的条件呗。于是就顺手写下了下面的代码。
+LEFTJOINtblON1&amp;lt;&amp;gt;1没啥问题对吧？我当时也这么想的。
+问题 好了，问题来了。先把整个 SQL写下来。
+SELECT*FROMaINNERJOINbONa.resource_id=b.idLEFTJOINcON1&amp;lt;&amp;gt;1LEFTJOINdONd.resource_id=a.resource_idLEFTJOINeONe.resource_id=a.resource_idWHEREa.result!=4ANDb.resource_type=2limit10offset0;整个查询的实际耗时是 919ms。
+why ?
+性能分析 查询慢了第一反应还是是不是没索引，于是先看看 explain 的结果。
+   id select_type table partitions type possible_keys key key_len ref rows     1 SIMPLE a  ALL IDX_a_resource_id    456   1 SIMPLE b  eq_ref PRIMARY PRIMARY 8 a.resource_id 1   1 SIMPLE d  ref IDX_d_resource_id IDX_d_resource_id 8 a.">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="mysql"><meta property="article:published_time" content="2022-03-14T12:30:00+08:00"><meta property="article:modified_time" content="2022-03-14T12:30:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png">
+<meta name=twitter:title content="记一次MySQL JOIN优化">
+<meta name=twitter:description content="前言 长话短说，这个性能问题是上周修一个bug的时候企图偷懒引入的。因为 xorm 在连接查询的时候模型结构必须是和 join 的顺序保持一致，中间还不能有遗漏，不然查询结果填充到结构里的时候就会错位。
+而业务里这个条件又是可选的——用户不传的时候不需要 INNER JOIN；但为了让 xorm 开心，同时尽量别把整个函数签名和返回类型都改了把影响范围搞太大，所以就偷了个懒：既然 xorm 要 JOIN ，那就 LEFT JOIN加个恒假的条件呗。于是就顺手写下了下面的代码。
+LEFTJOINtblON1&amp;lt;&amp;gt;1没啥问题对吧？我当时也这么想的。
+问题 好了，问题来了。先把整个 SQL写下来。
+SELECT*FROMaINNERJOINbONa.resource_id=b.idLEFTJOINcON1&amp;lt;&amp;gt;1LEFTJOINdONd.resource_id=a.resource_idLEFTJOINeONe.resource_id=a.resource_idWHEREa.result!=4ANDb.resource_type=2limit10offset0;整个查询的实际耗时是 919ms。
+why ?
+性能分析 查询慢了第一反应还是是不是没索引，于是先看看 explain 的结果。
+   id select_type table partitions type possible_keys key key_len ref rows     1 SIMPLE a  ALL IDX_a_resource_id    456   1 SIMPLE b  eq_ref PRIMARY PRIMARY 8 a.resource_id 1   1 SIMPLE d  ref IDX_d_resource_id IDX_d_resource_id 8 a."><meta name=twitter:card content="summary_large_image">
+<meta name=twitter:image content="https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png">
+</head>
+<body class="article-page has-toc">
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex
+extended">
+<div id=article-toolbar>
+<a href=/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
+<span>返回</span>
+</a>
+</div>
+<main class="main full-width">
+<article class="has-image main-article">
+<header class=article-header>
+<div class=article-image>
+<a href=/blog/p/note-of-mysql-join-optimize/>
+<img src=/blog/p/note-of-mysql-join-optimize/image-20220314150141759_hu8ccdbbcbbb5906798b24061f7093764d_181309_800x0_resize_box_3.png srcset="/blog/p/note-of-mysql-join-optimize/image-20220314150141759_hu8ccdbbcbbb5906798b24061f7093764d_181309_800x0_resize_box_3.png 800w, /blog/p/note-of-mysql-join-optimize/image-20220314150141759_hu8ccdbbcbbb5906798b24061f7093764d_181309_1600x0_resize_box_3.png 1600w" width=800 height=328 loading=lazy alt="Featured image of post 记一次MySQL JOIN优化">
+</a>
+</div>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/mysql/>
+mysql
+</a>
+</header>
+<h2 class=article-title>
+<a href=/blog/p/note-of-mysql-join-optimize/>记一次MySQL JOIN优化</a>
+</h2>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2022年 3月 14日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 4 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>长话短说，这个性能问题是上周修一个bug的时候企图偷懒引入的。因为 xorm 在连接查询的时候模型结构必须是和 <code>join</code> 的顺序保持一致，中间还不能有遗漏，不然查询结果填充到结构里的时候就会错位。</p>
+<p>而业务里这个条件又是可选的——用户不传的时候不需要 <code>INNER JOIN</code>；但为了让 xorm 开心，同时尽量别把整个函数签名和返回类型都改了把影响范围搞太大，所以就偷了个懒：既然 xorm 要 <code>JOIN</code> ，那就 <code>LEFT JOIN</code>加个恒假的条件呗。于是就顺手写下了下面的代码。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-sql data-lang=sql><span class=k>LEFT</span><span class=w> </span><span class=k>JOIN</span><span class=w> </span><span class=n>tbl</span><span class=w> </span><span class=k>ON</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&gt;</span><span class=w> </span><span class=mi>1</span><span class=w>
+</span></code></pre></div><p>没啥问题对吧？我当时也这么想的。</p>
+<h2 id=问题>问题</h2>
+<p>好了，问题来了。先把整个 SQL写下来。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-sql data-lang=sql><span class=k>SELECT</span><span class=w> </span><span class=o>*</span><span class=w>
+</span><span class=w></span><span class=k>FROM</span><span class=w> </span><span class=n>a</span><span class=w>
+</span><span class=w></span><span class=k>INNER</span><span class=w> </span><span class=k>JOIN</span><span class=w> </span><span class=n>b</span><span class=w> </span><span class=k>ON</span><span class=w> </span><span class=n>a</span><span class=p>.</span><span class=n>resource_id</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>b</span><span class=p>.</span><span class=n>id</span><span class=w>
+</span><span class=w></span><span class=k>LEFT</span><span class=w> </span><span class=k>JOIN</span><span class=w> </span><span class=k>c</span><span class=w> </span><span class=k>ON</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&gt;</span><span class=w> </span><span class=mi>1</span><span class=w>
+</span><span class=w></span><span class=k>LEFT</span><span class=w> </span><span class=k>JOIN</span><span class=w> </span><span class=n>d</span><span class=w> </span><span class=k>ON</span><span class=w> </span><span class=n>d</span><span class=p>.</span><span class=n>resource_id</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>a</span><span class=p>.</span><span class=n>resource_id</span><span class=w>
+</span><span class=w></span><span class=k>LEFT</span><span class=w> </span><span class=k>JOIN</span><span class=w> </span><span class=n>e</span><span class=w> </span><span class=k>ON</span><span class=w> </span><span class=n>e</span><span class=p>.</span><span class=n>resource_id</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>a</span><span class=p>.</span><span class=n>resource_id</span><span class=w>
+</span><span class=w></span><span class=k>WHERE</span><span class=w>
+</span><span class=w>	</span><span class=n>a</span><span class=p>.</span><span class=k>result</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=mi>4</span><span class=w>
+</span><span class=w>	</span><span class=k>AND</span><span class=w> </span><span class=n>b</span><span class=p>.</span><span class=n>resource_type</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=mi>2</span><span class=w>
+</span><span class=w></span><span class=k>limit</span><span class=w> </span><span class=mi>10</span><span class=w> </span><span class=k>offset</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w>
+</span></code></pre></div><p>整个查询的实际耗时是 <strong>919ms</strong>。</p>
+<p><em>why ?</em></p>
+<h2 id=性能分析>性能分析</h2>
+<p>查询慢了第一反应还是是不是没索引，于是先看看 <code>explain</code> 的结果。</p>
+<table>
+<thead>
+<tr>
+<th>id</th>
+<th>select_type</th>
+<th>table</th>
+<th>partitions</th>
+<th>type</th>
+<th>possible_keys</th>
+<th>key</th>
+<th>key_len</th>
+<th>ref</th>
+<th>rows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>SIMPLE</td>
+<td>a</td>
+<td></td>
+<td>ALL</td>
+<td>IDX_a_resource_id</td>
+<td></td>
+<td></td>
+<td></td>
+<td>456</td>
+</tr>
+<tr>
+<td>1</td>
+<td>SIMPLE</td>
+<td>b</td>
+<td></td>
+<td>eq_ref</td>
+<td>PRIMARY</td>
+<td>PRIMARY</td>
+<td>8</td>
+<td>a.resource_id</td>
+<td>1</td>
+</tr>
+<tr>
+<td>1</td>
+<td>SIMPLE</td>
+<td>d</td>
+<td></td>
+<td>ref</td>
+<td>IDX_d_resource_id</td>
+<td>IDX_d_resource_id</td>
+<td>8</td>
+<td>a.resource_id</td>
+<td>1</td>
+</tr>
+<tr>
+<td>1</td>
+<td>SIMPLE</td>
+<td>e</td>
+<td></td>
+<td>ref</td>
+<td>IDX_e_resource_id</td>
+<td>IDX_e_resource_id</td>
+<td>9</td>
+<td>a.resource_id</td>
+<td>1</td>
+</tr>
+<tr>
+<td>1</td>
+<td>SIMPLE</td>
+<td>c</td>
+<td></td>
+<td>ALL</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td>6405</td>
+</tr>
+</tbody>
+</table>
+<p>驱动表是 <code>a</code>，做了全表扫描，但数据量很小，只有400多行。但这个表是只增的，全表扫描还是不太对劲，于是看了眼索引，发现 <code>result</code> 没有索引——但这个字段区分度不算很高，只有4个枚举值。</p>
+<p>网上随便搜的博客看到列区分度计算可以用 <code>SELECT count(distinct col)/count(*) FROM tbl</code> 来计算，区分度越接近 1 则索引效果越好。<code>result</code>的区分度只有<code>0.0088</code>，个人感觉区别不大。这种情况下使用result索引滤出来的结果集会比较大，回表查询次数过多的话还不如就遍历一遍原表。</p>
+<p>想归想，但还是老实加上了 <code>result</code> 索引，再 <code>explain</code> 了一次，结果是 <code>possible keys</code> 里多了 <code>IDX_a_result</code>，但最 <code>type</code> 还是 <code>ALL</code>，说明确实和 <code>result</code> 字段有没有索引没关系。</p>
+<p>再接着看下面，其他表基本不是主键就是二级索引，唯独 <code>c</code> 表特立独行——也是<code>ALL</code>。但这个表的 <code>JOIN</code> 子句是这样的。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-sql data-lang=sql><span class=k>LEFT</span><span class=w> </span><span class=k>JOIN</span><span class=w> </span><span class=k>c</span><span class=w> </span><span class=k>ON</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&gt;</span><span class=w> </span><span class=mi>1</span><span class=w>
+</span></code></pre></div><p>这为啥要遍历？</p>
+<p><figure class=gallery-image style=flex-grow:126;flex-basis:302px>
+<a href=/blog/p/note-of-mysql-join-optimize/image-20220314135914892.png data-size=304x241>
+<img src=/blog/p/note-of-mysql-join-optimize/image-20220314135914892.png width=304 height=241 srcset="/blog/p/note-of-mysql-join-optimize/image-20220314135914892_hu2478642e4d59f16d974ad0b870af7dc5_11307_480x0_resize_box_3.png 480w, /blog/p/note-of-mysql-join-optimize/image-20220314135914892_hu2478642e4d59f16d974ad0b870af7dc5_11307_1024x0_resize_box_3.png 1024w" loading=lazy alt=执行计划>
+</a>
+<figcaption>执行计划</figcaption>
+</figure></p>
+<p>但看到 cost 只有 87.68，又松了口气，可能只是 <code>explain</code> 输出不对吧，怎么想 <code>ON 1 &lt;> 1</code> 这样的条件也应该是常数时间内完成。</p>
+<p>到这里，思路已经完全走歪了，开始觉得是不是磁盘 IO 或者网络 IO 上有瓶颈？</p>
+<h3 id=sysstat-工具>sysstat 工具</h3>
+<p>这里介绍下一个很好用的 Linux 下性能分析工具，<a class=link href=https://github.com/sysstat/sysstat target=_blank rel=noopener>sysstat</a>。大部分发行版都可以直接用内置包管理器安装，如 Debian/Ubuntu 可以用 <code>apt-get install sysstat</code> 安装。</p>
+<p><code>sysstat</code> 包含了各种在Unix、Linux环境下通用的工具，来监视系统性能和使用情况。这里面有很多好用的工具比如 <code>sar</code>、<code>iostat</code>、<code>pidstat</code>。</p>
+<p>安装<code>sysstat</code>之后还需要配置。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>sudo dpkg-reconfigure sysstat
+</code></pre></div><p>然后选 <code>yes</code> 来启用定时任务自动收集数据到 <code>/var/log/sysstat</code> ，这样 <code>sar</code> 就可以导出报告了。</p>
+<p><code>sar</code> 是一个综合性的工具，可以收集、导出、保存系统活动数据，收集的数据包括：I/O、CPU、物理内存/Hugepage/Swap、虚拟内存、进程创建、中断、网络接口、socket、等等&mldr;非常全面，基本能想到的都有。</p>
+<p>放在这个场景里，用 <code>sar</code> 可以看到运行查询时的磁盘使用情况：<code>sudo sar -bd 1</code></p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>14时48分14秒       tps      rtps      wtps      dtps   bread/s   bwrtn/s   bdscd/s
+14时48分15秒     40.00      1.00     39.00      0.00      8.00    312.00      0.00
+
+14时48分14秒       DEV       tps     rkB/s     wkB/s     dkB/s   areq-sz    aqu-sz     await     %util
+14时48分15秒    dev7-0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+14时48分15秒    dev7-1      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+14时48分15秒    dev7-2      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+14时48分15秒    dev7-3      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+14时48分15秒    dev7-4      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+14时48分15秒    dev7-5      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+14时48分15秒    dev7-6      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+14时48分15秒    dev7-7      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+14时48分15秒    dev8-0     40.00      4.00    156.00      0.00      4.00      0.00      0.20      2.00
+14时48分15秒  dev253-0     42.00      4.00    156.00      0.00      3.81      0.00      0.00      2.00
+14时48分15秒    dev7-8      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+14时48分15秒    dev7-9      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+</code></pre></div><p>不能说毫无波动，但显然和瓶颈应该扯不上关系了。但出于谨慎考虑，还是用 <code>pidstat</code> 指定了 <code>mysqld</code> 进程的 PID 来观察。这里多嘴一句，MySQL 是用 kubernetes 部署在办公室的服务器上的，我得提一嘴 <code>sysstat</code> 是在宿主机上直接运行而不是容器里——这得说到容器隔离的原理，<code>namespace</code>和<code>cgroup</code>，在外层<code>namespace</code>下是可以看到内层<code>namespace</code>的进程的，但内层的<code>namespace</code>看不到外层，是单向的隔离。所以可以直接在宿主机上用 <code>ps</code> 看到 <code>pause</code> 容器的进程以及 <code>mysqld</code> 这种容器里的进程，也可以收集到各种使用率信息——因为共享宿主机的内核嘛。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>pidstat -d -p <span class=m>11404</span> <span class=m>1</span>
+</code></pre></div><div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>14时57分19秒   UID       PID   kB_rd/s   kB_wr/s kB_ccwr/s iodelay  Command
+14时57分20秒   999     11404     -1.00     -1.00     -1.00       0  mysqld
+14时57分21秒   999     11404     -1.00     -1.00     -1.00       0  mysqld
+14时57分22秒   999     11404     -1.00     -1.00     -1.00       0  mysqld
+14时57分23秒   999     11404     -1.00     -1.00     -1.00       0  mysqld
+14时57分24秒   999     11404     -1.00     -1.00     -1.00       0  mysqld
+</code></pre></div><p>这就只能说毫无波动了，说那么多，并没有卵用。</p>
+<h2 id=转折>转折</h2>
+<p>一上午几乎都花费在这个查询上，终于在一次胡乱分析中注意到 CPU 使用率不同寻常：<code>pidstat -p 11404 -d 1</code></p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>15时01分01秒   UID       PID    %usr %system  %guest   %wait    %CPU   CPU  Command
+15时01分02秒   999     11404    0.00    0.00    0.00    0.00    0.00     1  mysqld
+15时01分03秒   999     11404    0.00    0.00    0.00    0.00    0.00     1  mysqld
+15时01分04秒   999     11404    0.00    0.00    0.00    0.00    0.00     1  mysqld
+15时01分05秒   999     11404    0.00    0.00    0.00    0.00    0.00     1  mysqld
+15时01分06秒   999     11404    6.00    0.00    0.00    0.00    6.00     1  mysqld
+15时01分07秒   999     11404   39.00    0.00    0.00    0.00   39.00     1  mysqld
+15时01分08秒   999     11404   52.00    0.00    0.00    0.00   52.00     1  mysqld
+15时01分09秒   999     11404   65.00    0.00    0.00    0.00   65.00     1  mysqld
+15时01分10秒   999     11404   53.00    0.00    0.00    0.00   53.00     1  mysqld
+15时01分11秒   999     11404   66.00    0.00    0.00    0.00   66.00     6  mysqld
+15时01分12秒   999     11404   85.00    0.00    0.00    0.00   85.00     6  mysqld
+15时01分13秒   999     11404    5.00    0.00    0.00    0.00    5.00     6  mysqld
+15时01分14秒   999     11404    0.00    0.00    0.00    0.00    0.00     6  mysqld
+</code></pre></div><p><figure class=gallery-image style=flex-grow:243;flex-basis:585px>
+<a href=/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png data-size=756x310>
+<img src=/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png width=756 height=310 srcset="/blog/p/note-of-mysql-join-optimize/image-20220314150141759_hu8ccdbbcbbb5906798b24061f7093764d_181309_480x0_resize_box_3.png 480w, /blog/p/note-of-mysql-join-optimize/image-20220314150141759_hu8ccdbbcbbb5906798b24061f7093764d_181309_1024x0_resize_box_3.png 1024w" loading=lazy alt=这彩色输出是真舒服>
+</a>
+<figcaption>这彩色输出是真舒服</figcaption>
+</figure></p>
+<p>在运行查询时，CPU使用率飙升到了50%~85%，一个简单的查询几乎跑满了一个核心？如果 ctrl+enter 按得稍微勤快一点，这个使用率最高能跑到 105% ——这还是因为我在 kubernetes 只给了 1 CPU 的配额的缘故。于是瓶颈终于暴露了出来：CPU。这谁能想到呢。</p>
+<p>再回过头分析查询，结合一下脑子里沉睡已久的记忆+谷歌一下，问题终于浮出水面。</p>
+<p><figure class=gallery-image style=flex-grow:126;flex-basis:302px>
+<a href=/blog/p/note-of-mysql-join-optimize/image-20220314135914892.png data-size=304x241>
+<img src=/blog/p/note-of-mysql-join-optimize/image-20220314135914892.png width=304 height=241 srcset="/blog/p/note-of-mysql-join-optimize/image-20220314135914892_hu2478642e4d59f16d974ad0b870af7dc5_11307_480x0_resize_box_3.png 480w, /blog/p/note-of-mysql-join-optimize/image-20220314135914892_hu2478642e4d59f16d974ad0b870af7dc5_11307_1024x0_resize_box_3.png 1024w" loading=lazy alt=执行计划>
+</a>
+<figcaption>执行计划</figcaption>
+</figure></p>
+<p>对，<code>nested_loop#5</code>，MySQL 的执行计划忠实反映了实际做的事情。MySQL 真就，对着 <code>LEFT JOIN ... ON 1 &lt;> 1</code> 这个条件，在嵌套循环里，做了个全表扫描&mldr;&mldr;</p>
+<p>所谓<code>nested_loop</code>，就是<code>for range { for range {}}</code> 这样的执行路径，简单地把 <code>Rows</code> 乘一下就能得到实际处理了多少行：<code>6450*456=2920680</code>，一共 292 万行，难怪 CPU 使用率会如此之高，难怪数据量这么小的两个表做查询居然会花费接近1s的时间。</p>
+<h2 id=解决>解决</h2>
+<p>知道了瓶颈，找到了造成瓶颈的代码，那么应该就好解决了——话虽如此，要我给出解决办法的话确实就是一句话的事情，但为了找出这个解决办法反而浪费了不少时间。</p>
+<p>回顾造成问题的 <code>JOIN</code> 子句，<code>LEFT JOIN ... ON 1 &lt;> 1</code>，<code>1 &lt;> 1</code> 是恒假条件，但 MySQL 对这个条件选择了全表扫描这种完全无法理解的处理方式。</p>
+<p>行，那我直接改成 <code>ON FALSE</code>，总不至于连 <code>FALSE</code> 也能给个全表扫描的执行计划吧？对，还真能，MySQL 真有你的&mldr;</p>
+<p>随后还试了 <code>0 > 1</code>、<code>1 &lt; 0</code>、<code>1=2</code>、<code>1 is null</code> 等等条件，无一例外 MySQL 的执行计划都是 nested_loop + 全表扫描，就在快放弃的时候偶然想到既然说什么都要扫表，那我让 MySQL 扫就是了，给个有索引的字段让 MySQL 不要全表扫描，也能改善很多吧？然后就随手写下 <code>c.id=-1</code>。</p>
+<p>然后 MySQL 的执行计划就从全表扫描变成了常数时间&mldr;真有你的啊 MySQL！</p>
+<p>又试了下 <code>c.id is null</code> 同样也是常数时间，所以MySQL犯傻的原因是优化器没考虑到有我这样的 <strong>聪（臭）明（傻）人（B）</strong> 会往条件里写个 FALSE 是吧&mldr;真有你的啊 MySQL！</p>
+<h2 id=总结>总结</h2>
+<ol start=0>
+<li>不要忽略 explain 给出的线索。</li>
+<li>注意 <code>nested_loop</code>，<code>join</code> 的条件不能太宽泛，否则遍历的数据量会爆炸性增长，后果就是查询时间随随便便翻几百倍。
+<ol>
+<li>最高效的 <code>join</code> 当然是直接走主键，查一个元素，聚簇索引，不用回表，查询时间复杂度不变。</li>
+<li>次一级的走二级索引，查一个元素，回表一次也就完了，查询时间复杂度不变。</li>
+<li>再次一级的索引区分度不足1，查找出来多个元素，回表多次，嵌套循环的话会成倍放大驱动表的时间复杂度。</li>
+<li>最差的情况，索引区分度太差或者没索引，被迫嵌套循环+全表扫描，也就是我碰到的情况，生产下负载提上来一点就大概率要GG。</li>
+</ol>
+</li>
+<li>MySQL 的优化器需要在条件里给个列，就算是恒真或者恒假的条件，也一定要给个列，不然MySQL就会跟个傻逼一样选择全表扫描。
+<ol>
+<li>我的环境是 MySQL 5.7.33，InnoDB 5.7.33，MySQL Community Server，新版本 MySQL 不知道有没有解决。</li>
+</ol>
+</li>
+<li><code>sysstat</code> 这套工具很好用，如果没把可观测性的基础设施(各种<code>reporter</code>+<code>prometheus</code>+<code>grafana</code>)搞好的话，<code>sysstat</code> 值得拥有。</li>
+</ol>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/mysql/>mysql</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/xa-transaction-theory-to-practice/>
+<div class=article-details>
+<h2 class=article-title>XA 事务从理论到实践</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
+<div id=vssue></div>
+<script src=https://unpkg.com/vue/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"记一次MySQL JOIN优化",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 -
+2022 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.5.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#问题>问题</a></li>
+<li><a href=#性能分析>性能分析</a>
+<ol>
+<li><a href=#sysstat-工具>sysstat 工具</a></li>
+</ol>
+</li>
+<li><a href=#转折>转折</a></li>
+<li><a href=#解决>解决</a></li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
