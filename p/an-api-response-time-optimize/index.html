@@ -1,4 +1,4 @@
-<!doctype html><html lang=zh-cn>
+<!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析优化下性能。
 0x01 性能分析 预判 下手前预估下可能存在瓶颈的地方。对于这次下手的接口（get_users），整个实现也没几行代码，只有两三个查询，数据量也不大，但是耗时有80ms+。
@@ -8,7 +8,7 @@ opentracing收集数据 otelsql 原理是用 sqlmw 在 sql 驱动层级上进行
 从otelsql借鉴下思路即可，现在 opentracing 已经和 opencensus 合并成了 opentelemetry，但项目也没法说升级就升级，毕竟项目架构设计稀烂，太多地方和 opentracing、jaeger-client 强耦合了。把otelsql里用sqlmw的部分抄出来，改成opentracing的方式创建span完事。
 func (in *sqlInterceptor) ConnExecContext(ctx context.Context, conn driver.ExecerContext, query string, args []driver.NamedValue) (driver.Result, error) { span, ctx := opentracing.StartSpanFromContext(ctx, &amp;#34;ConnExecContext&amp;#34;) defer span.Finish() span.LogKV(&amp;#34;sql.query&amp;#34;, query) return conn.ExecContext(ctx, query, args) } 如此一来， 当go的sql库访问数据库的时候，就会在jaeger里记录一个span，可以清晰地看到耗时情况。"><title>记一次API响应时间优化</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/an-api-response-time-optimize/>
-<link rel=stylesheet href=/blog/scss/style.min.css><meta property="og:title" content="记一次API响应时间优化">
+<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="记一次API响应时间优化">
 <meta property="og:description" content="前言 刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析优化下性能。
 0x01 性能分析 预判 下手前预估下可能存在瓶颈的地方。对于这次下手的接口（get_users），整个实现也没几行代码，只有两三个查询，数据量也不大，但是耗时有80ms+。
 其他接口有快有慢，并没有表现出同时增加耗时，而且开发服务器架在内网，排除网络原因，大概还是服务本身的存在的问题。于是考虑瓶颈在数据库或代码中，但具体肯定是要看代码去分析的。既然判断是代码里的问题，那下一步就是测量下耗时情况了。
@@ -28,15 +28,53 @@ opentracing收集数据 otelsql 原理是用 sqlmw 在 sql 驱动层级上进行
 从otelsql借鉴下思路即可，现在 opentracing 已经和 opencensus 合并成了 opentelemetry，但项目也没法说升级就升级，毕竟项目架构设计稀烂，太多地方和 opentracing、jaeger-client 强耦合了。把otelsql里用sqlmw的部分抄出来，改成opentracing的方式创建span完事。
 func (in *sqlInterceptor) ConnExecContext(ctx context.Context, conn driver.ExecerContext, query string, args []driver.NamedValue) (driver.Result, error) { span, ctx := opentracing.StartSpanFromContext(ctx, &amp;#34;ConnExecContext&amp;#34;) defer span.Finish() span.LogKV(&amp;#34;sql.query&amp;#34;, query) return conn.ExecContext(ctx, query, args) } 如此一来， 当go的sql库访问数据库的时候，就会在jaeger里记录一个span，可以清晰地看到耗时情况。">
 </head>
-<body class="article-page has-toc">
+<body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex
-extended">
-<div id=article-toolbar>
-<a href=/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
-<span>返回</span>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
 </div>
+</header><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+<li id=dark-mode-toggle><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span>
+</li>
+</div>
+</ol>
+</aside>
 <main class="main full-width">
 <article class=main-article>
 <header class=article-header>
@@ -46,9 +84,11 @@ extended">
 杂谈
 </a>
 </header>
+<div class=article-title-wrapper>
 <h2 class=article-title>
 <a href=/blog/p/an-api-response-time-optimize/>记一次API响应时间优化</a>
 </h2>
+</div>
 <footer class=article-time>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
 <time class=article-time--published>2021年 12月 31日</time>
@@ -80,12 +120,7 @@ extended">
 <span class=p>}</span>
 </code></pre></div><p>如此一来， 当go的<code>sql</code>库访问数据库的时候，就会在<code>jaeger</code>里记录一个<code>span</code>，可以清晰地看到耗时情况。</p>
 <h3 id=分析>分析</h3>
-<p><figure class=gallery-image style=flex-grow:207;flex-basis:497px>
-<a href=/blog/p/an-api-response-time-optimize/image-20211231103911728.png data-size=1166x563>
-<img src=/blog/p/an-api-response-time-optimize/image-20211231103911728.png width=1166 height=563 srcset="/blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231103911728>
-</a>
-<figcaption>image-20211231103911728</figcaption>
-</figure></p>
+<p><img src=/blog/p/an-api-response-time-optimize/image-20211231103911728.png width=1166 height=563 srcset="/blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231103911728 class=gallery-image data-flex-grow=207 data-flex-basis=497px></p>
 <p>收集到耗时情况后开始观察，注意到两个问题：</p>
 <ol>
 <li><code>ConnectorConnect</code> 在每个请求前出现，每次耗时 2ms 左右。但 <code>sql</code> 是有连接池的，这里每次执行查询都产生一次连接显然不对劲。</li>
@@ -123,19 +158,9 @@ extended">
 </code></pre></div><p>因为我司这个项目没有配置 metrics 收集和分析，自然也没收集服务的连接池情况。所以当初入职后遇到一个奇怪的连接池耗尽，服务假死，调用栈全部卡在连接池上的问题时，为了判断是不是出现连接泄露，写了个goroutine去监测连接池里连接获取和释放的情况&mldr;</p>
 <p>为了调试方便，还把<code>SetMaxIdleConns</code>设置为了0。</p>
 <p>于是初步怀疑就是这个原因导致连接池罢工，将整段调试代码注释掉之后，再次访问接口，响应时间降低至9.8ms。</p>
-<p><figure class=gallery-image style=flex-grow:190;flex-basis:458px>
-<a href=/blog/p/an-api-response-time-optimize/image-20211231110219407.png data-size=212x111>
-<img src=/blog/p/an-api-response-time-optimize/image-20211231110219407.png width=212 height=111 srcset="/blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110219407>
-</a>
-<figcaption>image-20211231110219407</figcaption>
-</figure></p>
+<p><img src=/blog/p/an-api-response-time-optimize/image-20211231110219407.png width=212 height=111 srcset="/blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110219407 class=gallery-image data-flex-grow=190 data-flex-basis=458px></p>
 <p>最大头的耗时依然是<code>count(1)</code>查询。</p>
-<p><figure class=gallery-image style=flex-grow:355;flex-basis:854px>
-<a href=/blog/p/an-api-response-time-optimize/image-20211231110316414.png data-size=1559x438>
-<img src=/blog/p/an-api-response-time-optimize/image-20211231110316414.png width=1559 height=438 srcset="/blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110316414>
-</a>
-<figcaption>image-20211231110316414</figcaption>
-</figure></p>
+<p><img src=/blog/p/an-api-response-time-optimize/image-20211231110316414.png width=1559 height=438 srcset="/blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110316414 class=gallery-image data-flex-grow=355 data-flex-basis=854px></p>
 <p>默认情况下 IdleConn 只有 2，超时也比较短。实际参数应该根据业务访问情况来安排。我这也没什么好的计算公式。连接池参数有问题会影响单条SQL的基本耗时，请求里三四条查询，每条加上几个ms，整个请求时间就拖长了十几ms。在微服务系统里影响还可能放大，别的服务要是多次调用，积累的时延可能就要上百ms了。</p>
 <h3 id=缓存优化>缓存优化</h3>
 <p>进一步的优化思路就是做缓存。是为了提高服务响应速度，也是为了提高负载能力、减轻查询压力，保护 MySQL 服务。过去年轻无知犯过错，就是考虑性能的时候只关注到了自己写的代码，认为代码跑得快重要——比如把 C 的执行性能吹上天。但事情从来不是这么简单——辩证法说实事求是，要具体问题具体分析。后端从来不是“我的代码”这么简单，如果不能从整个系统的角度出发发现问题，那就算是 CPU 成精了也没辙。</p>
@@ -215,9 +240,9 @@ extended">
 </aside>
 <link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
 <div id=vssue></div>
-<script src=https://unpkg.com/vue/dist/vue.runtime.min.js></script>
-<script src=https://unpkg.com/vssue/dist/vssue.github.min.js></script>
-<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"记一次API响应时间优化",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"记一次API响应时间优化",options:{autoCreateIssue:!0,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
 <footer class=site-footer>
 <section class=copyright>
 &copy;
@@ -227,7 +252,7 @@ extended">
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.5.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>
@@ -267,37 +292,8 @@ Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=
 </div>
 </div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
 </main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 </div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#0x01-性能分析>0x01 性能分析</a>
-<ol>
-<li><a href=#预判>预判</a></li>
-<li><a href=#opentracing收集数据>opentracing收集数据</a></li>
-<li><a href=#分析>分析</a></li>
-</ol>
-</li>
-<li><a href=#0x02-优化>0x02 优化</a>
-<ol>
-<li><a href=#索引优化>索引优化</a></li>
-<li><a href=#连接池优化>连接池优化</a></li>
-<li><a href=#缓存优化>缓存优化</a></li>
-</ol>
-</li>
-<li><a href=#结论>结论</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>

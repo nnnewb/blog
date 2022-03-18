@@ -103,22 +103,16 @@
 &lt;p>再接着看下面，其他表基本不是主键就是二级索引，唯独 &lt;code>c&lt;/code> 表特立独行——也是&lt;code>ALL&lt;/code>。但这个表的 &lt;code>JOIN&lt;/code> 子句是这样的。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">LEFT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">JOIN&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">c&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">ON&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">&amp;lt;&amp;gt;&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>这为啥要遍历？&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 126;
-flex-basis: 302px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314135914892.png" data-size="304x241">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314135914892.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314135914892.png"
 width="304"
 height="241"
 srcset="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314135914892_hu2478642e4d59f16d974ad0b870af7dc5_11307_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314135914892_hu2478642e4d59f16d974ad0b870af7dc5_11307_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="执行计划">
-&lt;/a>
-&lt;figcaption>执行计划&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="执行计划"
+class="gallery-image"
+data-flex-grow="126"
+data-flex-basis="302px"
+>&lt;/p>
 &lt;p>但看到 cost 只有 87.68，又松了口气，可能只是 &lt;code>explain&lt;/code> 输出不对吧，怎么想 &lt;code>ON 1 &amp;lt;&amp;gt; 1&lt;/code> 这样的条件也应该是常数时间内完成。&lt;/p>
 &lt;p>到这里，思路已经完全走歪了，开始觉得是不是磁盘 IO 或者网络 IO 上有瓶颈？&lt;/p>
 &lt;h3 id="sysstat-工具">sysstat 工具&lt;/h3>
@@ -170,40 +164,28 @@ alt="执行计划">
 15时01分12秒 999 11404 85.00 0.00 0.00 0.00 85.00 6 mysqld
 15时01分13秒 999 11404 5.00 0.00 0.00 0.00 5.00 6 mysqld
 15时01分14秒 999 11404 0.00 0.00 0.00 0.00 0.00 6 mysqld
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 243;
-flex-basis: 585px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png" data-size="756x310">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png"
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png"
 width="756"
 height="310"
 srcset="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314150141759_hu8ccdbbcbbb5906798b24061f7093764d_181309_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314150141759_hu8ccdbbcbbb5906798b24061f7093764d_181309_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="这彩色输出是真舒服">
-&lt;/a>
-&lt;figcaption>这彩色输出是真舒服&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="这彩色输出是真舒服"
+class="gallery-image"
+data-flex-grow="243"
+data-flex-basis="585px"
+>&lt;/p>
 &lt;p>在运行查询时，CPU使用率飙升到了50%~85%，一个简单的查询几乎跑满了一个核心？如果 ctrl+enter 按得稍微勤快一点，这个使用率最高能跑到 105% ——这还是因为我在 kubernetes 只给了 1 CPU 的配额的缘故。于是瓶颈终于暴露了出来：CPU。这谁能想到呢。&lt;/p>
 &lt;p>再回过头分析查询，结合一下脑子里沉睡已久的记忆+谷歌一下，问题终于浮出水面。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 126;
-flex-basis: 302px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314135914892.png" data-size="304x241">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314135914892.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314135914892.png"
 width="304"
 height="241"
 srcset="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314135914892_hu2478642e4d59f16d974ad0b870af7dc5_11307_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314135914892_hu2478642e4d59f16d974ad0b870af7dc5_11307_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="执行计划">
-&lt;/a>
-&lt;figcaption>执行计划&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="执行计划"
+class="gallery-image"
+data-flex-grow="126"
+data-flex-basis="302px"
+>&lt;/p>
 &lt;p>对，&lt;code>nested_loop#5&lt;/code>，MySQL 的执行计划忠实反映了实际做的事情。MySQL 真就，对着 &lt;code>LEFT JOIN ... ON 1 &amp;lt;&amp;gt; 1&lt;/code> 这个条件，在嵌套循环里，做了个全表扫描&amp;hellip;&amp;hellip;&lt;/p>
 &lt;p>所谓&lt;code>nested_loop&lt;/code>，就是&lt;code>for range { for range {}}&lt;/code> 这样的执行路径，简单地把 &lt;code>Rows&lt;/code> 乘一下就能得到实际处理了多少行：&lt;code>6450*456=2920680&lt;/code>，一共 292 万行，难怪 CPU 使用率会如此之高，难怪数据量这么小的两个表做查询居然会花费接近1s的时间。&lt;/p>
 &lt;h2 id="解决">解决&lt;/h2>
@@ -318,39 +300,27 @@ alt="执行计划">
 >jennifer&lt;/a> 生成代码好是挺好，就是 go 代码显得有点乱 &amp;hellip;&lt;/p>
 &lt;p>我寻思对 generator 简单重构下实现关注点分离的话，还是能满足上面提到的这些东西的。最好的情况是定义好 interface 之后，生成代码，编写主函数，就能直接运行了。同时又不伤害 go kit 架构本身的扩展性和可定制性。&lt;/p>
 &lt;h2 id="总结">总结&lt;/h2>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 78;
-flex-basis: 189px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/my-opinion-of-gokit-architecture/image-20220302154943857.png" data-size="420x533">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/my-opinion-of-gokit-architecture/image-20220302154943857.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/my-opinion-of-gokit-architecture/image-20220302154943857.png"
 width="420"
 height="533"
 srcset="https://nnnewb.github.io/blog/blog/p/my-opinion-of-gokit-architecture/image-20220302154943857_hu9cb516ff1b199527543c48b61b9d85b3_16922_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/my-opinion-of-gokit-architecture/image-20220302154943857_hu9cb516ff1b199527543c48b61b9d85b3_16922_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="go kit架构的服务">
-&lt;/a>
-&lt;figcaption>go kit架构的服务&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>蛮喜欢 go kit 项目作者的一句话：&lt;/p>
-&lt;p>&lt;figure
+alt="go kit架构的服务"
 class="gallery-image"
-style="
-flex-grow: 416;
-flex-basis: 1000px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/my-opinion-of-gokit-architecture/image-20220302155216922.png" data-size="917x220">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/my-opinion-of-gokit-architecture/image-20220302155216922.png"
+data-flex-grow="78"
+data-flex-basis="189px"
+>&lt;/p>
+&lt;p>蛮喜欢 go kit 项目作者的一句话：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/my-opinion-of-gokit-architecture/image-20220302155216922.png"
 width="917"
 height="220"
 srcset="https://nnnewb.github.io/blog/blog/p/my-opinion-of-gokit-architecture/image-20220302155216922_hu9feb75af39e108f8eeb86c8e5ed70db9_25876_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/my-opinion-of-gokit-architecture/image-20220302155216922_hu9feb75af39e108f8eeb86c8e5ed70db9_25876_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="issue截图">
-&lt;/a>
-&lt;figcaption>issue截图&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="issue截图"
+class="gallery-image"
+data-flex-grow="416"
+data-flex-basis="1000px"
+>&lt;/p>
 &lt;blockquote>
 &lt;p>Honestly the best way to &amp;ldquo;use&amp;rdquo; Go kit is to cop it&amp;rsquo;s architectural model and not actually import any of its packages at all 😉&lt;/p>
 &lt;/blockquote>
@@ -386,22 +356,16 @@ alt="issue截图">
 &lt;li>&lt;code>auth&lt;/code>，身份认证&lt;/li>
 &lt;/ul>
 &lt;p>我自己整的目录结构如下。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 91;
-flex-basis: 220px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228155029310.png" data-size="234x255">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228155029310.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228155029310.png"
 width="234"
 height="255"
 srcset="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228155029310_hu1b61ce4442b934d4130680e952a0c52e_9034_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228155029310_hu1b61ce4442b934d4130680e952a0c52e_9034_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="目录结构">
-&lt;/a>
-&lt;figcaption>目录结构&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="目录结构"
+class="gallery-image"
+data-flex-grow="91"
+data-flex-basis="220px"
+>&lt;/p>
 &lt;p>服务本质是一系列接口的集合，gokit 的 tutorial 中将服务抽象成了一个 &lt;code>interface&lt;/code> ，在这个接口上用户可以提供不同实现。像是服务端、客户端、中间件，不管传输层怎么定义，最终实现的都是这个接口。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">StringService&lt;/span> &lt;span class="kd">interface&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nf">Uppercase&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span>
@@ -638,62 +602,44 @@ alt="目录结构">
 &lt;span class="nx">retry&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">lb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Retry&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">retryMax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">retryTimeout&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">balancer&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nx">endpoints&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">SumEndpoint&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">retry&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 161;
-flex-basis: 387px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228171821569.png" data-size="925x573">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228171821569.png"
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228171821569.png"
 width="925"
 height="573"
 srcset="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228171821569_hude2acf9d66679c44454b1c6e5dc1473c_66465_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228171821569_hude2acf9d66679c44454b1c6e5dc1473c_66465_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="示意图">
-&lt;/a>
-&lt;figcaption>示意图&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="示意图"
+class="gallery-image"
+data-flex-grow="161"
+data-flex-basis="387px"
+>&lt;/p>
 &lt;p>总得来说，go kit 的服务发现机制靠客户端以特定的方式构造 &lt;code>Endpoint&lt;/code> ，这和反向代理或者 side-car 代理实现的服务发现不一样。&lt;/p>
 &lt;p>比如说 kubernetes 的 ClusterIP 基于 kube-proxy，后端有多个 POD 的时候 kube-proxy 会自动进行负载均衡，但算法是 kube-proxy 实现决定的，不可依赖。&lt;/p>
 &lt;p>再比如 nginx 也能一定程度实现服务发现和负载均衡。&lt;/p>
 &lt;p>再比如，linkerd 这样的 service mesh，非侵入，提供负载均衡、服务发现、重试这些功能。&lt;/p>
 &lt;p>go kit 的工具箱里提供的是客户端的负载均衡机制。上图里的代码可以用下图表示。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 91;
-flex-basis: 220px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228172730622.png" data-size="574x626">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228172730622.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228172730622.png"
 width="574"
 height="626"
 srcset="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228172730622_hu7c2f12e783b3c572c3387446a921feeb_14775_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228172730622_hu7c2f12e783b3c572c3387446a921feeb_14775_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="负载均衡">
-&lt;/a>
-&lt;figcaption>负载均衡&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="负载均衡"
+class="gallery-image"
+data-flex-grow="91"
+data-flex-basis="220px"
+>&lt;/p>
 &lt;h3 id="多传输层实现">多传输层实现&lt;/h3>
 &lt;p>这里尝试实现 &lt;code>http&lt;/code> 和 &lt;code>grpc&lt;/code> 两种 rpc 传输层协议。首先为了保证最大化复用代码，在 &lt;code>http&lt;/code> 实现中定义的结构和 endpoint 肯定是要复用起来的，不然每个传输层都来一次的话没codegen非得手指敲断不可。&lt;/p>
 &lt;p>先提取 &lt;code>makeXXXEndpoint&lt;/code> 代码和 &lt;code>XXXRequest&lt;/code> 这样的结构到单独的文件里。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 184;
-flex-basis: 443px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301115635464.png" data-size="1920x1040">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301115635464.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301115635464.png"
 width="1920"
 height="1040"
 srcset="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301115635464_hu2db5290091178b734e80b60459e1fef9_216608_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301115635464_hu2db5290091178b734e80b60459e1fef9_216608_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="提取定义">
-&lt;/a>
-&lt;figcaption>提取定义&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="提取定义"
+class="gallery-image"
+data-flex-grow="184"
+data-flex-basis="443px"
+>&lt;/p>
 &lt;p>思路上部分参考的 gokit 案例中 &lt;code>addsvc&lt;/code>，&lt;a class="link" href="https://github.com/go-kit/examples/blob/master/addsvc/README.md" target="_blank" rel="noopener"
 >链接&lt;/a>。&lt;/p>
 &lt;p>proto 文件如下。&lt;/p>
@@ -716,22 +662,16 @@ alt="提取定义">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后使用 protoc 生成 go 源码，具体参考 &lt;a class="link" href="https://www.grpc.io/docs/languages/go/quickstart/" target="_blank" rel="noopener"
 >gRPC 的官方文档&lt;/a>。继续下一步之前要先了解 go 语言的 gRPC 服务框架在一般情况下怎么实现。同样建议直接看文档。简单说就是写一个结构，实现 protoc 根据你的 proto 文件生成的接口，最后调用注册方法把你的实现注册到 gRPC 服务器上就可以了。&lt;/p>
 &lt;p>再考虑请求进入我们的服务代码要经过的流程，gRPC 接口的实现要做事情其实就是把 proto 定义的结构转换成我们之前定义的结构，再调用之前定义的 &lt;code>Endpoint&lt;/code> 。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 89;
-flex-basis: 214px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301134821969.png" data-size="437x488">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301134821969.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301134821969.png"
 width="437"
 height="488"
 srcset="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301134821969_huf9fd1139fbbfdafdb0f01166b9d50a9e_18354_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301134821969_huf9fd1139fbbfdafdb0f01166b9d50a9e_18354_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="gRPC作为传输层协议的交互流程">
-&lt;/a>
-&lt;figcaption>gRPC作为传输层协议的交互流程&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="gRPC作为传输层协议的交互流程"
+class="gallery-image"
+data-flex-grow="89"
+data-flex-basis="214px"
+>&lt;/p>
 &lt;p>其中对请求编解码是个很无聊的过程，字段一一赋值即可。endpoint 继续复用先前 http 的版本。gRPC 实现比较取巧，我们把所有 &lt;code>Endpoint&lt;/code> 放到一个结构里保存，然后实现 gRPC 的接口。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
 &lt;span class="s">&amp;#34;context&amp;#34;&lt;/span>
@@ -807,39 +747,27 @@ alt="gRPC作为传输层协议的交互流程">
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>gwmux&lt;/code>是 gRPC-Gateway 的运行时 &lt;code>mux&lt;/code> 实例，可以理解成路由。 标准库的 &lt;code>http&lt;/code> 包也有自己的 &lt;code>mux&lt;/code> ，但 gRPC-Gateway 项目自己实现了一个。看到 &lt;code>gwmux&lt;/code>应该就能想到这肯定是注册路由，理论上来说——如果你有多个 gRPC 服务，而且 url 没有冲突的话，注册多个服务到路由上应该是没有问题的。&lt;/p>
 &lt;p>所以剩下的问题就是这个 &lt;code>RegisterGreeterHandler&lt;/code> 内是不是我们预期的那样，类似 &lt;code>mux&lt;/code> 注册路由的用法？&lt;/p>
 &lt;h3 id="registerxxxhandlerclient-实现">RegisterXXXHandlerClient 实现&lt;/h3>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 914;
-flex-basis: 2194px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918.png" data-size="1207x132">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918.png"
 width="1207"
 height="132"
 srcset="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918_huae7e9726eb83dcb6808b9604bde89ea7_31321_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918_huae7e9726eb83dcb6808b9604bde89ea7_31321_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="RegisterXXXHandlerClient实现">
-&lt;/a>
-&lt;figcaption>RegisterXXXHandlerClient实现&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>顺着 &lt;code>RegisterXXXHandler&lt;/code>很快就能找到实现，&lt;code>RegisterXXXHandlerClient&lt;/code>。&lt;code>Handle&lt;/code>的用法正如预期的那样，是一个类似 &lt;code>http.ServeMux&lt;/code> 的对象。处理函数里的逻辑很清晰。&lt;/p>
-&lt;p>&lt;figure
+alt="RegisterXXXHandlerClient实现"
 class="gallery-image"
-style="
-flex-grow: 277;
-flex-basis: 666px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463.png" data-size="1167x420">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463.png"
+data-flex-grow="914"
+data-flex-basis="2194px"
+>&lt;/p>
+&lt;p>顺着 &lt;code>RegisterXXXHandler&lt;/code>很快就能找到实现，&lt;code>RegisterXXXHandlerClient&lt;/code>。&lt;code>Handle&lt;/code>的用法正如预期的那样，是一个类似 &lt;code>http.ServeMux&lt;/code> 的对象。处理函数里的逻辑很清晰。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463.png"
 width="1167"
 height="420"
 srcset="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463_hu5863f8bc3c05d0c34f00482d4fdc41e8_65629_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463_hu5863f8bc3c05d0c34f00482d4fdc41e8_65629_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="HandleFunc">
-&lt;/a>
-&lt;figcaption>HandleFunc&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="HandleFunc"
+class="gallery-image"
+data-flex-grow="277"
+data-flex-basis="666px"
+>&lt;/p>
 &lt;p>函数体可以简单划分成两部分：&lt;/p>
 &lt;ul>
 &lt;li>构造和发送请求
@@ -890,22 +818,16 @@ alt="HandleFunc">
 &lt;p>三者的区别在于负载均衡的时机。Kubernetes 的 ClusterIP 是同样具备负载均衡能力的，最初架构中负载均衡一共进行了三次，从云服务商的LB到主机端口（kubernetes），kubernetes再次负载均衡，转发到 gateway。gateway再经由 ClusterIP 转发至 gRPC 服务，每一次转发都经历一次负载均衡，分别提供了虚拟主机的扩容能力、gateway服务的扩容能力、gRPC服务的扩容能力。&lt;/p>
 &lt;p>第二版修改去掉了 gateway 到 gRPC 服务的负载均衡，变成了直连，延迟表现上理论上来说会有改善，但我没做过基准测试，所以这个“理论上”也只是凭感觉说。但可以明确的是 gateway 会额外占据资源配额，造成浪费，不好说值不值，个人感觉没太大意义。&lt;/p>
 &lt;p>第三版，统一了 gateway，还是三次负载均衡。不过Gateway对资源配额的使用效率会更好一点，依然保持了主机、gateway、gRPC 服务的可伸缩性。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 24;
-flex-basis: 59px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894.png" data-size="176x714">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894.png"
 width="176"
 height="714"
 srcset="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894_huca7a171cf394f94ea2cc15092e42ada3_10452_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894_huca7a171cf394f94ea2cc15092e42ada3_10452_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="三次LB">
-&lt;/a>
-&lt;figcaption>三次LB&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="三次LB"
+class="gallery-image"
+data-flex-grow="24"
+data-flex-basis="59px"
+>&lt;/p>
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>单从理论上来说这样设计应该是 OK 的，但是 gRPC-Gateway 官方对负载均衡没有说法，对能不能注册多个 gRPC 服务到一个 &lt;code>mux&lt;/code> 上也没有官方的文档说明，很难说这帮人能不能保证向后兼容，万一之后的版本不支持注册到一个 &lt;code>mux&lt;/code> 上了，到时候改起来就麻烦了，比较坏的情况就是你得自己写一个 &lt;code>protoc-gen-gateway&lt;/code> 这样的玩意儿来生成一个自己的网关。&lt;/p>
 &lt;p>此外还有一个缺陷，gRPC-Gateway 到 gRPC Server 的负载均衡由 Kubernetes ClusterIP 提供，但是 &lt;a class="link" href="https://stackoverflow.com/questions/49888133/kubernetes-service-cluster-ip-how-is-this-internally-load-balanced-across-diffe" target="_blank" rel="noopener"
@@ -1053,22 +975,16 @@ alt="三次LB">
 &lt;/span>&lt;span class="gh">&lt;/span>
 {{ template &amp;#34;message&amp;#34; . }}
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>最终生成结果就像是这样。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 192;
-flex-basis: 462px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/protogen-code-generation/image-20220221161802205.png" data-size="778x404">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/protogen-code-generation/image-20220221161802205.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/protogen-code-generation/image-20220221161802205.png"
 width="778"
 height="404"
 srcset="https://nnnewb.github.io/blog/blog/p/protogen-code-generation/image-20220221161802205_hu2efbed3d0c9645c8b3aebafcdc662339_25912_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/protogen-code-generation/image-20220221161802205_hu2efbed3d0c9645c8b3aebafcdc662339_25912_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="生成结果">
-&lt;/a>
-&lt;figcaption>生成结果&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="生成结果"
+class="gallery-image"
+data-flex-grow="192"
+data-flex-basis="462px"
+>&lt;/p>
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>本身是个很简单的东西。原先用解析proto文件语法树再生成文档的方法不是不行，但一来第三方的解析库经常有不支持的语法和奇怪的bug，&lt;code>protoc&lt;/code>本身又是事实标准，官方的 DSL Specification 文档就是个废物文档，连 &lt;code>option(http) {}&lt;/code> 这样的都算是 specification 之外，还有 &lt;code>optional&lt;/code> 在 proto3 还能用之类的让人想骂傻逼的问题。&lt;/p>
 &lt;p>后来改成了 &lt;code>typescript&lt;/code> + &lt;code>protobuf.js&lt;/code> ，官方支持的稳定性一下子就好多了，但这个跑起来性能实在有点拉，而且 ts 版本用了 &lt;code>ejs&lt;/code> 作为模板引擎，&lt;code>ejs&lt;/code>的标签写起来罗嗦到不行，内嵌 js 的写法一时爽，爽完自己都快看不懂写了什么玩意儿了。&lt;/p>
@@ -1166,39 +1082,27 @@ unpredictable avg: 191ms best: 184ms worst: 265ms total: 19115ms
 &lt;li>访问主存 (Load/Store)&lt;/li>
 &lt;li>写回&lt;/li>
 &lt;/ul>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 212;
-flex-basis: 509px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531.png" data-size="1237x583">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531.png"
 width="1237"
 height="583"
 srcset="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531_hud9ed14138f8676bf12375622c7bab6ae_181582_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531_hud9ed14138f8676bf12375622c7bab6ae_181582_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="单周期处理器和流水线处理器">
-&lt;/a>
-&lt;figcaption>单周期处理器和流水线处理器&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>更简化一点的话可以把ALU算数运算和访存都算作指令的“执行”阶段，CPU就是在不断循环执行这四个动作。&lt;/p>
-&lt;p>&lt;figure
+alt="单周期处理器和流水线处理器"
 class="gallery-image"
-style="
-flex-grow: 104;
-flex-basis: 250px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg.png" data-size="500x479">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg.png"
+data-flex-grow="212"
+data-flex-basis="509px"
+>&lt;/p>
+&lt;p>更简化一点的话可以把ALU算数运算和访存都算作指令的“执行”阶段，CPU就是在不断循环执行这四个动作。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg.png"
 width="500"
 height="479"
 srcset="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="4阶段流水线">
-&lt;/a>
-&lt;figcaption>4阶段流水线&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="4阶段流水线"
+class="gallery-image"
+data-flex-grow="104"
+data-flex-basis="250px"
+>&lt;/p>
 &lt;p>流水线处理器为了充分利用硬件，在译码上一条指令时，就开始取指下一条指令了，执行速度可以是单周期处理器的很多倍。显然流水线越长，每个阶段的耗时越短，整体执行的效率就越高。&lt;/p>
 &lt;p>如果指令一直按顺序执行，流水线只要不断加长加快就能获得更高的性能，但“分支”打破了这个美梦。一个简短的例子如下。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nl">loop:&lt;/span>
@@ -1476,71 +1380,47 @@ iteration-2: 294ms, page fault count: 0
 &lt;span class="p">});&lt;/span>
 &lt;span class="p">}&lt;/span>
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>并将连续内存分配和不连续分配分成&lt;code>benchmark1.cpp&lt;/code>和&lt;code>benchmark2.cpp&lt;/code>，分别用&lt;code>-m32 -O0 -g&lt;/code> 参数编译，放进 VTune 分析内存访问性能。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 152;
-flex-basis: 366px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328.png" data-size="507x332">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328.png"
 width="507"
 height="332"
 srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328_hu3571708b5c5bc5793cda86111950dfc6_32684_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328_hu3571708b5c5bc5793cda86111950dfc6_32684_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="benchmark1">
-&lt;/a>
-&lt;figcaption>benchmark1&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
+alt="benchmark1"
 class="gallery-image"
-style="
-flex-grow: 162;
-flex-basis: 388px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825.png" data-size="551x340">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825.png"
+data-flex-grow="152"
+data-flex-basis="366px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825.png"
 width="551"
 height="340"
 srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825_hu652bea774cd469a5f99b0baeb69059e1_36904_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825_hu652bea774cd469a5f99b0baeb69059e1_36904_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="benchmark2">
-&lt;/a>
-&lt;figcaption>benchmark2&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>观察图中的 LLC Miss Count 可以发现，Benchmark2 的缓存未命中次数远大于 benchmark1 ，平均时延 Average Latency 高出 13 个cycles 。这如何影响性能呢？继续观察下图 Bottom-up 中的分析。&lt;/p>
-&lt;p>&lt;figure
+alt="benchmark2"
 class="gallery-image"
-style="
-flex-grow: 1288;
-flex-basis: 3092px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599.png" data-size="1559x121">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599.png"
+data-flex-grow="162"
+data-flex-basis="388px"
+>&lt;/p>
+&lt;p>观察图中的 LLC Miss Count 可以发现，Benchmark2 的缓存未命中次数远大于 benchmark1 ，平均时延 Average Latency 高出 13 个cycles 。这如何影响性能呢？继续观察下图 Bottom-up 中的分析。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599.png"
 width="1559"
 height="121"
 srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599_huaeb1369d8df5f047d5d55e74be805100_32485_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599_huaeb1369d8df5f047d5d55e74be805100_32485_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="benchmark1">
-&lt;/a>
-&lt;figcaption>benchmark1&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
+alt="benchmark1"
 class="gallery-image"
-style="
-flex-grow: 1716;
-flex-basis: 4119px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956.png" data-size="1562x91">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956.png"
+data-flex-grow="1288"
+data-flex-basis="3092px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956.png"
 width="1562"
 height="91"
 srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956_hu1b3074ff876521e620d7b28b0f9399ed_27911_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956_hu1b3074ff876521e620d7b28b0f9399ed_27911_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="benchmark2">
-&lt;/a>
-&lt;figcaption>benchmark2&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="benchmark2"
+class="gallery-image"
+data-flex-grow="1716"
+data-flex-basis="4119px"
+>&lt;/p>
 &lt;p>能发现，在benchmark1（连续分配链表遍历测试）中，初始化耗时和遍历耗时相仿，都在300ms左右。初始化耗时可能主要来自缺页，每次遍历整个链表仅3ms左右，LLC Miss Count 为 0。这说明缓存完美地发挥了作用。&lt;/p>
 &lt;p>在 benchmark2 （循环分配节点，不连续）中，初始化耗时1.4秒，100次遍历耗时26.461秒，而且注意，LLC Miss Count 高达 47,603,332 。将这个数字除以循环次数，大约等于每个节点访问都会产生 0.7 个 LLC Miss 。&lt;/p>
 &lt;p>为什么会发生这种事？&lt;/p>
@@ -1594,55 +1474,37 @@ iteration: 182ms
 iteration: 179ms
 ... 略
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>一个非常简单的操作，4线程无锁，无 &lt;code>volatile&lt;/code> 递增不同的四个变量，几乎看不出有什么约束导致性能低下的问题。我们通过 Intel VTune 来看看。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 196;
-flex-basis: 471px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690.png" data-size="1453x740">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690.png"
 width="1453"
 height="740"
 srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690_hu046c5a587cbc915571865660d4965e46_142205_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690_hu046c5a587cbc915571865660d4965e46_142205_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="false sharing - intel VTune">
-&lt;/a>
-&lt;figcaption>false sharing - intel VTune&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
+alt="false sharing - intel VTune"
 class="gallery-image"
-style="
-flex-grow: 196;
-flex-basis: 471px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953.png" data-size="1453x740">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953.png"
+data-flex-grow="196"
+data-flex-basis="471px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953.png"
 width="1453"
 height="740"
 srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953_hu63d8a1f13a9b918520d7739e38733940_101530_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953_hu63d8a1f13a9b918520d7739e38733940_101530_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="stall">
-&lt;/a>
-&lt;figcaption>stall&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>可以看到，VTune 提示CPU花费了大量时间在傻等 cache line 写入主存。&lt;/p>
-&lt;p>&lt;figure
+alt="stall"
 class="gallery-image"
-style="
-flex-grow: 1775;
-flex-basis: 4261px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789.png" data-size="1101x62">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789.png"
+data-flex-grow="196"
+data-flex-basis="471px"
+>&lt;/p>
+&lt;p>可以看到，VTune 提示CPU花费了大量时间在傻等 cache line 写入主存。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789.png"
 width="1101"
 height="62"
 srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789_hua004026a68d2e492c13f4a22525e40fe_14051_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789_hua004026a68d2e492c13f4a22525e40fe_14051_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="hot spot">
-&lt;/a>
-&lt;figcaption>hot spot&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="hot spot"
+class="gallery-image"
+data-flex-grow="1775"
+data-flex-basis="4261px"
+>&lt;/p>
 &lt;p>函数 f 出现了海量的 loads/store 操作。&lt;/p>
 &lt;p>在前文中我们聊了 cache line 的作用，这里也能看到 LLC Miss 为 0，那么为什么运行性能会这么差呢？&lt;/p>
 &lt;p>这个问题还得回到 cache line 上。在多核系统中，cache line 还要求 &lt;strong>一致性&lt;/strong> ，一旦写 cache line 中的任意字节，都会让 &lt;strong>整个&lt;/strong> cache line 标记为失效。在基准测试代码里，四个 int 变量被连续分配在栈上，也就是说 cache line 极有可能将这四个变量中的多个保存在同一 cache line 内。任意一个线程修改了其中一个变量，都会导致 cache line 被标为失效，其他线程或核心想要访问这四个变量之一都不得不从主存重新取数。&lt;/p>
@@ -1774,38 +1636,26 @@ iteration: 20ms
 &lt;span class="c1"># 分裂后&lt;/span>
 &lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">],&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">,[&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">]&lt;/span>
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>中位数插入父节点，小于中位数的部分或大于中位数的部分创建新的子节点，插入父级节点。以插入元素 1-7 为例，图示如下。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 245;
-flex-basis: 589px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112.png" data-size="526x214">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112.png"
 width="526"
 height="214"
 srcset="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112_hu5b12e769ccfd98fac492b0d669d71565_6441_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112_hu5b12e769ccfd98fac492b0d669d71565_6441_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="元素1-6">
-&lt;/a>
-&lt;figcaption>元素1-6&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
+alt="元素1-6"
 class="gallery-image"
-style="
-flex-grow: 271;
-flex-basis: 650px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231.png" data-size="580x214">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231.png"
+data-flex-grow="245"
+data-flex-basis="589px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231.png"
 width="580"
 height="214"
 srcset="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231_hu367bf5992fa3acb17c83fa3ae5854998_8699_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231_hu367bf5992fa3acb17c83fa3ae5854998_8699_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="插入元素7">
-&lt;/a>
-&lt;figcaption>插入元素7&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="插入元素7"
+class="gallery-image"
+data-flex-grow="271"
+data-flex-basis="650px"
+>&lt;/p>
 &lt;p>对于中位数在 &lt;code>entries&lt;/code> 中间的情况不会更麻烦，只要记住新节点保存的都是大于中位数的部分，在&lt;code>entries&lt;/code>插入键之后，找到对应的&lt;code>children&lt;/code>下标插入即可。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">def&lt;/span> &lt;span class="nf">add_child&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">child&lt;/span>&lt;span class="p">):&lt;/span>
 &lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;非叶子节点添加新元素
@@ -1904,75 +1754,51 @@ alt="插入元素7">
 &lt;p>AVL 树是以提出者名字命名的，Adelson-Velskii &amp;amp; Landis，俄国人，后来移居以色列。人怎么样不管啦。&lt;/p>
 &lt;p>AVL 树是一种平衡二叉树，左右子树高度差不超过1。保持平衡的方法是每次插入数据的时候发现子树不平衡，就把较高的子树提升为根，把根变成新的根的子树，把较高的子树变矮，较矮的子树变高，实现平衡。这个过程被叫做旋转，下面介绍旋转。&lt;/p>
 &lt;h2 id="左旋转右旋转">左旋转/右旋转&lt;/h2>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 357;
-flex-basis: 858px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/avl-tree/640.webp" data-size="1080x302">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/640.webp"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/640.webp"
 width="1080"
 height="302"
 srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/640_hue4f2eb0b84b4ee9edbff095635b31765_16328_480x0_resize_q75_h2_box_2.webp 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/640_hue4f2eb0b84b4ee9edbff095635b31765_16328_1024x0_resize_q75_h2_box_2.webp 1024w"
 loading="lazy"
-alt="右旋转">
-&lt;/a>
-&lt;figcaption>右旋转&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
+alt="右旋转"
 class="gallery-image"
-style="
-flex-grow: 407;
-flex-basis: 978px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/avl-tree/640-16445510501782.webp" data-size="1080x265">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/640-16445510501782.webp"
+data-flex-grow="357"
+data-flex-basis="858px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/640-16445510501782.webp"
 width="1080"
 height="265"
 srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/640-16445510501782_hu6ffc1b8ea7f9226d8e679d85cbb8998e_14524_480x0_resize_q75_h2_box_2.webp 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/640-16445510501782_hu6ffc1b8ea7f9226d8e679d85cbb8998e_14524_1024x0_resize_q75_h2_box_2.webp 1024w"
 loading="lazy"
-alt="左旋转">
-&lt;/a>
-&lt;figcaption>左旋转&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="左旋转"
+class="gallery-image"
+data-flex-grow="407"
+data-flex-basis="978px"
+>&lt;/p>
 &lt;p>左旋转和右旋转的逻辑是一样的。如果右子树比左子树高，就把右子树提升成根。如果左子树比右子树高，就把左子树提升成根。提升右子树叫左旋转，提升左子树叫右旋转。&lt;/p>
 &lt;p>把子树提升成根会有点麻烦。比如右子树提升为根，原来的根和左子树怎么办？我们并不想重新平衡树的时候把整个左子树都删掉，那原来的根和左子树就必须插回新的树里。&lt;/p>
 &lt;p>我们知道右子树的 key 肯定比根和左子树所有节点大，所以根要插回树的话，一个很直接的想法就是把旧的根接到右子树左下角的叶子节点。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 125;
-flex-basis: 301px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211115435552.png" data-size="442x352">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211115435552.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211115435552.png"
 width="442"
 height="352"
 srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211115435552_hudaf66137716a342688a9fcb78a9ab8fa_32310_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211115435552_hudaf66137716a342688a9fcb78a9ab8fa_32310_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="旧的根插回新根">
-&lt;/a>
-&lt;figcaption>旧的根插回新根&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="旧的根插回新根"
+class="gallery-image"
+data-flex-grow="125"
+data-flex-basis="301px"
+>&lt;/p>
 &lt;p>的确，这样保持了二叉搜索树的特征，但新的树依然不平衡：节点5的左子树高度2，右子树高度0，高度差超过了1。稍微想想就知道，旧的根和左子树直接接到左下角叶子节点的话，会让原本平衡的新树左子树高度增加，进而失去平衡。&lt;/p>
 &lt;p>解决方法也很简单，不要把旧的树接到新的树最小值上，而是把新树的左子树，移植成旧树的右子树，再把旧树移植成新树的左子树。这样一来，右子树的左子树和左子树的右子树不管怎么旋转，高度都一样。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 152;
-flex-basis: 365px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211135807095.png" data-size="559x367">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211135807095.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211135807095.png"
 width="559"
 height="367"
 srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211135807095_huce0ca6d6e6da680d37b57191522379d3_34024_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211135807095_huce0ca6d6e6da680d37b57191522379d3_34024_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20220211135807095">
-&lt;/a>
-&lt;figcaption>image-20220211135807095&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20220211135807095"
+class="gallery-image"
+data-flex-grow="152"
+data-flex-basis="365px"
+>&lt;/p>
 &lt;p>为什么这样可以保持平衡呢？首先AVL树的子树也是AVL树，所以子树的子树之间高度差也不超过1。左旋转、右旋转的的作用是让子树高度一侧升高，一侧降低——注意，左旋转只能降低右儿子的右子树高度，右儿子的左子树高度不变。右旋转只能降低左儿子的左子树高度，左儿子的右子树高度不变。&lt;/p>
 &lt;p>举例来说，上图中右儿子的右子树（4-6-7-8）较高，旋转后变成了（6-7-8），而原本的（4-6-5）变成了（6-4-5），高度不变。&lt;/p>
 &lt;p>这个规律很好理解，因为原来的右子树变成了根，整个右子树剩下的节点高度都降低了。而右子树的左子树变成了现在的左子树的右子树，和根的距离一样，所以高度不变。&lt;/p>
@@ -1980,59 +1806,41 @@ alt="image-20220211135807095">
 &lt;h2 id="双旋转">双旋转&lt;/h2>
 &lt;p>对于往左儿子的左子树插入节点造成的不平衡，右旋转可以实现降低左儿子的左子树高度，再次平衡。往右儿子的右子树插入节点造成的不平衡，左旋转可以降低右儿子的右子树高度，再次平衡。但对于左儿子的右子树或右儿子的左子树插入节点造成的不平衡，一次左、右旋转无法实现再平衡。&lt;/p>
 &lt;p>再看一个例子。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 134;
-flex-basis: 321px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211141652944.png" data-size="535x399">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211141652944.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211141652944.png"
 width="535"
 height="399"
 srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211141652944_hue06f3e4447c8c13119165b1bee1e7d22_36072_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211141652944_hue06f3e4447c8c13119165b1bee1e7d22_36072_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20220211141652944">
-&lt;/a>
-&lt;figcaption>image-20220211141652944&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20220211141652944"
+class="gallery-image"
+data-flex-grow="134"
+data-flex-basis="321px"
+>&lt;/p>
 &lt;p>旋转前，右儿子的左子树（4-7-6-5）高度是4，旋转后（7-4-6-5）高度不变，依然是4，树仍然不平衡。解决办法也很简单，先把右子树（7）右旋，让右儿子的左子树高度低于右子树，再对整棵树左旋，也就是AVL树的双旋转。&lt;/p>
 &lt;p>一步一步看双旋转是怎么解决这个问题的。&lt;/p>
 &lt;p>第一步，右儿子的左子树比右儿子右子树高，所以将右儿子右旋，使得右儿子的右子树高于右儿子的左子树。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 141;
-flex-basis: 339px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211142847329.png" data-size="490x346">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211142847329.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211142847329.png"
 width="490"
 height="346"
 srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211142847329_hudfe01573f636ba8f14106612b6b86fbd_23701_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211142847329_hudfe01573f636ba8f14106612b6b86fbd_23701_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20220211142847329">
-&lt;/a>
-&lt;figcaption>image-20220211142847329&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20220211142847329"
+class="gallery-image"
+data-flex-grow="141"
+data-flex-basis="339px"
+>&lt;/p>
 &lt;p>我们知道的左旋转时右儿子的左子树高度不变，右儿子的右子树高度-1。这一步前，直接对整棵树左旋时，最高的那颗子树（右儿子的左子树）高度没有变化，树依然不平衡，只是变成了右子树更矮，左子树更高而已。&lt;/p>
 &lt;p>而这一步之后，最高的子树变成了右子树的右子树。现在对整棵树左旋，右子树的右子树高度下降了，和原本右子树的左子树高度一致，达成平衡。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 162;
-flex-basis: 390px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211151253277.png" data-size="573x352">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211151253277.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211151253277.png"
 width="573"
 height="352"
 srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211151253277_hu3754058aad682cd96a93972186837210_33976_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211151253277_hu3754058aad682cd96a93972186837210_33976_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20220211151253277">
-&lt;/a>
-&lt;figcaption>image-20220211151253277&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20220211151253277"
+class="gallery-image"
+data-flex-grow="162"
+data-flex-basis="390px"
+>&lt;/p>
 &lt;p>这个原则简单地说，就是左子树下最高的子树应该是左子树，右子树下最高的子树应该是右子树。如果新增节点后不满足这个条件，就要先对左子树左旋，或者对右子树右旋，来满足这个条件。&lt;/p>
 &lt;h2 id="代码实现">代码实现&lt;/h2>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="kn">from&lt;/span> &lt;span class="nn">typing&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">Optional&lt;/span>
@@ -2225,108 +2033,72 @@ alt="image-20220211151253277">
 &lt;h2 id="二">二&lt;/h2>
 &lt;p>回顾过去，2021年对我而言是怎样的一年？&lt;/p>
 &lt;p>当我问自己这个问题，我才发现似乎没有一个能脱口而出的答案。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 564;
-flex-basis: 1355px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093132174.png" data-size="870x154">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093132174.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093132174.png"
 width="870"
 height="154"
 srcset="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093132174_hu312baa1af15bc0284994619b812524f6_3754_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093132174_hu312baa1af15bc0284994619b812524f6_3754_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20220209093132174">
-&lt;/a>
-&lt;figcaption>image-20220209093132174&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>普普通通地正常工作，顺便也摸摸鱼。&lt;/p>
-&lt;p>&lt;figure
+alt="image-20220209093132174"
 class="gallery-image"
-style="
-flex-grow: 495;
-flex-basis: 1188px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093249061.png" data-size="728x147">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093249061.png"
+data-flex-grow="564"
+data-flex-basis="1355px"
+>&lt;/p>
+&lt;p>普普通通地正常工作，顺便也摸摸鱼。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093249061.png"
 width="728"
 height="147"
 srcset="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093249061_huc19f43cf1d7a348ef7c6f534f3f07c4a_8775_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093249061_huc19f43cf1d7a348ef7c6f534f3f07c4a_8775_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20220209093249061">
-&lt;/a>
-&lt;figcaption>image-20220209093249061&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>偶尔也上GitHub看两眼，有没有什么新鲜玩意儿。&lt;/p>
-&lt;p>&lt;figure
+alt="image-20220209093249061"
 class="gallery-image"
-style="
-flex-grow: 350;
-flex-basis: 840px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093447327.png" data-size="452x129">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093447327.png"
+data-flex-grow="495"
+data-flex-basis="1188px"
+>&lt;/p>
+&lt;p>偶尔也上GitHub看两眼，有没有什么新鲜玩意儿。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093447327.png"
 width="452"
 height="129"
 srcset="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093447327_hucfe56099574b6d1070a7ba458db01ed2_7134_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093447327_hucfe56099574b6d1070a7ba458db01ed2_7134_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20220209093447327">
-&lt;/a>
-&lt;figcaption>image-20220209093447327&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>学了点没用的逆向技术，demo也勉强凑出9+1个star。不过趁这个机会倒是了解了下x86汇编语言，姑且算是个没什么卵用的进步，主流64位的汇编和arm的汇编还是不懂，x86也只能算是盲人摸象。&lt;/p>
-&lt;p>&lt;figure
+alt="image-20220209093447327"
 class="gallery-image"
-style="
-flex-grow: 297;
-flex-basis: 714px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093903198.png" data-size="366x123">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093903198.png"
+data-flex-grow="350"
+data-flex-basis="840px"
+>&lt;/p>
+&lt;p>学了点没用的逆向技术，demo也勉强凑出9+1个star。不过趁这个机会倒是了解了下x86汇编语言，姑且算是个没什么卵用的进步，主流64位的汇编和arm的汇编还是不懂，x86也只能算是盲人摸象。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093903198.png"
 width="366"
 height="123"
 srcset="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093903198_hu1a597d42e008a51b6b7e3058561fedc4_7207_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209093903198_hu1a597d42e008a51b6b7e3058561fedc4_7207_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20220209093903198">
-&lt;/a>
-&lt;figcaption>image-20220209093903198&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>又一个玩具，这类玩具太多了。我水平不够，完成度也低，只能说是写这个的时候就是打发时间。&lt;/p>
-&lt;p>&lt;figure
+alt="image-20220209093903198"
 class="gallery-image"
-style="
-flex-grow: 211;
-flex-basis: 507px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209094119262.png" data-size="256x121">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209094119262.png"
+data-flex-grow="297"
+data-flex-basis="714px"
+>&lt;/p>
+&lt;p>又一个玩具，这类玩具太多了。我水平不够，完成度也低，只能说是写这个的时候就是打发时间。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209094119262.png"
 width="256"
 height="121"
 srcset="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209094119262_huba5eeb6809b4946e971e1798bbd4c32c_4701_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209094119262_huba5eeb6809b4946e971e1798bbd4c32c_4701_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20220209094119262">
-&lt;/a>
-&lt;figcaption>image-20220209094119262&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20220209094119262"
+class="gallery-image"
+data-flex-grow="211"
+data-flex-basis="507px"
+>&lt;/p>
 &lt;p>本来不是很看得上 dtm 这个项目。不为别的，就是觉得作者 segmentfault 上刷博文宣传自己的框架有种保险推销员的感觉，让人觉得不靠谱。但还是老实去看了代码，毕竟比起 Java 写得 seata 之类的框架，dtm 封装比较薄，源码稍微好读一点。&lt;/p>
 &lt;p>实际读起来感觉还是有点混乱，最后照着 dtm 文档的时序图写了个案例，配置了opentelemetry。分布式追踪真的很好用，讲真，要是单体应用也能跟着函数追踪出这样一个图就绝了。我觉得可以拿 python 开刀试试。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 270;
-flex-basis: 650px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209095328828.png" data-size="355x131">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209095328828.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209095328828.png"
 width="355"
 height="131"
 srcset="https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209095328828_hu09413e63593e9e88b5002d57426f4aa7_9471_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/first-blog-in-2022/image-20220209095328828_hu09413e63593e9e88b5002d57426f4aa7_9471_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20220209095328828">
-&lt;/a>
-&lt;figcaption>image-20220209095328828&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20220209095328828"
+class="gallery-image"
+data-flex-grow="270"
+data-flex-basis="650px"
+>&lt;/p>
 &lt;p>尝试入门密码学，但数学基础不好，为了搞明白希尔密码用到的矩阵运算翻了半天搜索引擎才写出来。结果还是没继续学下去。2022也许继续看？好歹把传统密码里的DES、AES学完吧，不求能手写，大概能看明白过程就好。要是能再把原理懂个大概就更好了。&lt;/p>
 &lt;p>至于别的，也许我能报菜名一样提一大堆名字，但终究骗不了我自己。是，2021一年时间，各种杂七杂八的技术概念和新名词碰了一堆，但杂而不精，几乎没有什么真正吸收、融会贯通的内容。&lt;/p>
 &lt;h2 id="三">三&lt;/h2>
@@ -2366,22 +2138,16 @@ alt="image-20220209095328828">
 &lt;span class="p">}&lt;/span>
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>如此一来， 当go的&lt;code>sql&lt;/code>库访问数据库的时候，就会在&lt;code>jaeger&lt;/code>里记录一个&lt;code>span&lt;/code>，可以清晰地看到耗时情况。&lt;/p>
 &lt;h3 id="分析">分析&lt;/h3>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 207;
-flex-basis: 497px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728.png" data-size="1166x563">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728.png"
 width="1166"
 height="563"
 srcset="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211231103911728">
-&lt;/a>
-&lt;figcaption>image-20211231103911728&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211231103911728"
+class="gallery-image"
+data-flex-grow="207"
+data-flex-basis="497px"
+>&lt;/p>
 &lt;p>收集到耗时情况后开始观察，注意到两个问题：&lt;/p>
 &lt;ol>
 &lt;li>&lt;code>ConnectorConnect&lt;/code> 在每个请求前出现，每次耗时 2ms 左右。但 &lt;code>sql&lt;/code> 是有连接池的，这里每次执行查询都产生一次连接显然不对劲。&lt;/li>
@@ -2419,39 +2185,27 @@ alt="image-20211231103911728">
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>因为我司这个项目没有配置 metrics 收集和分析，自然也没收集服务的连接池情况。所以当初入职后遇到一个奇怪的连接池耗尽，服务假死，调用栈全部卡在连接池上的问题时，为了判断是不是出现连接泄露，写了个goroutine去监测连接池里连接获取和释放的情况&amp;hellip;&lt;/p>
 &lt;p>为了调试方便，还把&lt;code>SetMaxIdleConns&lt;/code>设置为了0。&lt;/p>
 &lt;p>于是初步怀疑就是这个原因导致连接池罢工，将整段调试代码注释掉之后，再次访问接口，响应时间降低至9.8ms。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 190;
-flex-basis: 458px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407.png" data-size="212x111">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407.png"
 width="212"
 height="111"
 srcset="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211231110219407">
-&lt;/a>
-&lt;figcaption>image-20211231110219407&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>最大头的耗时依然是&lt;code>count(1)&lt;/code>查询。&lt;/p>
-&lt;p>&lt;figure
+alt="image-20211231110219407"
 class="gallery-image"
-style="
-flex-grow: 355;
-flex-basis: 854px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414.png" data-size="1559x438">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414.png"
+data-flex-grow="190"
+data-flex-basis="458px"
+>&lt;/p>
+&lt;p>最大头的耗时依然是&lt;code>count(1)&lt;/code>查询。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414.png"
 width="1559"
 height="438"
 srcset="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211231110316414">
-&lt;/a>
-&lt;figcaption>image-20211231110316414&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211231110316414"
+class="gallery-image"
+data-flex-grow="355"
+data-flex-basis="854px"
+>&lt;/p>
 &lt;p>默认情况下 IdleConn 只有 2，超时也比较短。实际参数应该根据业务访问情况来安排。我这也没什么好的计算公式。连接池参数有问题会影响单条SQL的基本耗时，请求里三四条查询，每条加上几个ms，整个请求时间就拖长了十几ms。在微服务系统里影响还可能放大，别的服务要是多次调用，积累的时延可能就要上百ms了。&lt;/p>
 &lt;h3 id="缓存优化">缓存优化&lt;/h3>
 &lt;p>进一步的优化思路就是做缓存。是为了提高服务响应速度，也是为了提高负载能力、减轻查询压力，保护 MySQL 服务。过去年轻无知犯过错，就是考虑性能的时候只关注到了自己写的代码，认为代码跑得快重要——比如把 C 的执行性能吹上天。但事情从来不是这么简单——辩证法说实事求是，要具体问题具体分析。后端从来不是“我的代码”这么简单，如果不能从整个系统的角度出发发现问题，那就算是 CPU 成精了也没辙。&lt;/p>
@@ -2593,51 +2347,34 @@ sudo update-alternatives --set vi /usr/local/bin/vim
 &lt;h2 id="1-案例设计">#1 案例设计&lt;/h2>
 &lt;p>采用分布式事务经典的转账案例：用户从银行A转账到银行B，银行A扣除余额，银行B增加余额。&lt;/p>
 &lt;p>XA事务官方规范文档给出的示意图如下。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/%E4%BA%8B%E5%8A%A1%E6%A8%A1%E5%9E%8B-16396188786822.webp" >
-&lt;img src="https://nnnewb.github.io/blog/blog/%E4%BA%8B%E5%8A%A1%E6%A8%A1%E5%9E%8B-16396188786822.webp"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/%E4%BA%8B%E5%8A%A1%E6%A8%A1%E5%9E%8B-16396188786822.webp"
 loading="lazy"
-alt="事务模型">
-&lt;/a>
-&lt;figcaption>事务模型&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="事务模型"
+>&lt;/p>
 &lt;p>用 XA 事务描述，用户的转账操作发生在AP，AP调用TM注册全局事务后，调用银行A（RM）完成扣款（PREPARE），调用银行B（RM）完成增加余额（PREPARE），然后调用TM提交全局事务，TM回调银行A和B提交本地事务。&lt;/p>
 &lt;p>图示如下。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 129;
-flex-basis: 309px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/xa-transaction-theory-to-practice/image-20211216093842362-16396187268731.png" data-size="975x755">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/xa-transaction-theory-to-practice/image-20211216093842362-16396187268731.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/xa-transaction-theory-to-practice/image-20211216093842362-16396187268731.png"
 width="975"
 height="755"
 srcset="https://nnnewb.github.io/blog/blog/p/xa-transaction-theory-to-practice/image-20211216093842362-16396187268731_hud4880bf67613c24d16e213b564201e7c_46081_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/xa-transaction-theory-to-practice/image-20211216093842362-16396187268731_hud4880bf67613c24d16e213b564201e7c_46081_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="xa事务时序图">
-&lt;/a>
-&lt;figcaption>xa事务时序图&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="xa事务时序图"
+class="gallery-image"
+data-flex-grow="129"
+data-flex-basis="309px"
+>&lt;/p>
 &lt;p>上面的时序图是读了 &lt;a class="link" href="https://github.com/yedf/dtm/" target="_blank" rel="noopener"
 >github.com/yedf/dtm&lt;/a> 代码后胡乱分析出来的，图略去了错误处理的部分。根据这个时序图可以做出一个简单的服务划分设计。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 110;
-flex-basis: 265px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/xa-transaction-theory-to-practice/image-20211216095721213.png" data-size="634x574">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/xa-transaction-theory-to-practice/image-20211216095721213.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/xa-transaction-theory-to-practice/image-20211216095721213.png"
 width="634"
 height="574"
 srcset="https://nnnewb.github.io/blog/blog/p/xa-transaction-theory-to-practice/image-20211216095721213_hucf2754a53d93ba8eebe14a4b22b7b5b1_40377_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/xa-transaction-theory-to-practice/image-20211216095721213_hucf2754a53d93ba8eebe14a4b22b7b5b1_40377_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="案例服务划分">
-&lt;/a>
-&lt;figcaption>案例服务划分&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="案例服务划分"
+class="gallery-image"
+data-flex-grow="110"
+data-flex-basis="265px"
+>&lt;/p>
 &lt;p>为了更好地观察服务的交互情况，引入了 Jaeger ，如果是为了简化整个案例代码考虑也可以不要。但大部分时候 Jaeger 应该是没什么存在感的。&lt;/p>
 &lt;p>nginx 反向代理将 AP 的接口还有 Bank1/Bank2的接口导出给用户访问，实际上案例中没有需要访问 Bank1/Bank2 接口的情况，所以 去掉 nginx 反向代理应该也没什么大关系。&lt;/p>
 &lt;h2 id="2-技术栈">#2 技术栈&lt;/h2>
@@ -3361,22 +3098,16 @@ alt="案例服务划分">
 &lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
 &lt;span class="p">}&lt;/span>
 &lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="0x04-结果展示">0x04 结果展示&lt;/h2>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 275;
-flex-basis: 660px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/stack-based-virtual-machine-for-minilang/image-20211213160751960.png" data-size="154x56">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/stack-based-virtual-machine-for-minilang/image-20211213160751960.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/stack-based-virtual-machine-for-minilang/image-20211213160751960.png"
 width="154"
 height="56"
 srcset="https://nnnewb.github.io/blog/blog/p/stack-based-virtual-machine-for-minilang/image-20211213160751960_hub5ba10952ea39a099fde4f51e1c00d4b_2964_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/stack-based-virtual-machine-for-minilang/image-20211213160751960_hub5ba10952ea39a099fde4f51e1c00d4b_2964_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211213160751960">
-&lt;/a>
-&lt;figcaption>image-20211213160751960&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211213160751960"
+class="gallery-image"
+data-flex-grow="275"
+data-flex-basis="660px"
+>&lt;/p>
 &lt;p>PS：这个 &lt;code>+&lt;/code> 也是函数。&lt;/p>
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>这个简单的 VM 写的时候脑子里想的都是 x86 汇编和 Python 的类型，所以内置类型定义就很粗暴，指令 OpCode 定义也是想当然。写成这样当然还是不满意的，都费了这么大劲了，简简单单做个 JIT 不过分吧？&lt;/p>
@@ -4084,7 +3815,14 @@ vm Ready control-plane,master 39m v1.22.4 10.0.2.15 &amp;lt;none&amp;gt; Ubuntu 
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>之后还可以部署 dashboard 之类的应用验证，不想写了，浪费时间。&lt;/p>
 &lt;p>写了一大堆又删掉了。&lt;/p>
-&lt;p>如果一定要总结的话，k8s，学了进小厂吧，小厂不用；学了进大厂吧，大厂也不要你。&lt;/p></description></item><item><title>密码学入门03 - 古典密码#3</title><link>https://nnnewb.github.io/blog/p/cryptography-introduction-03/</link><pubDate>Tue, 16 Nov 2021 11:31:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/cryptography-introduction-03/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/cryptography-introduction-03/cover.jpg" alt="Featured image of post 密码学入门03 - 古典密码#3" />&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>如果一定要总结的话，k8s，学了进小厂吧，小厂不用；学了进大厂吧，大厂也不要你。&lt;/p></description></item><item><title>About Me</title><link>https://nnnewb.github.io/blog/about/</link><pubDate>Tue, 16 Nov 2021 14:39:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/about/</guid><description>&lt;h2 id="关于我">关于我&lt;/h2>
+&lt;div style="text-align: center;">
+&lt;p>一个代码民工，也做过工头。&lt;/p>
+&lt;p>擅长 Python、Go、JS/TS，后端专精，前端略懂。&lt;/p>
+&lt;p>工作平台 Windows/Linux。Mac虽好但不是我的菜。&lt;/p>
+&lt;p>自然，做后端的，Docker、Kubernetes 不能不会。&lt;/p>
+&lt;p>我的博客主页：&lt;a href="https://nnnewb.github.io/blog/">nnnewb.github.io/blog&lt;/a>&lt;/p>
+&lt;/div></description></item><item><title>密码学入门03 - 古典密码#3</title><link>https://nnnewb.github.io/blog/p/cryptography-introduction-03/</link><pubDate>Tue, 16 Nov 2021 11:31:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/cryptography-introduction-03/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/cryptography-introduction-03/cover.jpg" alt="Featured image of post 密码学入门03 - 古典密码#3" />&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>学习一下 Hill 密码。&lt;/p>
 &lt;h2 id="0x01-数学基础">0x01 数学基础&lt;/h2>
 &lt;p>参考了 &lt;a class="link" href="https://www.shuxuele.com/algebra/matrix-introduction.html" target="_blank" rel="noopener"
@@ -4221,22 +3959,16 @@ a &amp;amp; b \\ c &amp;amp; d
 \end{bmatrix},|A|=ad-bc
 $$
 2x2矩阵的行列式就是简单的交叉相乘再相减。下图中蓝色是正，红色是负。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 148;
-flex-basis: 357px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112142023403.png" data-size="122x82">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112142023403.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112142023403.png"
 width="122"
 height="82"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112142023403_huc11a23cfb761a28dddf43c5ac68c59d6_2679_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112142023403_huc11a23cfb761a28dddf43c5ac68c59d6_2679_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211112142023403">
-&lt;/a>
-&lt;figcaption>image-20211112142023403&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211112142023403"
+class="gallery-image"
+data-flex-grow="148"
+data-flex-basis="357px"
+>&lt;/p>
 &lt;p>再看 3x3 矩阵的行列式写法，用矩阵第一行的元素，逐个去乘不在和这个元素同一行同一列元素的行列式，最后把这些值用加减号连起来。
 $$
 \begin{vmatrix}
@@ -4257,40 +3989,28 @@ d &amp;amp; e \\ g &amp;amp; h
 =a(ei-fh)-b(di-fg)+c(dh-eg)
 $$
 更直观的图形化表示：&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 379;
-flex-basis: 909px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112142439733.png" data-size="436x115">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112142439733.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112142439733.png"
 width="436"
 height="115"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112142439733_hu6459d23d051a17bdb0e4e65aba5ebe8f_9156_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112142439733_hu6459d23d051a17bdb0e4e65aba5ebe8f_9156_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211112142439733">
-&lt;/a>
-&lt;figcaption>image-20211112142439733&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211112142439733"
+class="gallery-image"
+data-flex-grow="379"
+data-flex-basis="909px"
+>&lt;/p>
 &lt;p>注意这个过程中的加减符号规律，&lt;em>a&lt;sub>11&lt;/sub>×(&amp;hellip;)&lt;/em> 是正，&lt;em>a&lt;sub>12&lt;/sub>×(&amp;hellip;)&lt;/em> 是负，&lt;em>a&lt;sub>13&lt;/sub>×(&amp;hellip;)&lt;/em> 又是正。&lt;/p>
 &lt;p>知晓这些规律后再看更大的矩阵，也可以依葫芦画瓢写出行列式。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 468;
-flex-basis: 1123px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112143050819.png" data-size="590x126">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112143050819.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112143050819.png"
 width="590"
 height="126"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112143050819_hu6a758e89ff701756d3ce691fff269895_11232_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-03/image-20211112143050819_hu6a758e89ff701756d3ce691fff269895_11232_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211112143050819">
-&lt;/a>
-&lt;figcaption>image-20211112143050819&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211112143050819"
+class="gallery-image"
+data-flex-grow="468"
+data-flex-basis="1123px"
+>&lt;/p>
 &lt;p>留意其中正负号出现的规律，&lt;em>+a&lt;sub>11&lt;/sub>&lt;/em> &lt;em>-a&lt;sub>12&lt;/sub>&lt;/em> &lt;em>+a&lt;sub>13&lt;/sub>&lt;/em> &lt;em>-a&lt;sub>14&lt;/sub>&lt;/em> 。&lt;/p>
 &lt;p>这种计算方法叫做 &lt;strong>拉普拉斯展开&lt;/strong> 。&lt;/p>
 &lt;h3 id="19-求逆矩阵的方法">1.9 求逆矩阵的方法&lt;/h3>
@@ -4450,22 +4170,16 @@ $$&lt;/p>
 &lt;h3 id="特点">特点&lt;/h3>
 &lt;p>playfair 有 26x26 个字母对，因此识别出单个字母对相对简单的单表代替算法要困难得多。字母对的相对频率比字母的相对频率变化幅度小，利用频率分析字母对更困难。&lt;/p>
 &lt;p>playfair 仍然是相对容易攻破的，因为它的密文仍然完好保留了明文语言的大部分结构特征，几百个字母的密文就足够分析出规律了。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 168;
-flex-basis: 404px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-02/image-20211111144837847.png" data-size="1325x787">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-02/image-20211111144837847.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-02/image-20211111144837847.png"
 width="1325"
 height="787"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-02/image-20211111144837847_hu40999a0266ccbfe450f46cc822fe186a_187757_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-02/image-20211111144837847_hu40999a0266ccbfe450f46cc822fe186a_187757_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211111144837847">
-&lt;/a>
-&lt;figcaption>image-20211111144837847&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211111144837847"
+class="gallery-image"
+data-flex-grow="168"
+data-flex-basis="404px"
+>&lt;/p>
 &lt;p>图中显示了 playfair 密码和其他一些密码加密的有效性，标有明文的曲线画出了超过从7w个字母的文章中得到的频率分布。曲线代表这样的含义：对文章中出现的每个字母计数，计数结果除以使用频率最高的字母出现次数。假设使用频率最高的字母 &lt;code>e&lt;/code> 出现的频率为 1 ，那么 &lt;code>t&lt;/code> 出现的频率就是 &lt;code>0.76&lt;/code> 等等。&lt;/p>
 &lt;p>图中的横轴表示字母，纵轴表示字母出现的频率。 曲线体现了加密后字母频率分布被掩盖的程度。如果频率分布的信息完全被加密过程给隐藏了，那么密文的频率曲线应该是一条水平的线，唯密文密码分析由此下手将一无所获。&lt;/p>
 &lt;p>图中所示的频率曲线表明 playfair 密码虽然有比明文稍平坦的频率分布曲线，但仍然透露了大量信息给密码分析者。&lt;/p>
@@ -4614,22 +4328,16 @@ alt="image-20211111144837847">
 &lt;li>密文：作为算法的输出，看起来完全随机而杂乱的消息，依赖于明文和密钥。对于给定的消息，不同密钥产生不同的密文，密文看上去是随机的数据流并且其意义是不可理解的。&lt;/li>
 &lt;li>解密算法：本质上是加密算法的逆运算。输入密文和密钥，输出原始明文。&lt;/li>
 &lt;/ul>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 306;
-flex-basis: 735px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110140236382.png" data-size="1155x377">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110140236382.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110140236382.png"
 width="1155"
 height="377"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110140236382_hu8783c317e7f9de22b27c24c57fb0b0d7_134857_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110140236382_hu8783c317e7f9de22b27c24c57fb0b0d7_134857_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211110140236382">
-&lt;/a>
-&lt;figcaption>image-20211110140236382&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211110140236382"
+class="gallery-image"
+data-flex-grow="306"
+data-flex-basis="735px"
+>&lt;/p>
 &lt;p>传统密码的安全使用要满足两个要求：&lt;/p>
 &lt;ul>
 &lt;li>加密算法必须是足够强的。即使攻击者拥有一定数量的密文和产生这些密文的明文，他也不能破译密文或发现密钥。&lt;/li>
@@ -4699,22 +4407,16 @@ alt="image-20211110140236382">
 &lt;/ul>
 &lt;p>如果满足上述标准中任意一条则它在计算上是安全的，但估计攻击者破译密文所需的工作量是非常困难的。&lt;/p>
 &lt;p>从穷举法入手，考虑所需的时间。穷举要获得成功平均来说必须尝试所有可能密钥的一半，下图给出了不同密钥空间穷举尝试所需的时间。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 401;
-flex-basis: 964px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110150214623.png" data-size="1431x356">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110150214623.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110150214623.png"
 width="1431"
 height="356"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110150214623_hua784c719a6627b81510d7a296f0c9cd9_192031_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110150214623_hua784c719a6627b81510d7a296f0c9cd9_192031_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211110150214623">
-&lt;/a>
-&lt;figcaption>image-20211110150214623&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211110150214623"
+class="gallery-image"
+data-flex-grow="401"
+data-flex-basis="964px"
+>&lt;/p>
 &lt;h2 id="0x02-代替技术">0x02 代替技术&lt;/h2>
 &lt;h3 id="21-caesar-凯撒密码">2.1 Caesar 凯撒密码&lt;/h3>
 &lt;p>已知最早的代替密码是由 julius caesar 发明的 caesar 密码。caesar 密码非常简单，就是对字母表中的每个字母，用它之后的第三个字母来代替，字母表是首尾相连循环的。&lt;/p>
@@ -4763,114 +4465,78 @@ brute force caesar: gdkkn
 &lt;p>如果明文所用的语言不为我们所知，那么明文输出就不可识别。输入也可能按照某种方式经过缩写或压缩，也就更不可能识别了。例如一个经过zip压缩的文本文件，用一种简单的代替密码来加密，那么即使用穷举法来进行密码分析，恢复出来的明文也是不可识别的。（注：实际上可以通过文件头、magic number 之类的已知特征来猜测出内容是被压缩过的）。&lt;/p>
 &lt;h3 id="22-单表代替密码">2.2 单表代替密码&lt;/h3>
 &lt;p>凯撒密码是一种代替密码，每个明文元素唯一对应代替表中的一个密文元素。因为代替表是字母表的循环移动，故密码范围只有 1-25。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 620;
-flex-basis: 1489px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110155545123.png" data-size="571x92">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110155545123.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110155545123.png"
 width="571"
 height="92"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110155545123_hu3e213ee09efbd6d51e121868c96de46b_37508_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110155545123_hu3e213ee09efbd6d51e121868c96de46b_37508_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211110155545123">
-&lt;/a>
-&lt;figcaption>image-20211110155545123&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211110155545123"
+class="gallery-image"
+data-flex-grow="620"
+data-flex-basis="1489px"
+>&lt;/p>
 &lt;p>定义术语&lt;strong>置换&lt;/strong>：设有限元素的集合 &lt;em>S&lt;/em> 的置换是 &lt;em>S&lt;/em> 的所有元素的有序排列，而且每个元素只出现一次。例如，如果有 &lt;code>S = {a,b,c}&lt;/code> ，则 &lt;em>S&lt;/em> 有 6 个置换：&lt;code>abc,acb,bac,bca,cab,cba&lt;/code> 。一般具有 n 个元素的集合有 &lt;code>n!&lt;/code> 个置换。&lt;/p>
 &lt;p>如果代替表是26个字母的任意置换，那么就有 &lt;code>26!&lt;/code> 种可能的密钥，大于 &lt;code>4*10^26&lt;/code> 种可能，这比 DES 的密钥空间还要大 10 个数量级，看起来能抵挡穷举攻击了。&lt;/p>
 &lt;p>这种方法被称为单表代替密码，每条消息用一个字母表（给出从明文字母到密文字母的映射）加密。&lt;/p>
 &lt;h3 id="23-词频攻击">2.3 词频攻击&lt;/h3>
 &lt;p>对于单表代替密码，如果攻击者知道明文的属性，比如知道明文是未经压缩的英文文本，就可以通过语言的一些统计学规律进行攻击。&lt;/p>
 &lt;p>例如下图中的密文。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 596;
-flex-basis: 1431px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160433970.png" data-size="841x141">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160433970.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160433970.png"
 width="841"
 height="141"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160433970_hu0bae56299b47face312e3af416d81f8d_75914_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160433970_hu0bae56299b47face312e3af416d81f8d_75914_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211110160433970">
-&lt;/a>
-&lt;figcaption>image-20211110160433970&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211110160433970"
+class="gallery-image"
+data-flex-grow="596"
+data-flex-basis="1431px"
+>&lt;/p>
 &lt;p>已知明文是英文文本，首先把字母使用的相对频率统计出来，与英文字母的使用频率分布进行比较。&lt;/p>
 &lt;p>密文字母使用频率：&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 567;
-flex-basis: 1362px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160604203.png" data-size="1345x237">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160604203.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160604203.png"
 width="1345"
 height="237"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160604203_hud2bc73f9e0917779ec0f259ca64b743c_85725_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160604203_hud2bc73f9e0917779ec0f259ca64b743c_85725_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211110160604203">
-&lt;/a>
-&lt;figcaption>image-20211110160604203&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>英文字母使用频率：&lt;/p>
-&lt;p>&lt;figure
+alt="image-20211110160604203"
 class="gallery-image"
-style="
-flex-grow: 134;
-flex-basis: 323px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160620669.png" data-size="884x656">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160620669.png"
+data-flex-grow="567"
+data-flex-basis="1362px"
+>&lt;/p>
+&lt;p>英文字母使用频率：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160620669.png"
 width="884"
 height="656"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160620669_hu4f20a761c6fb706ee66e5ab52766ee21_322944_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160620669_hu4f20a761c6fb706ee66e5ab52766ee21_322944_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211110160620669">
-&lt;/a>
-&lt;figcaption>image-20211110160620669&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211110160620669"
+class="gallery-image"
+data-flex-grow="134"
+data-flex-basis="323px"
+>&lt;/p>
 &lt;p>此时我们可以尝试在密文上做一些代替，填入明文，看看是否形成一个可读消息。更系统一点的方法是寻找其他规律，例如明文中有某些词可能是已知的，或者寻找密文字母中的重复序列，推导它们的等价明文。统计双字母组合的频率会是个很有效的工具。&lt;/p>
 &lt;p>尝试分析的结果是：&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 343;
-flex-basis: 824px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160738100.png" data-size="831x242">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160738100.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160738100.png"
 width="831"
 height="242"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160738100_hub66bc3a0a336c5d68333c334cbbee3ec_99281_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110160738100_hub66bc3a0a336c5d68333c334cbbee3ec_99281_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211110160738100">
-&lt;/a>
-&lt;figcaption>image-20211110160738100&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>继续进行分析和测试可以很快得出完整的明文。&lt;/p>
-&lt;p>&lt;figure
+alt="image-20211110160738100"
 class="gallery-image"
-style="
-flex-grow: 864;
-flex-basis: 2075px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110161027735.png" data-size="960x111">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110161027735.png"
+data-flex-grow="343"
+data-flex-basis="824px"
+>&lt;/p>
+&lt;p>继续进行分析和测试可以很快得出完整的明文。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110161027735.png"
 width="960"
 height="111"
 srcset="https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110161027735_hu97cc0623de9f6e01bc3a236c731df603_66342_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cryptography-introduction-01/image-20211110161027735_hu97cc0623de9f6e01bc3a236c731df603_66342_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211110161027735">
-&lt;/a>
-&lt;figcaption>image-20211110161027735&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211110161027735"
+class="gallery-image"
+data-flex-grow="864"
+data-flex-basis="2075px"
+>&lt;/p>
 &lt;p>实践：&lt;/p>
 &lt;p>实现一个简单的替代密码，用随机生成的密码表。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-cpp" data-lang="cpp">&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">string&lt;/span> &lt;span class="n">substitution_cipher&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">string&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">plaintext&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">const&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">map&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">char&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">char&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">chart&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
@@ -5200,22 +4866,16 @@ opt -enable-new-pm&lt;span class="o">=&lt;/span>&lt;span class="m">0&lt;/span> -
 &lt;li>在原始块的结束部分再次分割基本块，分割后的块包含原始块的 terminator （&lt;code>terminator&lt;/code>）&lt;/li>
 &lt;li>创建一个恒真条件，跳转到原始块的 terminator，假则跳转到伪造块 （&lt;code>condition2&lt;/code>）&lt;/li>
 &lt;/ol>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 67;
-flex-basis: 161px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211102160422737.png" data-size="435x648">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211102160422737.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211102160422737.png"
 width="435"
 height="648"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211102160422737_hu1adf2e2db9eba618ac02ebe93739a09a_98722_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211102160422737_hu1adf2e2db9eba618ac02ebe93739a09a_98722_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211102160422737">
-&lt;/a>
-&lt;figcaption>image-20211102160422737&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211102160422737"
+class="gallery-image"
+data-flex-grow="67"
+data-flex-basis="161px"
+>&lt;/p>
 &lt;p>混淆后的控制流长这样，两个 condition 都是恒真条件，原始块被分成了三个部分，&lt;code>entry&lt;/code>、&lt;code>origin&lt;/code>、&lt;code>terminator&lt;/code> 。图中红色的部分是伪造块，包含垃圾指令，绿色的条件块都是恒真条件，只有绿色箭头的控制流能走通。蓝色节点是从原始基本块上分割出来的部分。&lt;/p>
 &lt;h3 id="23-createalteredbasicblock">2.3 createAlteredBasicBlock&lt;/h3>
 &lt;p>再看伪造块是如何生成的。&lt;/p>
@@ -5412,22 +5072,16 @@ alt="image-20211102160422737">
 &lt;h2 id="0x03-创建自己的混淆">0x03 创建自己的混淆&lt;/h2>
 &lt;p>对 OLLVM 的 bcf 混淆有了初步的映像之后，接下来就可以依样画葫芦抄一个自己的混淆出来啦。&lt;/p>
 &lt;h3 id="31-方案">3.1 方案&lt;/h3>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 131;
-flex-basis: 315px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103105527721.png" data-size="953x726">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103105527721.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103105527721.png"
 width="953"
 height="726"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103105527721_huf9cff02c3a79573b2f021a9808299ab4_137978_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103105527721_huf9cff02c3a79573b2f021a9808299ab4_137978_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211103105527721">
-&lt;/a>
-&lt;figcaption>image-20211103105527721&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211103105527721"
+class="gallery-image"
+data-flex-grow="131"
+data-flex-basis="315px"
+>&lt;/p>
 &lt;p>作为概念验证，我们的 pass 将原始代码分割成三个基本块，称为 &lt;code>entry&lt;/code>、&lt;code>original&lt;/code>和&lt;code>terminator&lt;/code>。&lt;code>entry&lt;/code> 通过一个恒真判断跳转至 &lt;code>original&lt;/code>，&lt;code>original&lt;/code> 通过恒真判断跳转至 &lt;code>terminator&lt;/code>。伪造块 &lt;code>altered&lt;/code> 则是 false 分支，内容仅复制 &lt;code>original&lt;/code> 块，并在末尾跳转至 &lt;code>original&lt;/code> 块。&lt;/p>
 &lt;p>伪造块应该永远不会被执行。&lt;/p>
 &lt;h3 id="32-llvm编程的重要概念">3.2 LLVM编程的重要概念&lt;/h3>
@@ -5657,57 +5311,39 @@ llc .&lt;span class="se">\s&lt;/span>ample&lt;span class="se">\s&lt;/span>ample-
 clang sample.s -o sample.exe
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>也可以用 opt 来获得混淆后的代码控制流视图。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">opt -enable-new-pm&lt;span class="o">=&lt;/span>&lt;span class="m">0&lt;/span> -dot-cfg -cfg-func-name&lt;span class="o">=&lt;/span>main .&lt;span class="se">\s&lt;/span>ample&lt;span class="se">\s&lt;/span>ample-optimized.bc
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 136;
-flex-basis: 326px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-08/main.png" data-size="755x555">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-08/main.png"
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-08/main.png"
 width="755"
 height="555"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="main">
-&lt;/a>
-&lt;figcaption>main&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>在IDA打开后看到的结果如下。&lt;/p>
-&lt;p>&lt;figure
+alt="main"
 class="gallery-image"
-style="
-flex-grow: 55;
-flex-basis: 132px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103141258015.png" data-size="370x668">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103141258015.png"
+data-flex-grow="136"
+data-flex-basis="326px"
+>&lt;/p>
+&lt;p>在IDA打开后看到的结果如下。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103141258015.png"
 width="370"
 height="668"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103141258015_hu6b9a1833094321916938f7c8374d48d6_60703_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103141258015_hu6b9a1833094321916938f7c8374d48d6_60703_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211103141258015">
-&lt;/a>
-&lt;figcaption>image-20211103141258015&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211103141258015"
+class="gallery-image"
+data-flex-grow="55"
+data-flex-basis="132px"
+>&lt;/p>
 &lt;p>再来个更复杂的例子：&lt;a class="link" href="https://github.com/nnnewb/crackmes/blob/main/cm02/main.c" target="_blank" rel="noopener"
 >main.c&lt;/a>&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 49;
-flex-basis: 118px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103142352174.png" data-size="314x638">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103142352174.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103142352174.png"
 width="314"
 height="638"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103142352174_hu6e7d17f0f44390d3241deebec431bcff_8522_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-08/image-20211103142352174_hu6e7d17f0f44390d3241deebec431bcff_8522_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211103142352174">
-&lt;/a>
-&lt;figcaption>image-20211103142352174&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211103142352174"
+class="gallery-image"
+data-flex-grow="49"
+data-flex-basis="118px"
+>&lt;/p>
 &lt;h3 id="36-扩展不透明谓词">3.6 扩展：不透明谓词&lt;/h3>
 &lt;p>参考文章：&lt;a class="link" href="https://reverseengineering.stackexchange.com/questions/1669/what-is-an-opaque-predicate" target="_blank" rel="noopener"
 >what is an opaque predicate&lt;/a>&lt;/p>
@@ -5763,22 +5399,16 @@ alt="image-20211103142352174">
 &lt;h2 id="0x01-花指令原理">0x01 花指令原理&lt;/h2>
 &lt;h3 id="11-机器码指令格式">1.1 机器码指令格式&lt;/h3>
 &lt;p>码农日常工作接触的是高级语言（这个概念可能有争议，反正相对汇编、机器码这个层级来说都是高级语言就对了），汇编和机器码这种满是历史尘埃的领域是绝无机会接触的。但要理解花指令，首先要理解汇编代码的二进制表示，才会明白为什么反汇编工具的力量是有极限的。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 178;
-flex-basis: 429px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-07/zHClf.png" data-size="658x368">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/zHClf.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/zHClf.png"
 width="658"
 height="368"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-07/zHClf_hu3ca7a186b6a8e60fb2df5f6ffb33e0d4_25027_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-07/zHClf_hu3ca7a186b6a8e60fb2df5f6ffb33e0d4_25027_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="zHClf">
-&lt;/a>
-&lt;figcaption>zHClf&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="zHClf"
+class="gallery-image"
+data-flex-grow="178"
+data-flex-basis="429px"
+>&lt;/p>
 &lt;p>这是 Intel 的 &lt;a class="link" href="https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-instruction-set-reference-manual-325383.pdf" target="_blank" rel="noopener"
 >64-ia-32-architectures-software-developer-instruction-set-reference-manual&lt;/a> 里的一张图，说明了汇编指令如何以二进制形式保存。可以简单看成3部分，1字节的可选前缀，1-3字节的opcode部分，剩余描述操作数的部分。&lt;/p>
 &lt;p>几个要素：&lt;/p>
@@ -5817,22 +5447,16 @@ alt="zHClf">
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>编译命令&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">gcc demo.c &lt;span class="s1">&amp;#39;-Wl,--entry=_start&amp;#39;&lt;/span> -nodefaultlibs -nostartfiles -o demo
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>调试器内的效果&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 234;
-flex-basis: 562px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211028152219524.png" data-size="1175x501">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211028152219524.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211028152219524.png"
 width="1175"
 height="501"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211028152219524_hu2408fa036d3a5e5647fcc1f6e2c0b730_66690_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211028152219524_hu2408fa036d3a5e5647fcc1f6e2c0b730_66690_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211028152219524">
-&lt;/a>
-&lt;figcaption>image-20211028152219524&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211028152219524"
+class="gallery-image"
+data-flex-grow="234"
+data-flex-basis="562px"
+>&lt;/p>
 &lt;p>可以看到在 &lt;code>jmp&lt;/code> 指令后，反汇编出了一条 &lt;code>call&lt;/code> 指令。但实际上我们写的代码里是没有任何函数调用的。而在这个 &lt;code>E8&lt;/code> 后面的 &lt;code>B8 00 00 00 00 5D C3&lt;/code> 才是真正会执行的代码：&lt;/p>
 &lt;pre>&lt;code>mov eax, 0 ; B8 00 00 00 00
 pop ebp ; 5D
@@ -5841,22 +5465,16 @@ retn ; C3
 >intel 80x86 assembly language opcodes&lt;/a>。&lt;/p>
 &lt;p>如果仔细看 &lt;code>jmp&lt;/code> 后的偏移 &lt;code>01&lt;/code> 的话也能猜到下一个 &lt;code>E8&lt;/code> 是不会被执行的。&lt;/p>
 &lt;p>像是这种简单的花指令在 IDA 里没用，IDA 的反汇编算法会根据控制流分析来判断哪些内容不会被执行，进而产生下面的结果。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 166;
-flex-basis: 399px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211028153421508.png" data-size="796x478">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211028153421508.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211028153421508.png"
 width="796"
 height="478"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211028153421508_hu997bdc75332333c1639f8a4c89fbdacd_51145_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211028153421508_hu997bdc75332333c1639f8a4c89fbdacd_51145_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211028153421508">
-&lt;/a>
-&lt;figcaption>image-20211028153421508&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211028153421508"
+class="gallery-image"
+data-flex-grow="166"
+data-flex-basis="399px"
+>&lt;/p>
 &lt;h3 id="22--ida-和代码流反汇编算法">2.2 IDA 和代码流反汇编算法&lt;/h3>
 &lt;p>关于IDA的反汇编算法描述是来自《恶意代码分析实战》。&lt;/p>
 &lt;blockquote>
@@ -5875,43 +5493,31 @@ alt="image-20211028153421508">
 >在线反汇编&lt;/a>网站上验证。&lt;/p>
 &lt;p>&lt;code>0x48&lt;/code> 则是 &lt;code>dec eax&lt;/code> 的汇编指令，因此这4个字节执行后最终不会影响 &lt;code>eax&lt;/code> 的值。&lt;/p>
 &lt;p>在这里，&lt;code>0xff&lt;/code> 同时被解释为 &lt;code>jmp&lt;/code> 的操作数和 &lt;code>inc&lt;/code> 指令，并且能正常执行，但反汇编器则会被迷惑。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 514;
-flex-basis: 1233px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030211603863.png" data-size="910x177">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030211603863.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030211603863.png"
 width="910"
 height="177"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030211603863_huc23cc312a3844059e36c75b9cf995c65_26582_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030211603863_huc23cc312a3844059e36c75b9cf995c65_26582_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211030211603863">
-&lt;/a>
-&lt;figcaption>image-20211030211603863&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211030211603863"
+class="gallery-image"
+data-flex-grow="514"
+data-flex-basis="1233px"
+>&lt;/p>
 &lt;p>上图是IDA中反汇编的结果。&lt;/p>
 &lt;h3 id="23-构造能欺骗ida的花指令">2.3 构造能欺骗IDA的花指令&lt;/h3>
 &lt;p>构造能欺骗IDA的花指令简单的办法就是构造无法被静态分析的恒真/恒假条件。举例来说，&lt;code>LoadLibraryA&lt;/code> 加载失败会返回 &lt;code>NULL&lt;/code>，就可以被用来构造花指令。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c"> &lt;span class="n">LoadLibraryA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;not-exists.dll&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
 &lt;span class="k">asm&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;test %eax,%eax;&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">jz next;&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">.byte 0xe8;&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">next:&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 357;
-flex-basis: 858px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030213109569.png" data-size="955x267">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030213109569.png"
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030213109569.png"
 width="955"
 height="267"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030213109569_huae46ff5cf7f405ad977cb15ab7a51e13_39907_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030213109569_huae46ff5cf7f405ad977cb15ab7a51e13_39907_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211030213109569">
-&lt;/a>
-&lt;figcaption>image-20211030213109569&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211030213109569"
+class="gallery-image"
+data-flex-grow="357"
+data-flex-basis="858px"
+>&lt;/p>
 &lt;p>可以看到，IDA不能静态分析出&lt;code>LoadLibraryA&lt;/code> 的返回值是 &lt;code>NULL&lt;/code>，顺着 &lt;code>jz&lt;/code> 的 False 分支反汇编时遇到了 &lt;code>0xe8&lt;/code>，于是后续的反汇编结果就完全乱了套。&lt;/p>
 &lt;h3 id="24-破坏栈帧分析">2.4 破坏栈帧分析&lt;/h3>
 &lt;p>还有一种花指令是通过对 &lt;code>call&lt;/code> 和 &lt;code>ret&lt;/code> 利用来实现破坏栈帧分析。大家都知道 &lt;code>call&lt;/code> 和 &lt;code>ret&lt;/code> 就是 &lt;code>push&lt;/code>+&lt;code>jmp&lt;/code>和&lt;code>pop&lt;/code>+&lt;code>jmp&lt;/code>，如果我们手动在函数里再构造一个假函数，跳转之后修改栈上的返回地址，返回到我们希望继续执行的位置，虽然本质上是个 GOTO 的操作，但 IDA 就会懵圈了。&lt;/p>
@@ -5924,40 +5530,28 @@ alt="image-20211030213109569">
 &lt;span class="s">&amp;#34;continue:&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>
 &lt;span class="p">);&lt;/span>
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>产生的代码在IDA里分析会出现这样的 &lt;code>sp-analysis failed&lt;/code>。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 162;
-flex-basis: 390px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030215415946.png" data-size="529x325">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030215415946.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030215415946.png"
 width="529"
 height="325"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030215415946_hu1b68fd95622716000a3ab92e85a1f3fd_15293_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-07/image-20211030215415946_hu1b68fd95622716000a3ab92e85a1f3fd_15293_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211030215415946">
-&lt;/a>
-&lt;figcaption>image-20211030215415946&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211030215415946"
+class="gallery-image"
+data-flex-grow="162"
+data-flex-basis="390px"
+>&lt;/p>
 &lt;p>这个思路可以反复嵌套，增加跳转的次数和深度，甚至把正常逻辑隐藏在这种反复跳转中，但从高级语言层面手工加这种花很困难。&lt;/p>
 &lt;p>再给一个复杂一些的例子，同样是利用了 &lt;code>call&lt;/code> 和 &lt;code>ret&lt;/code> 来实现花式跳转。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 219;
-flex-basis: 526px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-07/165417l97li97iwq8lf5qz.png" data-size="836x381">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/165417l97li97iwq8lf5qz.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-07/165417l97li97iwq8lf5qz.png"
 width="836"
 height="381"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-07/165417l97li97iwq8lf5qz_hua1e400469607dff71cf186bb43cf99f2_16220_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-07/165417l97li97iwq8lf5qz_hua1e400469607dff71cf186bb43cf99f2_16220_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="img">
-&lt;/a>
-&lt;figcaption>img&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="img"
+class="gallery-image"
+data-flex-grow="219"
+data-flex-basis="526px"
+>&lt;/p>
 &lt;p>来自52论坛的：&lt;a class="link" href="https://www.52pojie.cn/forum.php?mod=viewthread&amp;amp;tid=1068444&amp;amp;highlight=%BB%A8%D6%B8%C1%EE" target="_blank" rel="noopener"
 >一些简单的花指令的解析(含Intel指令集) - 『病毒分析区』 - 吾爱破解 - LCG - LSG |安卓破解|病毒分析|www.52pojie.cn&lt;/a>。&lt;/p>
 &lt;p>顺便一提，链接里那个 &lt;code>pop ss&lt;/code> 也很有意思，GrandCrab 的案例也是结合了多种控制流指令来完成跳转，阻碍IDA分析。&lt;/p>
@@ -6459,22 +6053,16 @@ ntdll!_HEAP
 &lt;/ol>
 &lt;p>经过这样三层索引就能找到对应资源的原始数据了。&lt;/p>
 &lt;p>如图：&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 194;
-flex-basis: 467px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-05/07_resource_tree.png" data-size="1080x555">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-05/07_resource_tree.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-05/07_resource_tree.png"
 width="1080"
 height="555"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-05/07_resource_tree_hu7434ebea0cccdf660ca2884c9de14b61_327250_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-05/07_resource_tree_hu7434ebea0cccdf660ca2884c9de14b61_327250_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="07_resource_tree.png">
-&lt;/a>
-&lt;figcaption>07_resource_tree.png&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="07_resource_tree.png"
+class="gallery-image"
+data-flex-grow="194"
+data-flex-basis="467px"
+>&lt;/p>
 &lt;h3 id="22-查找并加载资源">2.2 查找并加载资源&lt;/h3>
 &lt;p>步骤很简单：&lt;/p>
 &lt;ol>
@@ -6642,70 +6230,46 @@ alt="07_resource_tree.png">
 &lt;p>&lt;a class="link" href="https://github.com/nnnewb/learning-packer/tree/main/packer5" target="_blank" rel="noopener"
 >github.com - packer05&lt;/a>&lt;/p>
 &lt;h3 id="42-成果">4.2 成果&lt;/h3>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 149;
-flex-basis: 359px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-05/png-packer.gif" data-size="934x624">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-05/png-packer.gif"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-05/png-packer.gif"
 width="934"
 height="624"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-05/png-packer_hu49467b8d76a283ecefa4b0c8c018eaea_352500_480x0_resize_box.gif 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-05/png-packer_hu49467b8d76a283ecefa4b0c8c018eaea_352500_1024x0_resize_box.gif 1024w"
 loading="lazy"
-alt="png-packer">
-&lt;/a>
-&lt;figcaption>png-packer&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
+alt="png-packer"
 class="gallery-image"
-style="
-flex-grow: 428;
-flex-basis: 1028px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172402101.png" data-size="1123x262">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172402101.png"
+data-flex-grow="149"
+data-flex-basis="359px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172402101.png"
 width="1123"
 height="262"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172402101_hu5e82684139999b9b3beada7e64c4352c_121826_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172402101_hu5e82684139999b9b3beada7e64c4352c_121826_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211021172402101">
-&lt;/a>
-&lt;figcaption>image-20211021172402101&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
+alt="image-20211021172402101"
 class="gallery-image"
-style="
-flex-grow: 168;
-flex-basis: 404px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172445654.png" data-size="745x442">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172445654.png"
+data-flex-grow="428"
+data-flex-basis="1028px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172445654.png"
 width="745"
 height="442"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172445654_huadd050e73542001f453da1b3213f5950_43748_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172445654_huadd050e73542001f453da1b3213f5950_43748_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211021172445654">
-&lt;/a>
-&lt;figcaption>image-20211021172445654&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
+alt="image-20211021172445654"
 class="gallery-image"
-style="
-flex-grow: 176;
-flex-basis: 422px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172504888.png" data-size="969x550">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172504888.png"
+data-flex-grow="168"
+data-flex-basis="404px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172504888.png"
 width="969"
 height="550"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172504888_hubda3186aaf1f68e7da983b4009bb0f3d_50213_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-05/image-20211021172504888_hubda3186aaf1f68e7da983b4009bb0f3d_50213_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211021172504888">
-&lt;/a>
-&lt;figcaption>image-20211021172504888&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211021172504888"
+class="gallery-image"
+data-flex-grow="176"
+data-flex-basis="422px"
+>&lt;/p>
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>这次实验主要是验证了从资源加载程序，本质和之前的其他加壳方式没有区别。把应用程序转换成图片后看到的效果确实比较有趣，我想如果用一张普通的图片或者其他文件类型，藏起来可能更隐蔽。&lt;/p>
 &lt;p>但到这里还是有明显的问题：壳和被加载的程序还是泾渭分明。&lt;/p></description></item><item><title>加壳原理04 - zlib压缩壳案例</title><link>https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/</link><pubDate>Wed, 20 Oct 2021 16:07:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.jpg" alt="Featured image of post 加壳原理04 - zlib压缩壳案例" />&lt;h2 id="前言">前言&lt;/h2>
@@ -6826,54 +6390,36 @@ alt="image-20211021172504888">
 &lt;p>&lt;code>struct.pack&lt;/code> 指定了小端序，两个4字节int，分别填写压缩后大小和原始大小，连接压缩后的数据，填充进&lt;code>.packed&lt;/code> 节。&lt;/p>
 &lt;p>就这样，压缩功能成功完成。&lt;/p>
 &lt;h2 id="0x03-成果展示">0x03 成果展示&lt;/h2>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 175;
-flex-basis: 420px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/compression-packer.gif" data-size="961x548">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/compression-packer.gif"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/compression-packer.gif"
 width="961"
 height="548"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/compression-packer_hu48b8d61b8280e2749c0709493a3ebc66_545730_480x0_resize_box.gif 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/compression-packer_hu48b8d61b8280e2749c0709493a3ebc66_545730_1024x0_resize_box.gif 1024w"
 loading="lazy"
-alt="compression-packer">
-&lt;/a>
-&lt;figcaption>compression-packer&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
+alt="compression-packer"
 class="gallery-image"
-style="
-flex-grow: 493;
-flex-basis: 1184px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154513713.png" data-size="612x124">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154513713.png"
+data-flex-grow="175"
+data-flex-basis="420px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154513713.png"
 width="612"
 height="124"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154513713_hu9ea9ff8b4b10d51b1ae7242496aa71bc_14861_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154513713_hu9ea9ff8b4b10d51b1ae7242496aa71bc_14861_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211020154513713">
-&lt;/a>
-&lt;figcaption>image-20211020154513713&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
+alt="image-20211020154513713"
 class="gallery-image"
-style="
-flex-grow: 181;
-flex-basis: 435px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154539546.png" data-size="512x282">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154539546.png"
+data-flex-grow="493"
+data-flex-basis="1184px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154539546.png"
 width="512"
 height="282"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154539546_hu04f79f6a0431df840a4406ea20a286f1_11213_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154539546_hu04f79f6a0431df840a4406ea20a286f1_11213_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211020154539546">
-&lt;/a>
-&lt;figcaption>image-20211020154539546&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211020154539546"
+class="gallery-image"
+data-flex-grow="181"
+data-flex-basis="435px"
+>&lt;/p>
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>偷懒了，用了一些 msvcrt 的函数，比如 malloc，要加个 &lt;code>-lmsvcrt&lt;/code> 链接选项。最终成品压缩率还可以，从107KB 压缩到了 49KB，zlib 不负期望。&lt;/p>
 &lt;p>写好壳程序之后，不管是加密还是压缩都是很容易的事情（指单纯做个简单实现），但问题依然存在：&lt;/p>
@@ -6893,22 +6439,16 @@ alt="image-20211020154539546">
 &lt;p>将加壳后程序的基址设置为固定的 &lt;code>0x04000000&lt;/code> 又会产生新的问题：加载器的代码段不能放在 &lt;code>0x04000000&lt;/code> ，否则加载器运行时就会出现被被加载的代码覆盖的情况，导致程序跑飞。所以&lt;strong>编译后的加载器所有 Section 都必须有一定的偏移，这个偏移值就是被加载程序的 Section 大小之和（对齐后）&lt;/strong>。而因此多出来的空间单独分成一个 Section ，正好用来放要加载的程序。&lt;/p>
 &lt;p>另外，还必须确认文件头大小是否一致，因为&lt;strong>我们需要将被加载程序的文件头覆盖加载器的文件头&lt;/strong>。而&lt;strong>最开始预留的空间必须分配为一个 Section&lt;/strong>，让 Windows 的加载器能顺利加载程序而不报“不是有效的Win32程序”错误。&lt;/p>
 &lt;p>内存布局示意图如下：&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 796;
-flex-basis: 1911px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-03-support-no-relocations/%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80.png" data-size="1155x145">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-03-support-no-relocations/%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-03-support-no-relocations/%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80.png"
 width="1155"
 height="145"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-03-support-no-relocations/%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80_hu26017091af2f4be7bf70029e5d75a3ba_13811_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-03-support-no-relocations/%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80_hu26017091af2f4be7bf70029e5d75a3ba_13811_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="内存布局">
-&lt;/a>
-&lt;figcaption>内存布局&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="内存布局"
+class="gallery-image"
+data-flex-grow="796"
+data-flex-basis="1911px"
+>&lt;/p>
 &lt;p>所以加载器的加载步骤如下：&lt;/p>
 &lt;ol>
 &lt;li>寻找被加载的 Section 。&lt;/li>
@@ -7191,32 +6731,21 @@ alt="内存布局">
 >完整代码的 GIST&lt;/a>&lt;/p>
 &lt;h2 id="0x05-成果">0x05 成果&lt;/h2>
 &lt;p>加壳机运行效果。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/%E5%8A%A0%E5%A3%B3%E6%9C%BA.gif" >
-&lt;img src="https://nnnewb.github.io/blog/blog/%E5%8A%A0%E5%A3%B3%E6%9C%BA.gif"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/%E5%8A%A0%E5%A3%B3%E6%9C%BA.gif"
 loading="lazy"
-alt="加壳机">
-&lt;/a>
-&lt;figcaption>加壳机&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="加壳机"
+>&lt;/p>
 &lt;p>&lt;code>packed.exe&lt;/code> 的节表信息如下。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 171;
-flex-basis: 411px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-03-support-no-relocations/image-20211020095008599.png" data-size="507x296">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-03-support-no-relocations/image-20211020095008599.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-03-support-no-relocations/image-20211020095008599.png"
 width="507"
 height="296"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-03-support-no-relocations/image-20211020095008599_hu133cb724811b185855f9a631cc001e91_10916_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-03-support-no-relocations/image-20211020095008599_hu133cb724811b185855f9a631cc001e91_10916_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20211020095008599">
-&lt;/a>
-&lt;figcaption>image-20211020095008599&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211020095008599"
+class="gallery-image"
+data-flex-grow="171"
+data-flex-basis="411px"
+>&lt;/p>
 &lt;h2 id="结论">结论&lt;/h2>
 &lt;p>整个过程里踩了不少坑，几乎都要靠 x32dbg 调试和 CFF Explorer 挨个文件头字段检查。有个比较实用的做法是拿 LIEF 解析好加壳后的文件，把输出结果和原始加载器对比。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="kn">import&lt;/span> &lt;span class="nn">lief&lt;/span>
@@ -7520,25 +7049,15 @@ gcc main.o -nostartfiles -nodefaultlibs -o main.exe
 &lt;p>我们可以用 WinDbg Preview 验证下。&lt;/p>
 &lt;p>&amp;hellip;.&lt;/p>
 &lt;p>不知道为啥 WinDbg Preview 不能正确调试，还是用回 x32dbg 。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/%e5%85%b3%e4%ba%8e%e5%9c%a8%e5%86%85%e5%ad%98%e9%87%8c%e6%89%bekernel32%e8%bf%99%e4%bb%b6%e4%ba%8b/image-20211014143628806.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%85%b3%e4%ba%8e%e5%9c%a8%e5%86%85%e5%ad%98%e9%87%8c%e6%89%bekernel32%e8%bf%99%e4%bb%b6%e4%ba%8b/image-20211014143628806.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%85%b3%e4%ba%8e%e5%9c%a8%e5%86%85%e5%ad%98%e9%87%8c%e6%89%bekernel32%e8%bf%99%e4%bb%b6%e4%ba%8b/image-20211014143628806.png"
 loading="lazy"
-alt="image-20211014143628806">
-&lt;/a>
-&lt;figcaption>image-20211014143628806&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211014143628806"
+>&lt;/p>
 &lt;p>注意此时 EAX 的值是 &lt;code>75B30000&lt;/code> ，内容被调试器识别为 &lt;code>MZ?&lt;/code> ，显然是个 DOS 文件头。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/%e5%85%b3%e4%ba%8e%e5%9c%a8%e5%86%85%e5%ad%98%e9%87%8c%e6%89%bekernel32%e8%bf%99%e4%bb%b6%e4%ba%8b/image-20211014143759203.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%85%b3%e4%ba%8e%e5%9c%a8%e5%86%85%e5%ad%98%e9%87%8c%e6%89%bekernel32%e8%bf%99%e4%bb%b6%e4%ba%8b/image-20211014143759203.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%85%b3%e4%ba%8e%e5%9c%a8%e5%86%85%e5%ad%98%e9%87%8c%e6%89%bekernel32%e8%bf%99%e4%bb%b6%e4%ba%8b/image-20211014143759203.png"
 loading="lazy"
-alt="image-20211014143759203">
-&lt;/a>
-&lt;figcaption>image-20211014143759203&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211014143759203"
+>&lt;/p>
 &lt;p>在调试器的内存布局窗口可以看到，这个地址正好就是 &lt;code>kernel32.dll&lt;/code> 的镜像基址。&lt;/p>
 &lt;p>到此，我们已经找到了 &lt;code>kernel32.dll&lt;/code> 的镜像基址，找到了镜像基址后，根据之前学习的对 PE 文件格式的了解，就有机会自己解析导出表，调用 &lt;code>kernel32.dll&lt;/code> 内的函数啦。&lt;/p>
 &lt;h2 id="0x02-寻找-winexec-函数">0x02 寻找 WinExec 函数&lt;/h2>
@@ -7880,15 +7399,10 @@ alt="image-20211014143759203">
 &lt;span class="nf">db&lt;/span> &lt;span class="err">&amp;#39;&lt;/span>&lt;span class="no">calc.exe&lt;/span>&lt;span class="err">&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>
 &lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="0x03-验证">0x03 验证&lt;/h2>
 &lt;p>验证方法很简单，我们编译之，运行，然后就好啦！&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/%e5%85%b3%e4%ba%8e%e5%9c%a8%e5%86%85%e5%ad%98%e9%87%8c%e6%89%bekernel32%e8%bf%99%e4%bb%b6%e4%ba%8b/image-20211014161140486.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%85%b3%e4%ba%8e%e5%9c%a8%e5%86%85%e5%ad%98%e9%87%8c%e6%89%bekernel32%e8%bf%99%e4%bb%b6%e4%ba%8b/image-20211014161140486.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/%e5%85%b3%e4%ba%8e%e5%9c%a8%e5%86%85%e5%ad%98%e9%87%8c%e6%89%bekernel32%e8%bf%99%e4%bb%b6%e4%ba%8b/image-20211014161140486.png"
 loading="lazy"
-alt="image-20211014161140486">
-&lt;/a>
-&lt;figcaption>image-20211014161140486&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211014161140486"
+>&lt;/p>
 &lt;p>&lt;code>WinExec&lt;/code> 的返回值在 eax 里，微软的文档说返回值大于 31 就是 OJBK，0x21 是10进制的33，所以完全 OJBK 。&lt;/p>
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>这是写 shellcode 的技术吧，东一榔头西一棒子就是我了。话说 shellcode 的具体定义是啥来着？我只剩菜了.jpg&lt;/p>
@@ -8005,15 +7519,10 @@ alt="image-20211014161140486">
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">nasm main.asm -f win32 -o main.o
 gcc main.o -o main.exe
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>生成的代码放进调试器看看。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013092916141.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013092916141.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013092916141.png"
 loading="lazy"
-alt="image-20211013092916141">
-&lt;/a>
-&lt;figcaption>image-20211013092916141&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211013092916141"
+>&lt;/p>
 &lt;p>可以看到我们的汇编代码忠实地出现在调试器里。&lt;/p>
 &lt;p>这就是 nasm 的简单用法了，想要拿汇编写一点简单的验证代码是没问题的，也可以手写汇编函数，再链接到 C/C++ 代码里。当然，写 C/C++ 的大佬大概也知道 Visual C++ 支持内嵌汇编，&lt;code>__asm {}&lt;/code> 就行，这也算一种选项。&lt;/p>
 &lt;h2 id="0x03-生成二进制代码">0x03 生成二进制代码&lt;/h2>
@@ -8157,35 +7666,20 @@ alt="image-20211013092916141">
 &lt;h3 id="35-编译">3.5 编译&lt;/h3>
 &lt;p>上面的汇编代码用 nasm 即可编译，不需要其他编译或链接工具了。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">nasm pe.asm -f bin -o pe.exe
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104216658.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104216658.png"
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104216658.png"
 loading="lazy"
-alt="image-20211013104216658">
-&lt;/a>
-&lt;figcaption>image-20211013104216658&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211013104216658"
+>&lt;/p>
 &lt;p>也可以放进调试器看看。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104451137.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104451137.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104451137.png"
 loading="lazy"
-alt="image-20211013104451137">
-&lt;/a>
-&lt;figcaption>image-20211013104451137&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211013104451137"
+>&lt;/p>
 &lt;p>可以看到，代码段正确出现在 4001000h 这个地址上（基址+1000h），内容也符合我们写的汇编代码。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104646905.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104646905.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104646905.png"
 loading="lazy"
-alt="image-20211013104646905">
-&lt;/a>
-&lt;figcaption>image-20211013104646905&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211013104646905"
+>&lt;/p>
 &lt;p>在内存布局窗口也能看到。&lt;/p>
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>这是个对 PE 文件格式有所了解后的一个简单应用，原先是只会拿其他编程语言去读 PE 文件头的内容，现在学会了用汇编器去写一个简单的 PE 文件。之所以是汇编器去写，而不是拿 C/C++/Python 去写，还是因为我菜而且懒。好了跳过关于我菜的话题吧。&lt;/p>
@@ -8255,15 +7749,10 @@ To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>这样就会把必要的文件给复制到 &lt;code>LIEF-msvc-debug&lt;/code> 这个文件夹里了，参考 LIEF 官方的集成文档，把 &lt;code>LIEF_DIR&lt;/code> 设置成这个文件夹的路径就可以用啦。&lt;/p>
 &lt;h2 id="0x02-visual-c-工具链-ninja">0x02 Visual C++ 工具链 ninja&lt;/h2>
 &lt;p>使用 CMake + Ninja 的情况下没法用 &lt;code>-A&lt;/code> 去控制编译32位还是64位了，你得先装好 Visual C++ 构建工具，然后打开开发者命令提示符。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/how-to-compile-lief-on-windows/image-20211008160449880.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/how-to-compile-lief-on-windows/image-20211008160449880.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/how-to-compile-lief-on-windows/image-20211008160449880.png"
 loading="lazy"
-alt="image-20211008160449880">
-&lt;/a>
-&lt;figcaption>image-20211008160449880&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20211008160449880"
+>&lt;/p>
 &lt;p>比如想编译32位的就选 &lt;code>x86 native tool command prompt&lt;/code> ，在这个命令提示符里用 cmake 构建。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-powershell" data-lang="powershell">&lt;span class="n">cmake&lt;/span> &lt;span class="p">..&lt;/span> &lt;span class="n">-G&lt;/span> &lt;span class="n">Ninja&lt;/span> &lt;span class="n">-DCMAKE_BUILD_TYPE&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">Debug&lt;/span> &lt;span class="n">-DLIEF_PYTHON_API&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">off&lt;/span> &lt;span class="n">-DLIEF_USE_CRT_DEBUG&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="nb">MD
 &lt;/span>&lt;span class="nb">&lt;/span>&lt;span class="n">cmake&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-build&lt;/span> &lt;span class="p">.&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-target&lt;/span> &lt;span class="n">LIB_LIEF&lt;/span>
@@ -8561,22 +8050,16 @@ alt="image-20211008160449880">
 &lt;p>加壳程序反而平平无奇，正印证了那句台下功夫。&lt;/p></description></item><item><title>加壳原理01 - Windows 程序的加载和运行</title><link>https://nnnewb.github.io/blog/p/learning-packer-01/</link><pubDate>Mon, 27 Sep 2021 14:51:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/learning-packer-01/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/learning-packer-01/cover.jpg" alt="Featured image of post 加壳原理01 - Windows 程序的加载和运行" />&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>本文由多篇相关文章翻译整合得来，参考文章和书目文末给出。&lt;/p>
 &lt;h2 id="0x01-pe文件结构">0x01 PE文件结构&lt;/h2>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 134;
-flex-basis: 322px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-01/PE_Format.png" data-size="2048x1526">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/PE_Format.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/PE_Format.png"
 width="2048"
 height="1526"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-01/PE_Format_hu1d6972d7cbd2497cb5e2be07eb52e9a7_686257_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-01/PE_Format_hu1d6972d7cbd2497cb5e2be07eb52e9a7_686257_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="PE_Format">
-&lt;/a>
-&lt;figcaption>PE_Format&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="PE_Format"
+class="gallery-image"
+data-flex-grow="134"
+data-flex-basis="322px"
+>&lt;/p>
 &lt;h3 id="11-从-pe-coff-格式说起">1.1 从 PE-COFF 格式说起&lt;/h3>
 &lt;blockquote>
 &lt;p>&amp;hellip; 现在PC平台流行的 &lt;strong>可执行文件格式（Executable）&lt;/strong> 主要是 Windows 下的 PE （Portable Executable） 和 Linux 的 ELF （Executable Linkable Format），它们都是 COFF（Common Object File Format）格式的变种。目标文件就是源代码编译后但未进行链接的那些中间文件（Windows 的 .obj 和 Linux 下的 .o），它和可执行文件的内容和结构很相似，所以一般跟可执行文件一起采用一种格式存储。从广义上看，目标文件与可执行文件的格式其实几乎是一样的，所以我们可以广义地将目标文件与可执行文件看成是同一种类型的文件，在 Windows 下，我们可以统称它们为 PE-COFF 文件格式。在 Linux 下，我们可以将它们统称为 ELF 文件。&lt;/p>
@@ -8587,22 +8070,16 @@ alt="PE_Format">
 &lt;p>这里讨论可执行文件格式，目标文件、静态库、动态库都先暂时不考虑。btw，引文中的“段”其实说的既是Section也是Segment，根据上下文自己理解。&lt;/p>
 &lt;h3 id="12-pe-文件头一览">1.2 PE 文件头一览&lt;/h3>
 &lt;p>PE格式在 Wiki 上有张挺漂亮的图。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 70;
-flex-basis: 169px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-01/Portable_Executable_32_bit_Structure_in_SVG_fixed.png" data-size="2980x4213">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/Portable_Executable_32_bit_Structure_in_SVG_fixed.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/Portable_Executable_32_bit_Structure_in_SVG_fixed.png"
 width="2980"
 height="4213"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-01/Portable_Executable_32_bit_Structure_in_SVG_fixed_hu17a376e08455c311f7e43d421ffa5e76_295222_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-01/Portable_Executable_32_bit_Structure_in_SVG_fixed_hu17a376e08455c311f7e43d421ffa5e76_295222_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="Portable_Executable_32_bit_Structure_in_SVG_fixed">
-&lt;/a>
-&lt;figcaption>Portable_Executable_32_bit_Structure_in_SVG_fixed&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="Portable_Executable_32_bit_Structure_in_SVG_fixed"
+class="gallery-image"
+data-flex-grow="70"
+data-flex-basis="169px"
+>&lt;/p>
 &lt;p>图中可以看到，微软的兼容包袱是真的重（不是）。&lt;/p>
 &lt;p>PE文件头已经包含了海量的信息，大部分我们不关注（或者说很少关注？），从做个简单壳的目的出发，了解了PE-COFF格式的一点通识和历史后就可以继续了。&lt;/p>
 &lt;p>读懂这图需要了解下关于PE文件中几种“地址”的概念：&lt;/p>
@@ -8915,22 +8392,16 @@ alt="Portable_Executable_32_bit_Structure_in_SVG_fixed">
 &lt;p>但事实上，&lt;code>.dll&lt;/code> 只会在运行时被加载，而且加载后在内存中的位置并不确定。这意味着编译器编译时无从得知&lt;code>ShellExecuteW&lt;/code>的地址（开启ASLR的话就更不可能了），也就无法给调用该函数的&lt;code>call&lt;/code>指令提供正确的立即数地址。&lt;/p>
 &lt;p>这就是为什么编译器要创建导入表，因为它期望一旦动态链接库加载完成，它就可以查找到&lt;code>ShellExecuteW&lt;/code>的地址，并在需要的时候调用。&lt;/p>
 &lt;p>在调试器里，我们可以看到这样的汇编指令。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 434;
-flex-basis: 1042px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-01/call_IAT.jpg" data-size="543x125">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/call_IAT.jpg"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/call_IAT.jpg"
 width="543"
 height="125"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-01/call_IAT_hu889b99c9eb0c20be37b0dc63e7aa4f3e_34329_480x0_resize_q75_box.jpg 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-01/call_IAT_hu889b99c9eb0c20be37b0dc63e7aa4f3e_34329_1024x0_resize_q75_box.jpg 1024w"
 loading="lazy"
-alt="import address table">
-&lt;/a>
-&lt;figcaption>import address table&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="import address table"
+class="gallery-image"
+data-flex-grow="434"
+data-flex-basis="1042px"
+>&lt;/p>
 &lt;p>第一条&lt;code>call&lt;/code>指令是内部调用，调用对象是同一个模块内的函数。编译器知道被调用函数的地址，并使用&lt;code>E8&lt;/code> opcode 。这表示 &lt;em>relative call&lt;/em> 。当调用外部模块时，它调用了从IAT读取的地址，也就是图中&lt;code>ds:[&amp;lt;&amp;amp;ShellExecuteW&amp;gt;]&lt;/code>。&lt;/p>
 &lt;p>x86 的 call 分 4 类。&lt;/p>
 &lt;ul>
@@ -8963,22 +8434,16 @@ Out[10]:
 &amp;lt;Structure: [IMAGE_DIRECTORY_ENTRY_RESERVED] 0x1F8 0x0 VirtualAddress: 0x0 0x1FC 0x4 Size: 0x0&amp;gt;]
 &lt;/code>&lt;/pre>&lt;p>&lt;code>Data directory&lt;/code> 实际就是15个结构组成的数组（忽略最后一个reserved），每个结构包含对应的RVA地址和大小（RVA和大小的具体含义之后讨论）。这个结构里我们关注的有&lt;code>IMAGE_DIRECTORY_ENTRY_IMPORT&lt;/code>和&lt;code>IMAGE_DIRECTORY_ENTRY_IAT&lt;/code>，分别指向的是 &lt;em>Import Directory Table&lt;/em> ，&lt;em>IDT&lt;/em> ，和 &lt;em>Import Address Table&lt;/em> ， &lt;em>IAT&lt;/em> 。&lt;/p>
 &lt;p>基本是，我们可以这么说， &lt;em>IDT&lt;/em> 指示需要导入哪些函数，这些函数导入后，地址存入 &lt;em>IAT&lt;/em> 。 &lt;em>IDT&lt;/em> 是我们要导入什么， &lt;em>IAT&lt;/em> 是我们导入后把地址放在哪儿。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 64;
-flex-basis: 154px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-01/IDT-IAT.drawio.png" data-size="650x1012">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/IDT-IAT.drawio.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/IDT-IAT.drawio.png"
 width="650"
 height="1012"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-01/IDT-IAT.drawio_hu519af53fd6ddb5dd0f68ecccb2a04fc7_77938_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-01/IDT-IAT.drawio_hu519af53fd6ddb5dd0f68ecccb2a04fc7_77938_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="IDT-IAT">
-&lt;/a>
-&lt;figcaption>IDT-IAT&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="IDT-IAT"
+class="gallery-image"
+data-flex-grow="64"
+data-flex-basis="154px"
+>&lt;/p>
 &lt;p>&lt;em>Import Directory&lt;/em> 指向的是一个 &lt;code>NULL&lt;/code> 结尾的&lt;code>IMAGE_IMPORT_DESCRIPTOR&lt;/code>结构数组。之后在代码里会用到。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="k">typedef&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="n">_IMAGE_IMPORT_DESCRIPTOR&lt;/span>
 &lt;span class="p">{&lt;/span> &lt;span class="n">_ANONYMOUS_UNION&lt;/span> &lt;span class="k">union&lt;/span>
@@ -9103,44 +8568,32 @@ alt="IDT-IAT">
 &lt;li>我们导入了必要的函数并把地址存放在 IAT 里。&lt;/li>
 &lt;/ol>
 &lt;p>然后现在，某时某刻，calc.exe 需要调用被导入的函数，用我们之前提过的方法。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 434;
-flex-basis: 1042px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-01/call_IAT.jpg" data-size="543x125">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/call_IAT.jpg"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/call_IAT.jpg"
 width="543"
 height="125"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-01/call_IAT_hu889b99c9eb0c20be37b0dc63e7aa4f3e_34329_480x0_resize_q75_box.jpg 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-01/call_IAT_hu889b99c9eb0c20be37b0dc63e7aa4f3e_34329_1024x0_resize_q75_box.jpg 1024w"
 loading="lazy"
-alt="call_IAT">
-&lt;/a>
-&lt;figcaption>call_IAT&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="call_IAT"
+class="gallery-image"
+data-flex-grow="434"
+data-flex-basis="1042px"
+>&lt;/p>
 &lt;p>仔细观察图中的 opcode：&lt;code>FF15&lt;/code>，紧跟着的是小端序的&lt;code>0x004b3038&lt;/code>，一个绝对地址（前文所述的VA），指向 &lt;em>IAT&lt;/em> 中 &lt;code>ShellExecuteW&lt;/code> 函数的地址。这对于一个预期自己会被映射到随机基址上的PE文件来说，是一个巨大的问题。&lt;/p>
 &lt;p>比如说，我们把 calc.exe 放置在 &lt;code>0x00500000&lt;/code> 而不是文件头中”偏好“的镜像基址 &lt;code>0x00400000&lt;/code>，这条 &lt;code>call&lt;/code> 指令还保持不变的话，它会尝试去访问地址 &lt;code>0x004b3038&lt;/code> ——但这不是 calc.exe 的内存空间！那儿可能有任何东西，也可能什么也没有。&lt;/p>
 &lt;p>我们这里看到的是，当我们移动了 PE 文件在内存中的基址，汇编代码也需要在运行时修补，来响应基址的变化。这就是重定位所关注的事情。&lt;/p>
 &lt;h3 id="42-pe重定位结构">4.2 PE重定位结构&lt;/h3>
 &lt;p>重定位结构比导入表简单得多。&lt;/p>
 &lt;p>同样的，在 Data Directory 里有一个重定位表，结构和导入表类似，看图。&lt;/p>
-&lt;p>&lt;figure
-class="gallery-image"
-style="
-flex-grow: 123;
-flex-basis: 296px"
->
-&lt;a href="https://nnnewb.github.io/blog/blog/p/learning-packer-01/basereloc.png" data-size="980x793">
-&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/basereloc.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/learning-packer-01/basereloc.png"
 width="980"
 height="793"
 srcset="https://nnnewb.github.io/blog/blog/p/learning-packer-01/basereloc_hu4e0f540e5f0dc51830fd117d9f67457f_361570_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/learning-packer-01/basereloc_hu4e0f540e5f0dc51830fd117d9f67457f_361570_1024x0_resize_box_3.png 1024w"
 loading="lazy"
-alt="image-20210927134554770">
-&lt;/a>
-&lt;figcaption>image-20210927134554770&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210927134554770"
+class="gallery-image"
+data-flex-grow="123"
+data-flex-basis="296px"
+>&lt;/p>
 &lt;p>实际上每个&lt;code>IMAGE_BASE_RELOCATION&lt;/code>反应的就是一个 Windows 页（因为每个&lt;code>fixup&lt;/code>的偏移最大取值只有 12bits，0x1000，4KB）。&lt;/p>
 &lt;p>其中每个 &lt;code>fixup&lt;/code> 都是一个 &lt;code>WORD&lt;/code> ，前 4bits 表示重定位类型，后 12bits 表示相对 &lt;code>IMAGE_BASE_RELOCATION.VirtualAddress&lt;/code> 的偏移值，偏移处需要应用重定位（就是加上真实基地址和PE头中基地址的差）。&lt;/p>
 &lt;h3 id="43-修复重定位">4.3 修复重定位&lt;/h3>
@@ -9439,30 +8892,20 @@ alt="image-20210927134554770">
 >github.com/nnnewb/crackmes&lt;/a>&lt;/p>
 &lt;p>挑战一下C++代码开启优化的Hard模式。&lt;/p>
 &lt;h2 id="观察">观察&lt;/h2>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/01.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/01.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/01.png"
 loading="lazy"
-alt="image-20210923104439284">
-&lt;/a>
-&lt;figcaption>image-20210923104439284&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210923104439284"
+>&lt;/p>
 &lt;p>一个输入框，点击try it尝试。失败时提示Wrong，没有别的信息。&lt;/p>
 &lt;h2 id="静态分析">静态分析&lt;/h2>
 &lt;p>老规矩先静态分析一波，粗略扫一眼，捋一捋逻辑。用你喜欢的反汇编工具打开，我用Cutter先试试。&lt;/p>
 &lt;p>因为是GUI程序，直接跳&lt;code>main&lt;/code>肯定是不行的。Win32 GUI程序的入口点（程序员视角）在&lt;code>WinMain&lt;/code>这个特殊函数，不过真拿Win32API手撸界面我是真没见过了，Win32 GUI程序设计也是玩的事件响应，找到主函数的意义不大。&lt;/p>
 &lt;p>所以找关键跳这一步只能是从数据段找字符串查引用，或者调试器下合适的访问断点了。&lt;/p>
 &lt;p>这里直接从数据段找到了字符串，定位到弹出错误对话框的逻辑。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/02.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/02.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/02.png"
 loading="lazy"
-alt="image-20210923105415082">
-&lt;/a>
-&lt;figcaption>image-20210923105415082&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210923105415082"
+>&lt;/p>
 &lt;p>这里有个姿势点是&lt;code>__thiscall&lt;/code>，这是个微软自定义的调用约定，点这里看&lt;a class="link" href="https://docs.microsoft.com/zh-cn/cpp/cpp/thiscall?view=msvc-160" target="_blank" rel="noopener"
 >微软的文档&lt;/a>。&lt;/p>
 &lt;h3 id="__thiscall">__thiscall&lt;/h3>
@@ -9505,30 +8948,20 @@ alt="image-20210923105415082">
 &lt;/code>&lt;/pre>&lt;p>连续推入多个参数后，调用了&lt;code>wxMessageBox&lt;/code>函数。我们知道&lt;code>[ebp-0x30]&lt;/code>是&lt;code>Try again&lt;/code>，&lt;code>[ebp-0x50]&lt;/code> 是 &lt;code>Wrong!&lt;/code>，这个调用用伪代码表示就是 &lt;code>wxMessageBox(&amp;quot;Wrong!&amp;quot;, &amp;quot;Try again!&amp;quot;, 5, 0, -1, -1)&lt;/code>。注意忽略中间的&lt;code>mov byte [ebp - 4], 8&lt;/code>，&lt;code>ebp-4&lt;/code>这个偏移显然不大可能是参数。&lt;/p>
 &lt;h3 id="关键跳">关键跳&lt;/h3>
 &lt;p>回到这段代码的开头，顺着界面上的绿色箭头找到关键跳。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/03.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/03.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/03.png"
 loading="lazy"
-alt="image-20210923111554787">
-&lt;/a>
-&lt;figcaption>image-20210923111554787&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210923111554787"
+>&lt;/p>
 &lt;p>一个&lt;code>je&lt;/code>跳转，&lt;code>je&lt;/code>指令检查&lt;code>ZF&lt;/code>，向上一行就是&lt;code>test&lt;/code>，&lt;code>test bl,bl&lt;/code>自己对自己逻辑与，其实就是求&lt;code>bl&lt;/code>是不是0。&lt;/p>
 &lt;p>bl又来自前面的&lt;code>mov bl,al&lt;/code>，&lt;code>al&lt;/code>寄存器是&lt;code>eax&lt;/code>寄存器的低8位，再者大家也知道&lt;code>eax&lt;/code>寄存器是函数返回值保存的寄存器，而离这个&lt;code>mov&lt;/code>指令最近的&lt;code>call&lt;/code>就是截图上方的&lt;code>IsSameAs&lt;/code>函数了。&lt;/p>
 &lt;p>到了这一步，改指令跳过验证已经接近成功了，但这要是做 keygen 的话还不行。&lt;/p>
 &lt;p>继续往回翻，寻找密码生成的代码。&lt;/p>
 &lt;h3 id="寻找密码生成算法">寻找密码生成算法&lt;/h3>
 &lt;p>先一路回到关键跳所处的代码块顶部，挨个往下看有哪些函数调用。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/04.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/04.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/04.png"
 loading="lazy"
-alt="image-20210923113330184">
-&lt;/a>
-&lt;figcaption>image-20210923113330184&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210923113330184"
+>&lt;/p>
 &lt;p>还是那句话，感谢分析出了库函数，不然一堆未知函数看得满头雾水。&lt;/p>
 &lt;ol>
 &lt;li>
@@ -9561,15 +8994,10 @@ alt="image-20210923113330184">
 &lt;h2 id="动态调试">动态调试&lt;/h2>
 &lt;p>水平有限，静态分析很快遇到了瓶颈，找不出这个偏移值算出来的函数到底在哪儿。&lt;/p>
 &lt;p>于是启动调试器，先跟到我们定位到的这个特殊函数。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/05.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/05.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/05.png"
 loading="lazy"
-alt="image-20210923140108796">
-&lt;/a>
-&lt;figcaption>image-20210923140108796&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210923140108796"
+>&lt;/p>
 &lt;p>惊喜地发现胡乱分析出现了错误，&lt;code>eax+0x40&lt;/code>其实是获取输入框值的函数。。所以另一个参数，&lt;code>ebp-0x70&lt;/code>才是密码。&lt;/p>
 &lt;p>往回看&lt;code>ebp-0x70&lt;/code>在&lt;code>DoFormatWchar&lt;/code>被当参数传递了进去，要注意的是&lt;code>DoFormatWchar&lt;/code>是一个有变长参数的函数，这意味着你没法得知传了几个参数（前面push的内容不一定是当参数传了），分析更困难。&lt;/p>
 &lt;p>看一下&lt;code>DoFormatWchar&lt;/code>这段汇编。&lt;/p>
@@ -9582,105 +9010,60 @@ alt="image-20210923140108796">
 &lt;span class="err">0&lt;/span>&lt;span class="nf">x0040643e&lt;/span> &lt;span class="no">ff&lt;/span> &lt;span class="mi">15&lt;/span> &lt;span class="no">d0&lt;/span> &lt;span class="mi">33&lt;/span> &lt;span class="mi">41&lt;/span> &lt;span class="mi">00&lt;/span> &lt;span class="no">call&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">private&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="no">static&lt;/span> &lt;span class="no">class&lt;/span> &lt;span class="no">wxString&lt;/span> &lt;span class="no">__cdecl&lt;/span> &lt;span class="no">wxString&lt;/span>&lt;span class="p">::&lt;/span>&lt;span class="no">DoFormatWchar&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">wchar_t&lt;/span> &lt;span class="no">const&lt;/span> &lt;span class="p">*)]&lt;/span> &lt;span class="c">; 0x4133d0
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>一共推了三个东西入栈，esi、eax（上一个调用的返回值）、还有&lt;code>[ebp-0x70]&lt;/code>。&lt;/p>
 &lt;p>继续调试器跟一遍看看。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/06.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/06.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/06.png"
 loading="lazy"
-alt="image-20210923142010900">
-&lt;/a>
-&lt;figcaption>image-20210923142010900&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210923142010900"
+>&lt;/p>
 &lt;p>&lt;code>esi&lt;/code>的值比较怪，先忽略。&lt;/p>
 &lt;p>&lt;code>eax&lt;/code>比较清楚，宽字符串&lt;code>%06d&lt;/code>，按压栈顺序，&lt;code>esi&lt;/code>的值是紧跟在格式化字符串后面的参数。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/07.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/07.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/07.png"
 loading="lazy"
-alt="image-20210923142347785">
-&lt;/a>
-&lt;figcaption>image-20210923142347785&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210923142347785"
+>&lt;/p>
 &lt;p>最后压栈的eax，也就是ebp-0x70的地址，用伪代码表示就是：&lt;code>DoFormatWchar(&amp;amp;var_70, L&amp;quot;%06d&amp;quot;, 0x000F18D8)&lt;/code>。PS：有点怪，函数签名最左侧是format也就是格式化字符串，最后压栈这个ebp-0x70就有点莫名其妙。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/08.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/08.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/08.png"
 loading="lazy"
-alt="image-20210923143534148">
-&lt;/a>
-&lt;figcaption>image-20210923143534148&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210923143534148"
+>&lt;/p>
 &lt;p>不过用调试器单步步过后就知道用途了，和猜测的一样，存放的是格式化的结果，也就是正确的密码。&lt;/p>
 &lt;p>既然如此，往回找esi是哪儿赋值的，因为inline了一大堆东西，Cutter连函数都认不出来了，控制流视图也挂了。。一直往上翻，找到&lt;code>0xcc&lt;/code>或者&lt;code>push ebp; mov ebp, esp&lt;/code>为止。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/09.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/09.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/09.png"
 loading="lazy"
-alt="image-20210923145922049">
-&lt;/a>
-&lt;figcaption>image-20210923145922049&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210923145922049"
+>&lt;/p>
 &lt;p>右键选择在此处定义函数，随便给个名字，然后等Cutter分析好函数体。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/10.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/10.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/10.png"
 loading="lazy"
-alt="image-20210923150100196">
-&lt;/a>
-&lt;figcaption>image-20210923150100196&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210923150100196"
+>&lt;/p>
 &lt;p>这样一来至少图形视图就能看了。粗略扫一眼，在底下找到&lt;code>IsSameAs&lt;/code>这个调用，再往回翻哪儿动了&lt;code>esi&lt;/code>这个寄存器，很快找到这两段。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/11.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/11.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/11.png"
 loading="lazy"
-alt="image-20210923150438821">
-&lt;/a>
-&lt;figcaption>image-20210923150438821&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210923150438821"
+>&lt;/p>
 &lt;p>有点杂，先看看。还是粗略按意图把指令分下段。&lt;code>esi&lt;/code>来源涉及&lt;code>eax&lt;/code>和&lt;code>ecx&lt;/code>，一路跟着赋值路径往回翻到第一个块，找到&lt;code>ecx&lt;/code>的赋值。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="err">0&lt;/span>&lt;span class="nf">x004062f1&lt;/span> &lt;span class="no">e8&lt;/span> &lt;span class="mi">68&lt;/span> &lt;span class="no">b3&lt;/span> &lt;span class="no">ff&lt;/span> &lt;span class="no">ff&lt;/span> &lt;span class="no">call&lt;/span> &lt;span class="no">fcn.0040165e&lt;/span>
 &lt;span class="err">0&lt;/span>&lt;span class="nf">x004062f6&lt;/span> &lt;span class="mi">8&lt;/span>&lt;span class="no">b&lt;/span> &lt;span class="mi">08&lt;/span> &lt;span class="no">mov&lt;/span> &lt;span class="no">ecx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">dword&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">eax&lt;/span>&lt;span class="p">]&lt;/span>
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>一个未知函数，ctrl+左键点击跟进去后发现疑似是 libcrypto 内联的函数，调用了 HMAC-SHA1 算法。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/12.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/12.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/12.png"
 loading="lazy"
-alt="image-20210924092624224">
-&lt;/a>
-&lt;figcaption>image-20210924092624224&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210924092624224"
+>&lt;/p>
 &lt;p>先做个标记，猜测假设这个函数正确返回（下面的je跳转走到最后一个块），那返回结果应该是HMAC-SHA1的结果。这里通过调试器单步验证。&lt;/p>
 &lt;p>因为 ASLR 的缘故，可执行文件 .text 段映射的地址不是 0x00401000，调试器没法直接转到静态分析工具中的地址，ASLR 确实折磨人&amp;hellip;&lt;/p>
 &lt;p>anyway&amp;hellip;&lt;/p>
 &lt;p>我投翔，特立独行是没好结果的，跑去下载了一个 IDA Free ，打开x32dbg确认 .text 段映射的基址后再到 IDA 的菜单 &lt;code>Edit&lt;/code> -&amp;gt; &lt;code>Segments&lt;/code> -&amp;gt; &lt;code>rebase program ...&lt;/code> 重新设定镜像基址，这样在反汇编界面看到的地址就能和调试器对上了。缺陷是每次打开调试器都要对一次镜像基址，比较麻烦。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/image-20210924154631893.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/image-20210924154631893.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/image-20210924154631893.png"
 loading="lazy"
-alt="image-20210924154631893">
-&lt;/a>
-&lt;figcaption>image-20210924154631893&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210924154631893"
+>&lt;/p>
 &lt;p>对好镜像基址后，把之前想调试的函数调用地址找到（0x003B62F1），下个断点，看调用后的&lt;code>eax&lt;/code>值，发现并不像纯c编译出来的结果，&lt;code>eax&lt;/code>并没有什么卵用。&lt;/p>
 &lt;p>稍微往上瞟了一眼，很容易看到一个&lt;code>mov ecx,esi&lt;/code>，但没什么卵用。&lt;/p>
 &lt;p>碰壁几次后决定跟进这个函数看看。无果。恼，作弊之（读过RFC可能注意到几个特殊常量，比如取哈希结果下标19，与0xf，作为偏移值向后再取4字节，作为bin code。跳过这个函数调用，直接看接下来的内容的话，会发现哈希值其实就存在&lt;code>ecx&lt;/code>保存的地址上了。）&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-03/image-20210924162043275.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/image-20210924162043275.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-03/image-20210924162043275.png"
 loading="lazy"
-alt="image-20210924162043275">
-&lt;/a>
-&lt;figcaption>image-20210924162043275&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210924162043275"
+>&lt;/p>
 &lt;p>只是这里的HMAC_SHA1值因为不是我们熟悉的ASCII表示，所以一眼有点难看出来。&lt;/p>
 &lt;p>那么直接跳过上面不清不楚的地方，直接看取哈希后的做法。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nl">.text:&lt;/span>&lt;span class="err">003&lt;/span>&lt;span class="nf">B6307&lt;/span> &lt;span class="no">movzx&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="no">byte&lt;/span> &lt;span class="no">ptr&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ecx&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">13&lt;/span>&lt;span class="no">h&lt;/span>&lt;span class="p">]&lt;/span>
@@ -9876,57 +9259,32 @@ wrong pwd!
 &lt;h2 id="0x03-静态分析---easy">0x03 静态分析 - easy&lt;/h2>
 &lt;h3 id="31-主循环">3.1 主循环&lt;/h3>
 &lt;p>在公司没IDA，用 &lt;a class="link" href="image/crackme-02/https://cutter.re/" >Cutter&lt;/a> 打开，在上方输入框输入 &lt;code>main&lt;/code> 跳转到 &lt;code>main&lt;/code> 函数。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-1.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-1.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-1.png"
 loading="lazy"
-alt="image-20210914114426600">
-&lt;/a>
-&lt;figcaption>image-20210914114426600&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210914114426600"
+>&lt;/p>
 &lt;p>然后点击 &lt;em>图表（main）&lt;/em> 进入类似 IDA 的控制流视图。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-2.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-2.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-2.png"
 loading="lazy"
-alt="image-20210914114547128">
-&lt;/a>
-&lt;figcaption>image-20210914114547128&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210914114547128"
+>&lt;/p>
 &lt;p>之后就能看到下面的控制流了。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-3.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-3.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-3.png"
 loading="lazy"
->
-&lt;/a>
-&lt;/figure>&lt;/p>
+>&lt;/p>
 &lt;p>easy难度下没有开启任何编译器优化，控制流和原始代码能直接对应上。瞧着困难很多对吧？&lt;/p>
 &lt;p>先简单扫一眼，会发现很多分支直接跳回了&lt;code>0x0040139d&lt;/code>，也就是从上往下数第二个代码块，基本每个跳转都是下一个块或跳回这个块。按照 &lt;a class="link" href="https://nnnewb.github.io/blog/p/crackme-01/" target="_blank" rel="noopener"
 >cm01&lt;/a>的经验，我们先找到关键的一跳。可以直接搜索字符串引用（&lt;code>wrong pwd!&lt;/code>），也可以逐个代码块看下去。&lt;/p>
 &lt;p>很快，右下角的关键跳出现在眼前。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-4.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-4.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-4.png"
 loading="lazy"
-alt="image-20210914152834262">
-&lt;/a>
-&lt;figcaption>image-20210914152834262&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210914152834262"
+>&lt;/p>
 &lt;p>接着回头看跳转条件。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-5.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-5.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-5.png"
 loading="lazy"
-alt="image-20210914153728179">
-&lt;/a>
-&lt;figcaption>image-20210914153728179&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210914153728179"
+>&lt;/p>
 &lt;p>虽然没有名字，但&lt;code>fcn.00403ef4&lt;/code> 是老熟人了。三个参数，&lt;code>ecx&lt;/code>、&lt;code>eax&lt;/code>、&lt;code>0x10&lt;/code>，返回结果和&lt;code>0&lt;/code>做比较，&lt;code>jne&lt;/code>条件跳转。&lt;/p>
 &lt;ul>
 &lt;li>&lt;code>cmp&lt;/code>指令，操作数相减（&lt;code>dest&lt;/code>-&lt;code>src&lt;/code>），结果存入标志位 &lt;code>SF&lt;/code>和&lt;code>ZF&lt;/code>。
@@ -9939,47 +9297,27 @@ alt="image-20210914153728179">
 &lt;li>&lt;code>jne&lt;/code>或&lt;code>jnz&lt;/code>指令，非零跳转。&lt;code>ZF&lt;/code>标志位为&lt;code>1&lt;/code>时跳转。&lt;/li>
 &lt;/ul>
 &lt;p>猜测这个函数应该是&lt;code>strncmp&lt;/code>。继续往回看参数是怎么来的。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-6.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-6.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-6.png"
 loading="lazy"
-alt="image-20210914155544252">
-&lt;/a>
-&lt;figcaption>image-20210914155544252&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210914155544252"
+>&lt;/p>
 &lt;p>&lt;code>eax&lt;/code>来自&lt;code>sub.02x_40298c&lt;/code>这个函数，后面两个脱裤子放屁的&lt;code>mov&lt;/code>忽略。&lt;code>ecx&lt;/code>则来来自&lt;code>mov ecx,dword [ebp-10h]&lt;/code>这一行。&lt;/p>
 &lt;p>先不着急分析函数，继续往回找，找到&lt;code>[ebp-10h]&lt;/code>的来源。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-7.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-7.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-7.png"
 loading="lazy"
-alt="image-20210914161814604">
-&lt;/a>
-&lt;figcaption>image-20210914161814604&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210914161814604"
+>&lt;/p>
 &lt;p>在入口点附近，看到&lt;code>[ebp-10]&lt;/code>被初始化成了0。&lt;/p>
 &lt;p>因为没有很明确的路径，手动计算栈上偏移又非常麻烦，这里本应该掏出调试器——但出于学习练手的目的，还是先尝试计算下。首先回顾下简化的栈内存布局，从上往下增长，如图。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-8.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-8.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-8.png"
 loading="lazy"
-alt="stack-layout">
-&lt;/a>
-&lt;figcaption>stack-layout&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="stack-layout"
+>&lt;/p>
 &lt;p>接下来从&lt;code>mov ebp,esp&lt;/code>开始，往下列出所有函数调用，捋一捋逻辑。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-9.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-9.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-9.png"
 loading="lazy"
-alt="image-20210914214920437">
-&lt;/a>
-&lt;figcaption>image-20210914214920437&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210914214920437"
+>&lt;/p>
 &lt;p>第一个框，&lt;code>[esp+2ch+Ix]&lt;/code> 计算结果是 &lt;code>[esp]&lt;/code>，也就是栈顶，栈顶设置为字符串 &lt;code>username:&lt;/code>，接着调用一个未知函数。从参数判断我们先认为是一个输出字符串的函数。&lt;/p>
 &lt;p>再看第二个框，&lt;code>acrt_iob_func&lt;/code>，百度一下就会发现，&lt;code>__acrt_iob_func&lt;/code>函数是定义于 c 运行库里的函数，作用是返回 &lt;code>stdin/stdout/stderr&lt;/code> 。栈顶设置为0，所以获得的是 &lt;code>stdin&lt;/code>。&lt;/p>
 &lt;p>再看第三个框，&lt;code>edx&lt;/code>和&lt;code>ecx&lt;/code>赋值为栈上两个变量的地址，再为参数。按顺序就是&lt;code>f(edx,ecx,stdin)&lt;/code>。暂时不明。函数返回值被赋值回了&lt;code>[ebp-18h]&lt;/code>。&lt;/p>
@@ -9993,15 +9331,10 @@ alt="image-20210914214920437">
 &lt;span class="n">var_0c&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">unknown_func2&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">var_8&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">var_18&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="k">if&lt;/span> &lt;span class="n">var_0c&lt;/span> &lt;span class="o">&amp;lt;=&lt;/span> &lt;span class="mi">8&lt;/span>&lt;span class="p">:&lt;/span>
 &lt;span class="o">...&lt;/span> &lt;span class="c1"># jbe 跳转执行&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-10.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-10.png"
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-10.png"
 loading="lazy"
-alt="image-20210914223919137">
-&lt;/a>
-&lt;figcaption>image-20210914223919137&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210914223919137"
+>&lt;/p>
 &lt;p>可以看出，当 &lt;code>var_0c&lt;/code> 小于 8 时，提示 &lt;code>username less than 8 letter&lt;/code> 。因此可以确定 &lt;code>[ebp-0Ch]&lt;/code> 这个变量就是 &lt;code>username&lt;/code> 字符串的长度，上一个函数会计算字符串长度返回。我们再根据这个发现修改下伪代码。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="n">var&lt;/span> &lt;span class="n">var_8&lt;/span> &lt;span class="c1"># 偏移值 ebp-8h&lt;/span>
 &lt;span class="n">var&lt;/span> &lt;span class="n">username_len&lt;/span> &lt;span class="c1"># 偏移值 ebp-0Ch&lt;/span>
@@ -10017,36 +9350,21 @@ alt="image-20210914223919137">
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">cmp&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp-0Ch&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="mi">0&lt;/span>
 &lt;span class="nf">jnz&lt;/span> &lt;span class="no">...&lt;/span>
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>这次是比较用户名长度和0，非0跳转。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-11.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-11.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-11.png"
 loading="lazy"
-alt="image-20210914224625891">
-&lt;/a>
-&lt;figcaption>image-20210914224625891&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210914224625891"
+>&lt;/p>
 &lt;p>可以看到为零时，经过一个未知函数 &lt;code>sub_4036FC(var_8)&lt;/code> 后，跳回开头。&lt;/p>
 &lt;p>继续看正确流程，&lt;code>jmp $+5&lt;/code> ，&lt;code>$&lt;/code> 表示当前正在执行的代码在代码段内的偏移量，+5就是从当前代码开始往后跳过5个字节，我们直接看IDA分析好的跳转位置。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-12.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-12.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-12.png"
 loading="lazy"
-alt="image-20210914225052452">
-&lt;/a>
-&lt;figcaption>image-20210914225052452&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210914225052452"
+>&lt;/p>
 &lt;p>又是非常熟悉的代码，和读取 &lt;code>username&lt;/code> 的分析方式相同，以相同的顺序调用相同的函数，可以得到&lt;code>var_14&lt;/code>是&lt;code>serial_len&lt;/code>，&lt;code>Str1&lt;/code>可能是&lt;code>serial&lt;/code>字符串指针。不做重复分析，继续往下看。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-13.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-13.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-13.png"
 loading="lazy"
-alt="image-20210914225322787">
-&lt;/a>
-&lt;figcaption>image-20210914225322787&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210914225322787"
+>&lt;/p>
 &lt;p>右边的代码块是关于长度的判断，分析方法不再重复。左侧代码就是我们的关键跳转了，其中出现两个函数调用。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">mov&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="no">var_C&lt;/span>&lt;span class="p">]&lt;/span>
 &lt;span class="nf">mov&lt;/span> &lt;span class="no">ecx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="no">Block&lt;/span>&lt;span class="p">]&lt;/span>
@@ -10067,15 +9385,10 @@ alt="image-20210914225322787">
 &lt;p>下一步分析序列号生成函数。&lt;/p>
 &lt;h3 id="32-生成序列号">3.2 生成序列号&lt;/h3>
 &lt;p>先看下控制流全览，能依稀分辨出三个循环。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-14.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-14.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-14.png"
 loading="lazy"
-alt="generate">
-&lt;/a>
-&lt;figcaption>generate&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="generate"
+>&lt;/p>
 &lt;p>自动分析出的变量表&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="c">; var uint32_t var_1ch @ ebp-0x1c
 &lt;/span>&lt;span class="c">; var int32_t var_18h @ ebp-0x18
@@ -10289,94 +9602,49 @@ alt="generate">
 &lt;p>调试的目标是确认生成序列号的算法，把分析出的伪代码中还不清楚用途的未知函数，分析出作用。&lt;/p>
 &lt;h3 id="41-x32dbg">4.1 x32dbg&lt;/h3>
 &lt;p>打开调试器后，先找到关键跳，在工具栏点击字符串工具图标，在下方搜索栏输入&lt;code>wrong pwd!&lt;/code>&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-15.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-15.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-15.png"
 loading="lazy"
-alt="image-20210915140718400">
-&lt;/a>
-&lt;figcaption>image-20210915140718400&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915140718400"
+>&lt;/p>
 &lt;p>跳到引用位置。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-18.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-18.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-18.png"
 loading="lazy"
-alt="image-20210915111455604">
-&lt;/a>
-&lt;figcaption>image-20210915111455604&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-19.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-19.png"
+alt="image-20210915111455604"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-19.png"
 loading="lazy"
-alt="image-20210915111621678">
-&lt;/a>
-&lt;figcaption>image-20210915111621678&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915111621678"
+>&lt;/p>
 &lt;p>之后可以按g，进入控制流视图，不过这个控制流视图有点不好看，我们也可以直接参考静态分析中的汇编，直接找到函数，并在入口下断点。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-20.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-20.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-20.png"
 loading="lazy"
-alt="image-20210915112358449">
-&lt;/a>
-&lt;figcaption>image-20210915112358449&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915112358449"
+>&lt;/p>
 &lt;p>尝试随便输入一点内容，调试器命中。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-21.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-21.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-21.png"
 loading="lazy"
-alt="image-20210915112552389">
-&lt;/a>
-&lt;figcaption>image-20210915112552389&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915112552389"
+>&lt;/p>
 &lt;p>接下来就可以用左上角的单步调试了。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-22.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-22.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-22.png"
 loading="lazy"
-alt="image-20210915140939909">
-&lt;/a>
-&lt;figcaption>image-20210915140939909&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915140939909"
+>&lt;/p>
 &lt;p>不做更多介绍，汇编的分析已经进行过一次。这次我们找到对输入 &amp;ldquo;abc&amp;rdquo; 的正确序列号，完成一次解密。&lt;/p>
-&lt;p>只需要在断点处点击&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-23.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-23.png"
+&lt;p>只需要在断点处点击&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-23.png"
 loading="lazy"
-alt="image-20210915141120060">
-&lt;/a>
-&lt;figcaption>image-20210915141120060&lt;/figcaption>
-&lt;/figure>按钮，然后观察&lt;code>eax&lt;/code>寄存器。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-24.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-24.png"
+alt="image-20210915141120060"
+>按钮，然后观察&lt;code>eax&lt;/code>寄存器。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-24.png"
 loading="lazy"
-alt="image-20210915141405302">
-&lt;/a>
-&lt;figcaption>image-20210915141405302&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915141405302"
+>&lt;/p>
 &lt;p>抄出来（居然不能右键复制后面的字符串），内容是&lt;code>4447467073727d7c&lt;/code>。&lt;/p>
 &lt;p>接着继续运行，再把抄出来的答案复制进去看看。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-25.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-25.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-25.png"
 loading="lazy"
-alt="image-20210915141838395">
-&lt;/a>
-&lt;figcaption>image-20210915141838395&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915141838395"
+>&lt;/p>
 &lt;p>到这里，我们拿到了一个可以用的序列号。&lt;/p>
 &lt;h2 id="0x05-注册机">0x05 注册机&lt;/h2>
 &lt;h3 id="51-python-脚本注册机">5.1 Python 脚本注册机&lt;/h3>
@@ -10424,77 +9692,42 @@ alt="image-20210915141838395">
 &lt;h2 id="0x06-修改-exe">0x06 修改 exe&lt;/h2>
 &lt;h3 id="61-x32dbg-修改关键跳">6.1 x32dbg 修改关键跳&lt;/h3>
 &lt;p>用调试器打开后找到决定serial是否正确的关键跳转，右键二进制选择用NOP填充，确认即可。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-26.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-26.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-26.png"
 loading="lazy"
-alt="image-20210915150907420">
-&lt;/a>
-&lt;figcaption>image-20210915150907420&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915150907420"
+>&lt;/p>
 &lt;p>修改后效果如图。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-27.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-27.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-27.png"
 loading="lazy"
-alt="image-20210915150953046">
-&lt;/a>
-&lt;figcaption>image-20210915150953046&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915150953046"
+>&lt;/p>
 &lt;p>接着把修改后的exe保存下来，在文件菜单里选择补丁。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-28.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-28.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-28.png"
 loading="lazy"
-alt="image-20210915151220354">
-&lt;/a>
-&lt;figcaption>image-20210915151220354&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915151220354"
+>&lt;/p>
 &lt;p>全选，点修补文件，选择路径保存。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-29.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-29.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-29.png"
 loading="lazy"
-alt="image-20210915151322628">
-&lt;/a>
-&lt;figcaption>image-20210915151322628&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915151322628"
+>&lt;/p>
 &lt;p>我保存在&lt;code>cm02-easy-patched.exe&lt;/code>，接着我们试试运行。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-30.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-30.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-30.png"
 loading="lazy"
-alt="image-20210915151903611">
-&lt;/a>
-&lt;figcaption>image-20210915151903611&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915151903611"
+>&lt;/p>
 &lt;p>遗憾的是被x32dbg补丁功能导出的文件需要管理员权限运行，为了能截到图，图中用了名为&lt;code>sudo&lt;/code>的工具命令，可以用&lt;code>scoop install sudo&lt;/code>来安装&lt;code>sudo&lt;/code>，点击去&lt;a class="link" href="https://scoop.sh" target="_blank" rel="noopener"
 >scoop首页&lt;/a>。&lt;/p>
 &lt;h3 id="62-反编译器修改关键跳">6.2 反编译器修改关键跳&lt;/h3>
 &lt;p>以Cutter为例，找到&lt;code>jne&lt;/code>指令后，右键修改为&lt;code>nop&lt;/code>即可。记得先备份。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-31.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-31.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-31.png"
 loading="lazy"
-alt="image-20210915152428449">
-&lt;/a>
-&lt;figcaption>image-20210915152428449&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-32.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-32.png"
+alt="image-20210915152428449"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-02/cm02-easy-32.png"
 loading="lazy"
-alt="image-20210915152609774">
-&lt;/a>
-&lt;figcaption>image-20210915152609774&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210915152609774"
+>&lt;/p>
 &lt;p>修改后也能实现和x32导出一样的效果，而且不用管理员权限。&lt;/p>
 &lt;h2 id="结论">结论&lt;/h2>
 &lt;p>总得有个结论。&lt;/p>
@@ -10614,50 +9847,30 @@ password:
 &lt;h3 id="反汇编---easy">反汇编 - Easy&lt;/h3>
 &lt;p>Easy难度下，&lt;code>-O0&lt;/code>参数关闭了编译器优化，生成的汇编代码非常死板，基本能直接对照到C源码上。&lt;/p>
 &lt;p>直接拿IDA打开。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-1.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-1.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-1.png"
 loading="lazy"
-alt="image-20210912172521751">
-&lt;/a>
-&lt;figcaption>image-20210912172521751&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912172521751"
+>&lt;/p>
 &lt;p>直接跳到了&lt;code>main&lt;/code>函数。接着看IDA汇编窗口中的的细节。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-2.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-2.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-2.png"
 loading="lazy"
-alt="image-20210912173539972">
-&lt;/a>
-&lt;figcaption>image-20210912173539972&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912173539972"
+>&lt;/p>
 &lt;p>IDA反汇编界面是包含一些伪代码的，有助于分析。&lt;/p>
 &lt;p>左侧有长条和箭头的部分是控制流示意，箭头指的就是跳转方向。&lt;/p>
 &lt;p>越过伪代码的部分，就能看到函数体开头例行公事的部分了。随后的便是函数体代码。&lt;/p>
 &lt;p>具体看函数体前，先了解下IDA还提供了另一种控制流可视化的视图，可以极大帮助对函数逻辑的分析。&lt;/p>
 &lt;p>在汇编视图里右键，选择 Graph View，即可进入控制流视图。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-3.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-3.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-3.png"
 loading="lazy"
-alt="image-20210912174233891">
-&lt;/a>
-&lt;figcaption>image-20210912174233891&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912174233891"
+>&lt;/p>
 &lt;p>在图片左下角的是视图的全览，原本的汇编文本变成了图中箭头连接的小汇编代码块，箭头指示了跳转的方向。&lt;/p>
 &lt;p>在这个视图可以很清楚地看到所谓的关键跳：&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-4.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-4.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-4.png"
 loading="lazy"
-alt="image-20210912174738919">
-&lt;/a>
-&lt;figcaption>image-20210912174738919&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912174738919"
+>&lt;/p>
 &lt;p>&lt;code>_strncmp&lt;/code>是经过了 name mangling 的 c 标准库函数&lt;code>strncmp&lt;/code>，函数如名字所示，用途就是比较字符串。&lt;/p>
 &lt;p>又根据&lt;code>cdecl&lt;/code>调用约定，函数参数通过栈传递，参数从右往左压栈。我们看这个&lt;code>call&lt;/code>指令前的三句&lt;code>mov&lt;/code>。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">mov&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">esp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">24&lt;/span>&lt;span class="no">h&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="no">Ix&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="no">ecx&lt;/span> &lt;span class="c">; Str1
@@ -10671,27 +9884,17 @@ alt="image-20210912174738919">
 &lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">ebp&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="no">var_8&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="no">eax&lt;/span>
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>所以有一个参数是字符串 &lt;code>&amp;quot;secret&amp;quot;&lt;/code>，作为关键跳前 &lt;code>_strncmp&lt;/code> 的参数。&lt;/p>
 &lt;p>让我们尝试一下。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-7.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-7.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-easy-7.png"
 loading="lazy"
-alt="image-20210912181959230">
-&lt;/a>
-&lt;figcaption>image-20210912181959230&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912181959230"
+>&lt;/p>
 &lt;p>成功完成。&lt;/p>
 &lt;h3 id="反汇编---normal">反汇编 - Normal&lt;/h3>
 &lt;p>接下来看使用&lt;code>-O1&lt;/code>编译，开启了部分编译器优化的版本。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-normal-1.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-normal-1.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-normal-1.png"
 loading="lazy"
-alt="image-20210912183427553">
-&lt;/a>
-&lt;figcaption>image-20210912183427553&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912183427553"
+>&lt;/p>
 &lt;p>可以看到，因为编译器优化的缘故，原本清晰的分支变成了一个仅有一个循环。&lt;/p>
 &lt;p>还是先找到关键跳，肉眼过一遍循环中的函数调用，&lt;code>sub_401180&lt;/code>从参数看应该是一个往终端打印字符串的函数，忽略。&lt;code>___acrt_iob_func&lt;/code>意义不明也忽略。下一个&lt;code>sub_401000&lt;/code>依然有点意义不明，先跳过。再往下就看到了老熟人了，&lt;code>_strncmp&lt;/code>，&lt;code>&amp;quot;secret&amp;quot;&lt;/code>参数更是直接用一个push给压栈了，分析到此结束？&lt;/p>
 &lt;p>不过还有一个问题没解决：失败的提示我们看到了，成功的跳转在哪儿呢？&lt;/p>
@@ -10710,68 +9913,38 @@ alt="image-20210912183427553">
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;Good job!&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="n">compare_result&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="s2">&amp;#34;wrong pwd!&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="反汇编---hard">反汇编 - Hard&lt;/h3>
 &lt;p>Hard启用了&lt;code>-O2&lt;/code>，也就是开启了大部分编译器优化。用IDA打开。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-1.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-1.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-1.png"
 loading="lazy"
-alt="image-20210912185949657">
-&lt;/a>
-&lt;figcaption>image-20210912185949657&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912185949657"
+>&lt;/p>
 &lt;p>因为编译器十分聪明地把一些函数给内联编译进了 main 函数，现在 main 函数的控制流已经乱的一批。挨个读下去虽然还可行，但实在费神费力。&lt;/p>
 &lt;p>不过在这个条件下依然还有解决办法：我们可以通过错误或成功的提示字符串找关键跳。&lt;/p>
 &lt;p>已知错误时会输出&amp;quot;wrong pwd!&amp;quot;，我们在IDA找到字符串视图。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-2.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-2.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-2.png"
 loading="lazy"
-alt="image-20210912190657661">
-&lt;/a>
-&lt;figcaption>image-20210912190657661&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912190657661"
+>&lt;/p>
 &lt;p>然后在视图中找到字符串。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-3.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-3.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-3.png"
 loading="lazy"
-alt="image-20210912190827657">
-&lt;/a>
-&lt;figcaption>image-20210912190827657&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912190827657"
+>&lt;/p>
 &lt;p>其实就是在内存数据段（Data Segment）或者PE的数据节（Data Section）中的字符串啦，一般手写的字符串字面量都会直接编译到这里。&lt;/p>
 &lt;p>在我们要找的字符串上双击，就会跳到汇编视图中的字符串位置。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-4.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-4.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-4.png"
 loading="lazy"
-alt="image-20210912191125747">
-&lt;/a>
-&lt;figcaption>image-20210912191125747&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912191125747"
+>&lt;/p>
 &lt;p>然后再双击图中位置。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-5.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-5.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-5.png"
 loading="lazy"
-alt="image-20210912191344967">
-&lt;/a>
-&lt;figcaption>image-20210912191344967&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912191344967"
+>&lt;/p>
 &lt;p>即可跳转到引用。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-6.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-6.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/crackme-01/cm01-hard-6.png"
 loading="lazy"
-alt="image-20210912191435672">
-&lt;/a>
-&lt;figcaption>image-20210912191435672&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210912191435672"
+>&lt;/p>
 &lt;p>接着看跳转到的上下文，又变成了十分熟悉的正确错误分支。往前找到 &lt;code>_strncmp&lt;/code>的参数。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nf">push&lt;/span> &lt;span class="mi">6&lt;/span>
 &lt;span class="nf">push&lt;/span> &lt;span class="no">offset&lt;/span> &lt;span class="no">Str2&lt;/span> &lt;span class="c">; &amp;#34;secret&amp;#34;
@@ -11368,15 +10541,10 @@ B: 2
 B: 3
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>可以看到最后一个启动的 goroutine 的输出跑到了最开头。其他顺序倒是没啥变化。为啥呢？&lt;/p>
 &lt;p>先看 &lt;code>runtime.GOMAXPROCS(1)&lt;/code> 。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/goroutines-schedule-order/G-M-P.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/goroutines-schedule-order/G-M-P.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/goroutines-schedule-order/G-M-P.png"
 loading="lazy"
-alt="GMP">
-&lt;/a>
-&lt;figcaption>GMP&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="GMP"
+>&lt;/p>
 &lt;p>从 GMP 模型可以得知这一句代码实际限制了所有 goroutine 只能被顺序串行执行（所有 g 都只能在这唯一一个 p 的本地队列里等待 m）。&lt;/p>
 &lt;p>而 &lt;code>main()&lt;/code> 函数里创建 goroutine 的顺序是明确的，5 个 A，5 个 B。&lt;/p>
 &lt;p>按照一般理解的话，队列是先进先出 FIFO 的结构，一个 p 又限制了其他 m 即使唤醒了，抢占了 p，也不能做 work stealing（也用不着做），那么 goroutine 的执行顺序自然只能是先进先出了。&lt;/p>
@@ -11989,15 +11157,10 @@ kubectl config set-context ci --cluster&lt;span class="o">=&lt;/span>office --us
 &lt;p>&amp;hellip;&lt;/p>
 &lt;p>XA 事务是全局事务关联的一组事务性动作，要么全部成功，要么全部回滚。本质上，这是让 ACID 属性“提升了一层”，让多个ACID事务可以作为一个全局操作的一部分执行，使得这个全局操作也具备ACID属性。（对于非分布式事务，应用如果对读敏感，则&lt;code>SERIALIZABLE&lt;/code>更推荐。&lt;code>REPEATABLE READ&lt;/code> 在分布式事务中并不是很有效。）&lt;/p>
 &lt;h4 id="事务模型">事务模型&lt;/h4>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/MySQL-XA-and-2PC-DTP-model/%e4%ba%8b%e5%8a%a1%e6%a8%a1%e5%9e%8b.webp" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/MySQL-XA-and-2PC-DTP-model/%e4%ba%8b%e5%8a%a1%e6%a8%a1%e5%9e%8b.webp"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/MySQL-XA-and-2PC-DTP-model/%e4%ba%8b%e5%8a%a1%e6%a8%a1%e5%9e%8b.webp"
 loading="lazy"
-alt="DTM">
-&lt;/a>
-&lt;figcaption>DTM&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="DTM"
+>&lt;/p>
 &lt;p>其中：&lt;/p>
 &lt;ul>
 &lt;li>**AP：**用户程序&lt;/li>
@@ -12081,15 +11244,10 @@ alt="DTM">
 &lt;/li>
 &lt;li>一个处于&lt;code>PREPARED&lt;/code>状态的XA事务，可以发出&lt;code>XA COMMIT&lt;/code>语句来提交并结束XA事务，或发出&lt;code>XA ROLLBACK&lt;/code>来回滚并结束事务。&lt;/li>
 &lt;/ol>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/MySQL-XA-and-2PC-DTP-model/xa-state-transition-diagram.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/MySQL-XA-and-2PC-DTP-model/xa-state-transition-diagram.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/MySQL-XA-and-2PC-DTP-model/xa-state-transition-diagram.png"
 loading="lazy"
-alt="image-20210831105435330">
-&lt;/a>
-&lt;figcaption>image-20210831105435330&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="image-20210831105435330"
+>&lt;/p>
 &lt;p>下面是一个简单的XA事务例子，作为一个全局事务，插入一个行。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-mysql" data-lang="mysql">&lt;span class="n">mysql&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">XA&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">START&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s1">&amp;#39;xatest&amp;#39;&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
 &lt;/span>&lt;span class="w">&lt;/span>&lt;span class="n">Query&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">OK&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">rows&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nf">affected&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="mi">00&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">sec&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w">
@@ -13050,27 +12208,17 @@ source ~/.vimrc&lt;/p>
 &lt;h2 id="0x02-桌面">0x02 桌面&lt;/h2>
 &lt;p>对习惯了装完就有桌面的用户来说，安装完 slackware 之后遇到的第一个问题就是怎么进入桌面——甚至会问怎么登陆。&lt;/p>
 &lt;p>这里就挂一张 gif 好了。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/slackware-vm-setup/01.gif" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/slackware-vm-setup/01.gif"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/slackware-vm-setup/01.gif"
 loading="lazy"
-alt="01">
-&lt;/a>
-&lt;figcaption>01&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="01"
+>&lt;/p>
 &lt;p>假设没手贱在安装的时候把 x/kde/xfce 之类的软件包组给去掉的话，就不会有什么问题。&lt;/p>
 &lt;p>如果需要自动进入桌面，需要手动修改 &lt;code>/etc/inittab&lt;/code> 文件，把默认的 runlevel 修改为 4 。&lt;/p>
 &lt;p>具体怎么改，看 gif 。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/slackware-vm-setup/02.gif" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/slackware-vm-setup/02.gif"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/slackware-vm-setup/02.gif"
 loading="lazy"
-alt="02">
-&lt;/a>
-&lt;figcaption>02&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="02"
+>&lt;/p>
 &lt;h2 id="0x03-slackpkg-包管理">0x03 slackpkg 包管理&lt;/h2>
 &lt;p>如果用过 ubuntu ，那么下一个问题可能就是 &amp;ldquo;怎么没有 apt-get 命令？&amp;rdquo; 或者 &amp;ldquo;slackware 用什么命令安装软件？&amp;rdquo;&lt;/p>
 &lt;p>答案是有好几个相关命令。&lt;/p>
@@ -13101,15 +12249,10 @@ alt="02">
 &lt;p>不同之处在于，SlackBuilds 需要手动下载脚本和源码，然后自己看 README 再运行编译。&lt;/p>
 &lt;p>当然这不是说 SlackBuilds 没有类似 yaourt 或者 yay 之类的自动工具，你可以试试 sbopkg 。&lt;/p>
 &lt;p>这里给个简单的例子，用 sbopkg 安装 fbterm 。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/slackware-vm-setup/03.gif" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/slackware-vm-setup/03.gif"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/slackware-vm-setup/03.gif"
 loading="lazy"
-alt="03.gif">
-&lt;/a>
-&lt;figcaption>03.gif&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="03.gif"
+>&lt;/p>
 &lt;h2 id="0x05-编写-slackbuilds">0x05 编写 SlackBuilds&lt;/h2>
 &lt;p>讲道理，slackware 常用的软件太少，基本全靠 slackbuilds 撑场面。如果 SlackBuilds 上也没有呢？&lt;/p>
 &lt;p>那只能自己写吧。&lt;/p>
@@ -13137,127 +12280,72 @@ alt="03.gif">
 &lt;p>mitmproxy 怎么抓 https 流量不多说了，基本流程就是装证书，然后配置代理。能看到有流量进 mitmproxy 就算成功了。&lt;/p>
 &lt;p>直接参考 mitmproxy 的文档快一点。&lt;/p>
 &lt;/blockquote>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/01.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/01.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/01.png"
 loading="lazy"
-alt="01">
-&lt;/a>
-&lt;figcaption>01&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="01"
+>&lt;/p>
 &lt;p>搜了一圈没有什么现成的对这个 App 的破解的文章，于是决定自己动手。&lt;/p>
 &lt;h2 id="0x02-解包和脱壳">0x02 解包和脱壳&lt;/h2>
 &lt;p>先确认下电脑上装了 JDK 或者 JRE ，没有的话就装好。&lt;/p>
 &lt;p>推荐一个 vscode 的插件，&lt;code>apklab&lt;/code>。会帮你装好 jadx 和 apktools / signer 这些工具。&lt;/p>
 &lt;p>接下来直接用 &lt;code>apklab&lt;/code> 打开需要破解的 apk 文件。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/02.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/02.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/02.png"
 loading="lazy"
-alt="02">
-&lt;/a>
-&lt;figcaption>02&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/03.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/03.png"
+alt="02"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/03.png"
 loading="lazy"
-alt="03">
-&lt;/a>
-&lt;figcaption>03&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/04.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/04.png"
+alt="03"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/04.png"
 loading="lazy"
-alt="04">
-&lt;/a>
-&lt;figcaption>04&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="04"
+>&lt;/p>
 &lt;p>apklab 会自动用 apktools 和 jadx 完成拆包和反编译。&lt;/p>
 &lt;p>然后简单观察&amp;hellip;&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/05.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/05.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/05.png"
 loading="lazy"
-alt="05">
-&lt;/a>
-&lt;figcaption>05&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="05"
+>&lt;/p>
 &lt;p>应该是被 360 加固了。&lt;/p>
 &lt;p>apk 加固的基本原理就是把易被反编译的 java 字节码转译或者加密后保存，运行的时候再释放出来。用过 upx 一类的软件应该会联想到，就是加壳、反调试什么的这一套。&lt;/p>
 &lt;p>xposed 提供了一个&lt;a class="link" href="https://api.xposed.info/reference/de/robv/android/xposed/IXposedHookLoadPackage.html" target="_blank" rel="noopener"
 >在安卓包加载时设置钩子的机会&lt;/a>，将 ClassLoader Hook 掉，以此获得真正的应用字节码。&lt;/p>
 &lt;p>代码看参考资料。&lt;/p>
 &lt;p>安装 xposed 框架和 FDex2 之后启动目标应用，即可获得对应的字节码 dex 文件。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/06.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/06.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/06.png"
 loading="lazy"
-alt="06">
-&lt;/a>
-&lt;figcaption>06&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/07.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/07.png"
+alt="06"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/07.png"
 loading="lazy"
-alt="07">
-&lt;/a>
-&lt;figcaption>07&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="07"
+>&lt;/p>
 &lt;p>接着把这些 dex 文件复制出来，即可使用 jadx 反编译到 java 了。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">jadx -d out *.dex
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>将反编译的结果用 vscode 打开，可以看到目标已经被我们脱干净了。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/08.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/08.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/08.png"
 loading="lazy"
-alt="08">
-&lt;/a>
-&lt;figcaption>08&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="08"
+>&lt;/p>
 &lt;h2 id="0x03-寻找加解密代码">0x03 寻找加解密代码&lt;/h2>
 &lt;p>目标是解密 Api 请求的内容，所以下一步就是找到哪里保存了加密代码。&lt;/p>
 &lt;p>幸运的是这个 App 没有做过混淆，完成脱壳后就已经是全身赤裸的站在我们面前了。&lt;/p>
 &lt;p>直接在代码里搜索之前我们观察到的 url：&lt;code>index_des.php&lt;/code>，仅有一个结果。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/09.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/09.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/09.png"
 loading="lazy"
-alt="09">
-&lt;/a>
-&lt;figcaption>09&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="09"
+>&lt;/p>
 &lt;p>相关函数非常短，这个 HTTP 框架我没有使用过，不过从函数名看应该是一个中间件模式，对所有 Web 请求进行加密处理。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/10.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/10.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/10.png"
 loading="lazy"
-alt="10">
-&lt;/a>
-&lt;figcaption>10&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="10"
+>&lt;/p>
 &lt;p>&lt;code>getOverPost2&lt;/code> 源码如下&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/11.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/11.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/11.png"
 loading="lazy"
-alt="11">
-&lt;/a>
-&lt;figcaption>11&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="11"
+>&lt;/p>
 &lt;p>从代码里可以得出：&lt;/p>
 &lt;ul>
 &lt;li>g 的含义是 Get 请求的参数，应该就是 QueryString。函数名 &lt;code>getOverPost2&lt;/code> 字面意义就是把 GET 请求以 POST 方式发送出去。&lt;/li>
@@ -13265,132 +12353,72 @@ alt="11">
 &lt;li>加密代码在 &lt;code>encryptByte&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;p>如此看来已经接近终点了，再点开 &lt;code>encryptByte&lt;/code> 的定义&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/12.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/12.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/12.png"
 loading="lazy"
-alt="12">
-&lt;/a>
-&lt;figcaption>12&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="12"
+>&lt;/p>
 &lt;p>密钥保存在 &lt;code>DesLib.sharedInstance().getAuthKey()&lt;/code> 中。&lt;/p>
 &lt;p>接着点开 &lt;code>getAuthKey&lt;/code> 的定义:&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/13.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/13.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/13.png"
 loading="lazy"
-alt="13">
-&lt;/a>
-&lt;figcaption>13&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="13"
+>&lt;/p>
 &lt;p>&lt;code>native&lt;/code> 关键字一出，得，白高兴了。差点劝退成功。&lt;/p>
 &lt;p>还是先看下怎么加密的。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/14.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/14.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/14.png"
 loading="lazy"
-alt="14">
-&lt;/a>
-&lt;figcaption>14&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="14"
+>&lt;/p>
 &lt;p>再往回翻一下响应解密的代码，免得拆除密钥来又白高兴一场。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/15.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/15.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/15.png"
 loading="lazy"
-alt="15">
-&lt;/a>
-&lt;figcaption>15&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/16.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/16.png"
+alt="15"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/16.png"
 loading="lazy"
-alt="16">
-&lt;/a>
-&lt;figcaption>16&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="16"
+>&lt;/p>
 &lt;p>很好，也是 DES 。&lt;/p>
 &lt;p>其实到这一步已经基本完成解密了，唯一欠缺的就是密钥。&lt;/p>
 &lt;p>抱着试一试的心情，还是找到了 &lt;code>libencry.so&lt;/code> ，用 IDA 打开分析了一下。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/17.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/17.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/17.png"
 loading="lazy"
-alt="17">
-&lt;/a>
-&lt;figcaption>17&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="17"
+>&lt;/p>
 &lt;p>一通操作猛如虎，结果发现看不懂汇编。=w=&lt;/p>
 &lt;p>按下 F5，看看伪代码。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/18.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/18.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/18.png"
 loading="lazy"
-alt="18">
-&lt;/a>
-&lt;figcaption>18&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="18"
+>&lt;/p>
 &lt;p>还是看不懂。这都调的什么函数&amp;hellip; &lt;code>a1 + 668&lt;/code> 这个蜜汁偏移也不知道是在算什么。&lt;/p>
 &lt;p>网上搜索了一圈，说道可以手动改一下函数签名，IDA 就能提示出函数了。试试看。&lt;/p>
 &lt;p>先把函数签名纠正&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/19.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/19.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/19.png"
 loading="lazy"
-alt="19">
-&lt;/a>
-&lt;figcaption>19&lt;/figcaption>
-&lt;/figure>&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/20.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/20.png"
+alt="19"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/20.png"
 loading="lazy"
-alt="20">
-&lt;/a>
-&lt;figcaption>20&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="20"
+>&lt;/p>
 &lt;p>再关掉类型转换&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/21.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/21.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/21.png"
 loading="lazy"
-alt="21">
-&lt;/a>
-&lt;figcaption>21&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="21"
+>&lt;/p>
 &lt;p>最终关键代码清晰了很多，看起来就是个直接返回字符串常量的函数。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/22.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/22.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/22.png"
 loading="lazy"
-alt="22">
-&lt;/a>
-&lt;figcaption>22&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="22"
+>&lt;/p>
 &lt;p>比较具有迷惑性的是上面的 v5-v9，可以看到 v5-v9 地址是增长、连续的，只有 v5 和 v6 有值。v7/v8/v9 都是 0 。而 v5 的地址被用作 &lt;code>NewStringUTF&lt;/code> 函数的参数。查阅 JNI 接口也可以看到这个参数应该是 &lt;code>const char*&lt;/code> 类型。&lt;/p>
 &lt;p>所以 &amp;hellip;&lt;/p>
 &lt;p>把数值转换成 16 进制再做观察。&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/23.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/23.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/23.png"
 loading="lazy"
-alt="23">
-&lt;/a>
-&lt;figcaption>23&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="23"
+>&lt;/p>
 &lt;p>发现很有规律，每个字节的值都在 ASCII 范围内。于是右键转换成字符串，再按字节序翻转一下，即可得到密钥。&lt;/p>
 &lt;p>到此，解密方法的探索已经完成。&lt;/p>
 &lt;h2 id="0x04-mitmproxy-解密">0x04 mitmproxy 解密&lt;/h2>
@@ -13398,15 +12426,10 @@ alt="23">
 &lt;p>可以参考 mitmproxy 的&lt;a class="link" href="https://github.com/mitmproxy/mitmproxy/blob/master/examples/addons/contentview.py" target="_blank" rel="noopener"
 >例子&lt;/a>&lt;/p>
 &lt;p>最终效果应该是这样&lt;/p>
-&lt;p>&lt;figure
->
-&lt;a href="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/25.png" >
-&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/25.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/Just-crack-an-android-app/25.png"
 loading="lazy"
-alt="24">
-&lt;/a>
-&lt;figcaption>24&lt;/figcaption>
-&lt;/figure>&lt;/p>
+alt="24"
+>&lt;/p>
 &lt;p>核心的解密代码就一句，利用 mitmproxy 的扩展即可对每个请求进行统一的处理。&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="kn">from&lt;/span> &lt;span class="nn">pyDes&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">des&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">PAD_PKCS5&lt;/span>
 &lt;span class="k">def&lt;/span> &lt;span class="nf">decrypt&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">data&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">Union&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">bytes&lt;/span>&lt;span class="p">])&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">bytes&lt;/span>&lt;span class="p">:&lt;/span>

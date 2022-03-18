@@ -1,38 +1,410 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>数据结构 on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84/</link><description>Recent content in 数据结构 on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 14 Feb 2022 10:53:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84/index.xml" rel="self" type="application/rss+xml"/><item><title>B树</title><link>https://nnnewb.github.io/blog/p/b-tree/</link><pubDate>Mon, 14 Feb 2022 10:53:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/b-tree/</guid><description>前言 B树和B树的变体（B+树）因为对磁盘IO/缓存友好的原因，常被用做数据库索引和文件系统的数据结构。
-这篇博客主要是写一下B树如何插入和搜索，节点分裂机制以及如何自平衡。
-节点结构 B树和一般的二叉搜索树在节点结构上有很大区别。B树是一种多路搜索树，B树的节点可以有多个后继节点，一个节点会保存多个键。单个节点最多保存M个键的B树称作M阶B树。
-一个简单的 B 树节点结构如下。
-class BTreeNode: parent: &amp;#39;BTreeNode&amp;#39; entries: List[int] children: List[&amp;#39;BTreeNode&amp;#39;] B树要求除根节点外，每个节点最少包含M/2个元素，非叶子节点的 children 数量是 len(entries)+1。根节点不要求最少元素数量，其他约束不变。
-插入节点 B树要求新的键只能在叶子节点上插入。如果叶子节点的键数量超过了上限M，则叶子节点执行 分裂 操作，将键分成三部分：中位数，小于中位数的部分，大于中位数的部分。
-# 分裂前 [1,2,3,4,5] # 分裂后 [1,2],3,[4,5] 中位数插入父节点，小于中位数的部分或大于中位数的部分创建新的子节点，插入父级节点。以插入元素 1-7 为例，图示如下。
-元素1-6
-插入元素7
-对于中位数在 entries 中间的情况不会更麻烦，只要记住新节点保存的都是大于中位数的部分，在entries插入键之后，找到对应的children下标插入即可。
-def add_child(self, entry, child): &amp;#34;&amp;#34;&amp;#34;非叶子节点添加新元素 Args: entry (int): 新元素 child (BTreeNode): 分裂出的新孩子 &amp;#34;&amp;#34;&amp;#34; # 遍历寻找比新 entry 更大的元素，如果不存在，则新 entry 添加到最后 for i, v in enumerate(self.entries): if v &amp;gt; entry: self.</description></item><item><title>AVL树</title><link>https://nnnewb.github.io/blog/p/avl-tree/</link><pubDate>Fri, 11 Feb 2022 15:07:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/avl-tree/</guid><description>前言 还记得很久以前学数据结构只看到二叉树，讲到平衡，但平衡方法当时看纸质书手头也没有实验环境，后来就没继续学下去。现在有闲就重新捡起来学一下。先从AVL树继续看。
-AVL树 AVL 树是以提出者名字命名的，Adelson-Velskii &amp;amp; Landis，俄国人，后来移居以色列。人怎么样不管啦。
-AVL 树是一种平衡二叉树，左右子树高度差不超过1。保持平衡的方法是每次插入数据的时候发现子树不平衡，就把较高的子树提升为根，把根变成新的根的子树，把较高的子树变矮，较矮的子树变高，实现平衡。这个过程被叫做旋转，下面介绍旋转。
-左旋转/右旋转 右旋转
-左旋转
-左旋转和右旋转的逻辑是一样的。如果右子树比左子树高，就把右子树提升成根。如果左子树比右子树高，就把左子树提升成根。提升右子树叫左旋转，提升左子树叫右旋转。
-把子树提升成根会有点麻烦。比如右子树提升为根，原来的根和左子树怎么办？我们并不想重新平衡树的时候把整个左子树都删掉，那原来的根和左子树就必须插回新的树里。
-我们知道右子树的 key 肯定比根和左子树所有节点大，所以根要插回树的话，一个很直接的想法就是把旧的根接到右子树左下角的叶子节点。
-旧的根插回新根
-的确，这样保持了二叉搜索树的特征，但新的树依然不平衡：节点5的左子树高度2，右子树高度0，高度差超过了1。稍微想想就知道，旧的根和左子树直接接到左下角叶子节点的话，会让原本平衡的新树左子树高度增加，进而失去平衡。
-解决方法也很简单，不要把旧的树接到新的树最小值上，而是把新树的左子树，移植成旧树的右子树，再把旧树移植成新树的左子树。这样一来，右子树的左子树和左子树的右子树不管怎么旋转，高度都一样。
-image-20220211135807095
-为什么这样可以保持平衡呢？首先AVL树的子树也是AVL树，所以子树的子树之间高度差也不超过1。左旋转、右旋转的的作用是让子树高度一侧升高，一侧降低——注意，左旋转只能降低右儿子的右子树高度，右儿子的左子树高度不变。右旋转只能降低左儿子的左子树高度，左儿子的右子树高度不变。
-举例来说，上图中右儿子的右子树（4-6-7-8）较高，旋转后变成了（6-7-8），而原本的（4-6-5）变成了（6-4-5），高度不变。
-这个规律很好理解，因为原来的右子树变成了根，整个右子树剩下的节点高度都降低了。而右子树的左子树变成了现在的左子树的右子树，和根的距离一样，所以高度不变。
-左旋转让右子树的右子树高度-1，左子树的左子树高度+1。左子树的右子树高度等于右子树的左子树，旋转后新树的左右子树的高度相等。
-双旋转 对于往左儿子的左子树插入节点造成的不平衡，右旋转可以实现降低左儿子的左子树高度，再次平衡。往右儿子的右子树插入节点造成的不平衡，左旋转可以降低右儿子的右子树高度，再次平衡。但对于左儿子的右子树或右儿子的左子树插入节点造成的不平衡，一次左、右旋转无法实现再平衡。
-再看一个例子。
-image-20220211141652944
-旋转前，右儿子的左子树（4-7-6-5）高度是4，旋转后（7-4-6-5）高度不变，依然是4，树仍然不平衡。解决办法也很简单，先把右子树（7）右旋，让右儿子的左子树高度低于右子树，再对整棵树左旋，也就是AVL树的双旋转。
-一步一步看双旋转是怎么解决这个问题的。
-第一步，右儿子的左子树比右儿子右子树高，所以将右儿子右旋，使得右儿子的右子树高于右儿子的左子树。
-image-20220211142847329
-我们知道的左旋转时右儿子的左子树高度不变，右儿子的右子树高度-1。这一步前，直接对整棵树左旋时，最高的那颗子树（右儿子的左子树）高度没有变化，树依然不平衡，只是变成了右子树更矮，左子树更高而已。
-而这一步之后，最高的子树变成了右子树的右子树。现在对整棵树左旋，右子树的右子树高度下降了，和原本右子树的左子树高度一致，达成平衡。
-image-20220211151253277
-这个原则简单地说，就是左子树下最高的子树应该是左子树，右子树下最高的子树应该是右子树。如果新增节点后不满足这个条件，就要先对左子树左旋，或者对右子树右旋，来满足这个条件。
-代码实现 from typing import Optional class AVLTreeNode: &amp;#34;&amp;#34;&amp;#34;树节点 &amp;#34;&amp;#34;&amp;#34; def __init__(self, value: int, parent: &amp;#39;AVLTreeNode&amp;#39;) -&amp;gt; None: self.value = value self.</description></item></channel></rss>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>数据结构 on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84/</link><description>Recent content in 数据结构 on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 14 Feb 2022 10:53:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84/index.xml" rel="self" type="application/rss+xml"/><item><title>B树</title><link>https://nnnewb.github.io/blog/p/b-tree/</link><pubDate>Mon, 14 Feb 2022 10:53:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/b-tree/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>B树和B树的变体（B+树）因为对磁盘IO/缓存友好的原因，常被用做数据库索引和文件系统的数据结构。&lt;/p>
+&lt;p>这篇博客主要是写一下B树如何插入和搜索，节点分裂机制以及如何自平衡。&lt;/p>
+&lt;h2 id="节点结构">节点结构&lt;/h2>
+&lt;p>B树和一般的二叉搜索树在节点结构上有很大区别。B树是一种多路搜索树，B树的节点可以有多个后继节点，一个节点会保存多个键。单个节点最多保存M个键的B树称作M阶B树。&lt;/p>
+&lt;p>一个简单的 B 树节点结构如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">class&lt;/span> &lt;span class="nc">BTreeNode&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">parent&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s1">&amp;#39;BTreeNode&amp;#39;&lt;/span>
+&lt;span class="n">entries&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">int&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="n">children&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="s1">&amp;#39;BTreeNode&amp;#39;&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>B树要求除根节点外，每个节点最少包含&lt;code>M/2&lt;/code>个元素，非叶子节点的 &lt;code>children&lt;/code> 数量是 &lt;code>len(entries)+1&lt;/code>。根节点不要求最少元素数量，其他约束不变。&lt;/p>
+&lt;h2 id="插入节点">插入节点&lt;/h2>
+&lt;p>B树要求新的键只能在叶子节点上插入。如果叶子节点的键数量超过了上限&lt;code>M&lt;/code>，则叶子节点执行 &lt;strong>分裂&lt;/strong> 操作，将键分成三部分：中位数，小于中位数的部分，大于中位数的部分。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="c1"># 分裂前&lt;/span>
+&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="c1"># 分裂后&lt;/span>
+&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">],&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">,[&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>中位数插入父节点，小于中位数的部分或大于中位数的部分创建新的子节点，插入父级节点。以插入元素 1-7 为例，图示如下。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112.png"
+width="526"
+height="214"
+srcset="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112_hu5b12e769ccfd98fac492b0d669d71565_6441_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113130112_hu5b12e769ccfd98fac492b0d669d71565_6441_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="元素1-6"
+class="gallery-image"
+data-flex-grow="245"
+data-flex-basis="589px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231.png"
+width="580"
+height="214"
+srcset="https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231_hu367bf5992fa3acb17c83fa3ae5854998_8699_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/b-tree/image-20220214113110231_hu367bf5992fa3acb17c83fa3ae5854998_8699_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="插入元素7"
+class="gallery-image"
+data-flex-grow="271"
+data-flex-basis="650px"
+>&lt;/p>
+&lt;p>对于中位数在 &lt;code>entries&lt;/code> 中间的情况不会更麻烦，只要记住新节点保存的都是大于中位数的部分，在&lt;code>entries&lt;/code>插入键之后，找到对应的&lt;code>children&lt;/code>下标插入即可。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">def&lt;/span> &lt;span class="nf">add_child&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">child&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;非叶子节点添加新元素
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Args:
+&lt;/span>&lt;span class="s2"> entry (int): 新元素
+&lt;/span>&lt;span class="s2"> child (BTreeNode): 分裂出的新孩子
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="c1"># 遍历寻找比新 entry 更大的元素，如果不存在，则新 entry 添加到最后&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">enumerate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">insert&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="o">+&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">child&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">insert&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">grow&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">entry&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">child&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">grow&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>完整代码会在文末给出。&lt;/p>
+&lt;h2 id="自平衡">自平衡&lt;/h2>
+&lt;p>B树是一种自平衡树，B树做到自平衡的方式比较特别。下面的内容都是我个人对B树的理解，偏见警告。&lt;/p>
+&lt;p>一般的二叉搜索树插入元素时，会把元素插入到叶子节点上，叶子节点就变成了中间节点，子树会随着插入的元素增长而变高，于是在子树之间出现不平衡。也就是说，一般的二叉搜索树生长方向是向下，往叶子方向扩展。&lt;/p>
+&lt;p>但B树正好相反：叶子节点不会变成中间节点，只会分裂兄弟节点，向父级节点插入键。而父级节点也会因为键超过&lt;code>M&lt;/code>而分裂，一直到根节点。根节点分裂则会产生新的根，原来的根变成两个兄弟节点，树的高度随之上升。也就是说，B树的生长高度是向上的，插入操作对树高度的影响最终体现为根节点的分裂。&lt;/p>
+&lt;p>删除节点的规则也设计为保持这一特性，删除键对树高度的影响最终会体现为根节点和子节点合并，使得树高度降低。&lt;/p>
+&lt;h2 id="搜索">搜索&lt;/h2>
+&lt;p>B树的搜索和二叉搜索树差不多，不同的是节点会表示多个键，所以二叉搜索树中的比较操作会变成在多个键里查找值，并在中间节点没找到的时候递归搜索子节点。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">search&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">bool&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">enumerate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">True&lt;/span>
+&lt;span class="c1"># 如果没找到，而且当前元素比搜索值要大了&lt;/span>
+&lt;span class="c1"># 就从小于当前元素的子节点里递归搜索&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="ow">and&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">entry&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">search&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">entry&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="c1"># 没有比搜索的键大的值，则从末尾的子节点（大于本节点全部键）递归搜索&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">search&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">entry&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">False&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="分裂和需要注意的问题">分裂和需要注意的问题&lt;/h2>
+&lt;p>分裂节点写起来很简单，比 AVL 旋转要好懂很多。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">grow&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="c1"># 检查和处理分裂&lt;/span>
+&lt;span class="c1"># B-Tree 的增长方向是横向+纵向，横向是扩展兄弟节点，纵向是往根节点方向生长&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">MAXIMUM_ENTRIES&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">middle&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">MIDDLE_ENTRY_IDX&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="n">split_entries&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">MIDDLE_ENTRY_IDX&lt;/span>&lt;span class="o">+&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">:]&lt;/span>
+&lt;span class="n">split_children&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">MIDDLE_CHILD_IDX&lt;/span>&lt;span class="p">:]&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span>&lt;span class="p">[:&lt;/span>&lt;span class="n">MIDDLE_ENTRY_IDX&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span>&lt;span class="p">[:&lt;/span>&lt;span class="n">MIDDLE_CHILD_IDX&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="n">split_node&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">BTreeNode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">split_node&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">split_entries&lt;/span>
+&lt;span class="n">split_node&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">split_children&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="n">child&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">split_children&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">child&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">split_node&lt;/span>
+&lt;span class="c1"># 中间节点分裂的情况&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">add_child&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">middle&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">split_node&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="c1"># 根节点分裂，生成新的根节点&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">BTreeNode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kc">None&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">split_node&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">children&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">split_node&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">entries&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="n">middle&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>主要注意：&lt;/p>
+&lt;ol>
+&lt;li>选择合适的中位数。如果&lt;code>M&lt;/code>是奇数，&lt;code>M+1&lt;/code>除二没有余数，也选不出中位数。&lt;/li>
+&lt;li>新节点（&lt;code>split_node&lt;/code>和&lt;code>split_children&lt;/code>）都需要重新调整&lt;code>parent&lt;/code>属性，不要漏了。&lt;/li>
+&lt;li>中间节点的分裂要向上添加一个&lt;code>entry&lt;/code>和&lt;code>child&lt;/code>，分别表示键和大于这个键的节点。
+&lt;ol>
+&lt;li>这是个递归过程，上级节点也可能发生分裂，一直到根分裂。&lt;/li>
+&lt;li>这个过程会保留原节点（&lt;code>self&lt;/code>），可以理解为&lt;code>children&lt;/code>的下标&lt;code>i&lt;/code>表示&lt;code>children[i]&lt;/code>这棵子树所有键小于&lt;code>entries[i]&lt;/code>。&lt;code>children[-1]&lt;/code>没有对应的&lt;code>entries&lt;/code>下标，表示的是大于节点所有键的子树，相当于是二叉搜索树中的右子树。&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;li>根节点分裂会导致树的根发生改变，完成插入操作后需要重新确定根节点指针，不然会导致搜索出错或再次分裂的时候往错误的节点添加键，破坏搜索树的性质。&lt;/li>
+&lt;/ol>
+&lt;h2 id="b树性能">B树性能&lt;/h2>
+&lt;p>B树的性能优势来自树的高度增长相对比较慢，选择合适的阶可以减少磁盘IO次数。另外就是一个节点包含多个键，提高键的储存密度，更符合局部性原理，相对于二叉搜索树来说对CPU缓存也更较友好。&lt;/p>
+&lt;p>对这个场景我能想到的几个关键因素主要有：&lt;/p>
+&lt;ul>
+&lt;li>内存缓存。尽可能榨干可用的内存，避免频繁进行磁盘IO。&lt;/li>
+&lt;li>局部性原理。&lt;/li>
+&lt;/ul>
+&lt;p>其中局部性原理又分几项。&lt;/p>
+&lt;p>一个是内存的分页机制，在内存紧张的情况下如果节点集合大小不是一页的整数倍的话，会产生更多的缺页异常，造成更频繁地读盘（考虑使用了交换分区或 windows 页文件，又或者 &lt;code>mmap&lt;/code> 等方式读取）。&lt;/p>
+&lt;p>另一个是CPU的高速缓存，如果结构填不满或者超出cache line 大小的话都会有影响。&lt;/p>
+&lt;p>当然，最后还是具体问题具体分析。给这篇博客找资料的时候看到的这篇文章很不错 &lt;a class="link" href="http://igoro.com/archive/gallery-of-processor-cache-effects/" target="_blank" rel="noopener"
+>gallery of processor cache effects&lt;/a>，挺喜欢的。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>b树是多路搜索树。&lt;/p>
+&lt;p>b树插入节点总是在叶子，b树向根方向生长。&lt;/p>
+&lt;p>b树通过节点分裂和合并实现自平衡。&lt;/p>
+&lt;p>b树搜索和一般的二叉搜索树差别不大。&lt;/p>
+&lt;p>以及b树性能优势来自树更矮，节点更少，键更集中，符合局部性原理，减少磁盘io次数，合适的阶让结构对缓存更友好。&lt;/p></description></item><item><title>AVL树</title><link>https://nnnewb.github.io/blog/p/avl-tree/</link><pubDate>Fri, 11 Feb 2022 15:07:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/avl-tree/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>还记得很久以前学数据结构只看到二叉树，讲到平衡，但平衡方法当时看纸质书手头也没有实验环境，后来就没继续学下去。现在有闲就重新捡起来学一下。先从AVL树继续看。&lt;/p>
+&lt;h2 id="avl树">AVL树&lt;/h2>
+&lt;p>AVL 树是以提出者名字命名的，Adelson-Velskii &amp;amp; Landis，俄国人，后来移居以色列。人怎么样不管啦。&lt;/p>
+&lt;p>AVL 树是一种平衡二叉树，左右子树高度差不超过1。保持平衡的方法是每次插入数据的时候发现子树不平衡，就把较高的子树提升为根，把根变成新的根的子树，把较高的子树变矮，较矮的子树变高，实现平衡。这个过程被叫做旋转，下面介绍旋转。&lt;/p>
+&lt;h2 id="左旋转右旋转">左旋转/右旋转&lt;/h2>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/640.webp"
+width="1080"
+height="302"
+srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/640_hue4f2eb0b84b4ee9edbff095635b31765_16328_480x0_resize_q75_h2_box_2.webp 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/640_hue4f2eb0b84b4ee9edbff095635b31765_16328_1024x0_resize_q75_h2_box_2.webp 1024w"
+loading="lazy"
+alt="右旋转"
+class="gallery-image"
+data-flex-grow="357"
+data-flex-basis="858px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/640-16445510501782.webp"
+width="1080"
+height="265"
+srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/640-16445510501782_hu6ffc1b8ea7f9226d8e679d85cbb8998e_14524_480x0_resize_q75_h2_box_2.webp 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/640-16445510501782_hu6ffc1b8ea7f9226d8e679d85cbb8998e_14524_1024x0_resize_q75_h2_box_2.webp 1024w"
+loading="lazy"
+alt="左旋转"
+class="gallery-image"
+data-flex-grow="407"
+data-flex-basis="978px"
+>&lt;/p>
+&lt;p>左旋转和右旋转的逻辑是一样的。如果右子树比左子树高，就把右子树提升成根。如果左子树比右子树高，就把左子树提升成根。提升右子树叫左旋转，提升左子树叫右旋转。&lt;/p>
+&lt;p>把子树提升成根会有点麻烦。比如右子树提升为根，原来的根和左子树怎么办？我们并不想重新平衡树的时候把整个左子树都删掉，那原来的根和左子树就必须插回新的树里。&lt;/p>
+&lt;p>我们知道右子树的 key 肯定比根和左子树所有节点大，所以根要插回树的话，一个很直接的想法就是把旧的根接到右子树左下角的叶子节点。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211115435552.png"
+width="442"
+height="352"
+srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211115435552_hudaf66137716a342688a9fcb78a9ab8fa_32310_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211115435552_hudaf66137716a342688a9fcb78a9ab8fa_32310_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="旧的根插回新根"
+class="gallery-image"
+data-flex-grow="125"
+data-flex-basis="301px"
+>&lt;/p>
+&lt;p>的确，这样保持了二叉搜索树的特征，但新的树依然不平衡：节点5的左子树高度2，右子树高度0，高度差超过了1。稍微想想就知道，旧的根和左子树直接接到左下角叶子节点的话，会让原本平衡的新树左子树高度增加，进而失去平衡。&lt;/p>
+&lt;p>解决方法也很简单，不要把旧的树接到新的树最小值上，而是把新树的左子树，移植成旧树的右子树，再把旧树移植成新树的左子树。这样一来，右子树的左子树和左子树的右子树不管怎么旋转，高度都一样。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211135807095.png"
+width="559"
+height="367"
+srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211135807095_huce0ca6d6e6da680d37b57191522379d3_34024_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211135807095_huce0ca6d6e6da680d37b57191522379d3_34024_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220211135807095"
+class="gallery-image"
+data-flex-grow="152"
+data-flex-basis="365px"
+>&lt;/p>
+&lt;p>为什么这样可以保持平衡呢？首先AVL树的子树也是AVL树，所以子树的子树之间高度差也不超过1。左旋转、右旋转的的作用是让子树高度一侧升高，一侧降低——注意，左旋转只能降低右儿子的右子树高度，右儿子的左子树高度不变。右旋转只能降低左儿子的左子树高度，左儿子的右子树高度不变。&lt;/p>
+&lt;p>举例来说，上图中右儿子的右子树（4-6-7-8）较高，旋转后变成了（6-7-8），而原本的（4-6-5）变成了（6-4-5），高度不变。&lt;/p>
+&lt;p>这个规律很好理解，因为原来的右子树变成了根，整个右子树剩下的节点高度都降低了。而右子树的左子树变成了现在的左子树的右子树，和根的距离一样，所以高度不变。&lt;/p>
+&lt;p>&lt;strong>左旋转让右子树的右子树高度-1，左子树的左子树高度+1。左子树的右子树高度等于右子树的左子树，旋转后新树的左右子树的高度相等。&lt;/strong>&lt;/p>
+&lt;h2 id="双旋转">双旋转&lt;/h2>
+&lt;p>对于往左儿子的左子树插入节点造成的不平衡，右旋转可以实现降低左儿子的左子树高度，再次平衡。往右儿子的右子树插入节点造成的不平衡，左旋转可以降低右儿子的右子树高度，再次平衡。但对于左儿子的右子树或右儿子的左子树插入节点造成的不平衡，一次左、右旋转无法实现再平衡。&lt;/p>
+&lt;p>再看一个例子。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211141652944.png"
+width="535"
+height="399"
+srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211141652944_hue06f3e4447c8c13119165b1bee1e7d22_36072_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211141652944_hue06f3e4447c8c13119165b1bee1e7d22_36072_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220211141652944"
+class="gallery-image"
+data-flex-grow="134"
+data-flex-basis="321px"
+>&lt;/p>
+&lt;p>旋转前，右儿子的左子树（4-7-6-5）高度是4，旋转后（7-4-6-5）高度不变，依然是4，树仍然不平衡。解决办法也很简单，先把右子树（7）右旋，让右儿子的左子树高度低于右子树，再对整棵树左旋，也就是AVL树的双旋转。&lt;/p>
+&lt;p>一步一步看双旋转是怎么解决这个问题的。&lt;/p>
+&lt;p>第一步，右儿子的左子树比右儿子右子树高，所以将右儿子右旋，使得右儿子的右子树高于右儿子的左子树。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211142847329.png"
+width="490"
+height="346"
+srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211142847329_hudfe01573f636ba8f14106612b6b86fbd_23701_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211142847329_hudfe01573f636ba8f14106612b6b86fbd_23701_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220211142847329"
+class="gallery-image"
+data-flex-grow="141"
+data-flex-basis="339px"
+>&lt;/p>
+&lt;p>我们知道的左旋转时右儿子的左子树高度不变，右儿子的右子树高度-1。这一步前，直接对整棵树左旋时，最高的那颗子树（右儿子的左子树）高度没有变化，树依然不平衡，只是变成了右子树更矮，左子树更高而已。&lt;/p>
+&lt;p>而这一步之后，最高的子树变成了右子树的右子树。现在对整棵树左旋，右子树的右子树高度下降了，和原本右子树的左子树高度一致，达成平衡。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211151253277.png"
+width="573"
+height="352"
+srcset="https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211151253277_hu3754058aad682cd96a93972186837210_33976_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/avl-tree/image-20220211151253277_hu3754058aad682cd96a93972186837210_33976_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220211151253277"
+class="gallery-image"
+data-flex-grow="162"
+data-flex-basis="390px"
+>&lt;/p>
+&lt;p>这个原则简单地说，就是左子树下最高的子树应该是左子树，右子树下最高的子树应该是右子树。如果新增节点后不满足这个条件，就要先对左子树左旋，或者对右子树右旋，来满足这个条件。&lt;/p>
+&lt;h2 id="代码实现">代码实现&lt;/h2>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="kn">from&lt;/span> &lt;span class="nn">typing&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">Optional&lt;/span>
+&lt;span class="k">class&lt;/span> &lt;span class="nc">AVLTreeNode&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;树节点
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">parent&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s1">&amp;#39;AVLTreeNode&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">value&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">parent&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">Optional&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="s1">&amp;#39;AVLTreeNode&amp;#39;&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="kc">None&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">Optional&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="s1">&amp;#39;AVLTreeNode&amp;#39;&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="kc">None&lt;/span>
+&lt;span class="nd">@property&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">height&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;子树高度
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Returns:
+&lt;/span>&lt;span class="s2"> int: 子树高度
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nb">max&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_left_height&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_right_height&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">+&lt;/span>&lt;span class="mi">1&lt;/span>
+&lt;span class="nd">@property&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">_left_height&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">height&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;span class="nd">@property&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">_right_height&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">height&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;span class="nd">@property&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">balance&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">bool&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;是否平衡
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Returns:
+&lt;/span>&lt;span class="s2"> bool: 是否平衡
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nb">abs&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_left_height&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_right_height&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;lt;=&lt;/span> &lt;span class="mi">1&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">right_rotate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;节点右旋
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">raise&lt;/span> &lt;span class="ne">Exception&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;can not rotate tree with empty left node&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="c1"># 旧的根成为右节点&lt;/span>
+&lt;span class="c1"># 旧的根的左节点成为新的根&lt;/span>
+&lt;span class="c1"># 新的根的右节点变成旧的根的左节点&lt;/span>
+&lt;span class="c1"># 旧的根变成新的根的右节点&lt;/span>
+&lt;span class="n">old_root&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>
+&lt;span class="n">new_root&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>
+&lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">new_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>
+&lt;span class="n">new_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">old_root&lt;/span>
+&lt;span class="c1"># 新根替换旧根&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">old_root&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">new_root&lt;/span>
+&lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">new_root&lt;/span>
+&lt;span class="n">new_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>
+&lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">new_root&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">old_root&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">left_rotate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;节点左旋
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">raise&lt;/span> &lt;span class="ne">Exception&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;can not rotate tree with empty right node&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="c1"># 旧的根成为左节点&lt;/span>
+&lt;span class="c1"># 旧的根的右节点成为新的根&lt;/span>
+&lt;span class="c1"># 新的根的左节点作为旧的根的右子树&lt;/span>
+&lt;span class="c1"># 旧的根变成新的根的左子树&lt;/span>
+&lt;span class="n">old_root&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>
+&lt;span class="n">new_root&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>
+&lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">new_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>
+&lt;span class="n">new_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">old_root&lt;/span>
+&lt;span class="c1"># 新根替换旧根&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">old_root&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">new_root&lt;/span>
+&lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">new_root&lt;/span>
+&lt;span class="n">new_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>
+&lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">new_root&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">old_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">old_root&lt;/span>
+&lt;span class="k">assert&lt;/span> &lt;span class="n">new_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">new_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">value&lt;/span>
+&lt;span class="k">assert&lt;/span> &lt;span class="n">new_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">new_root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">value&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">_rebalance&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">balance&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_left_height&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_right_height&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="c1"># 如果最高的子树是左子树的右子树，先对左子树左旋&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span> \
+&lt;span class="ow">and&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span> \
+&lt;span class="ow">and&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">height&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">height&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left_rotate&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right_rotate&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="c1"># 如果最高的子树是右子树的左子树，先对右子树右旋&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span> \
+&lt;span class="ow">and&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span> \
+&lt;span class="ow">and&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">height&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">height&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right_rotate&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left_rotate&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">insert&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;插入新节点
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Args:
+&lt;/span>&lt;span class="s2"> value (int): 要插入的数据
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">AVLTreeNode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">insert&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">elif&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">AVLTreeNode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">insert&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_rebalance&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">search&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">bool&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;搜索值
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Args:
+&lt;/span>&lt;span class="s2"> value (int): 待搜索的值
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Returns:
+&lt;/span>&lt;span class="s2"> bool: 值是否存在
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">True&lt;/span>
+&lt;span class="k">elif&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">value&lt;/span> &lt;span class="ow">and&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">left&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">search&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">elif&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">value&lt;/span> &lt;span class="ow">and&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">right&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">search&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">False&lt;/span>
+&lt;span class="k">class&lt;/span> &lt;span class="nc">AVLTree&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;AVL tree
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">Optional&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">AVLTreeNode&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="kc">None&lt;/span>
+&lt;span class="nd">@property&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">height&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;AVL树高度
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Returns:
+&lt;/span>&lt;span class="s2"> int: 树高度
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">height&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;span class="nd">@property&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">balance&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">bool&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;树是否平衡
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Returns:
+&lt;/span>&lt;span class="s2"> bool: 树是否平衡
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">balance&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">True&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">insert&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;insert new value
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Args:
+&lt;/span>&lt;span class="s2"> value (int): new value
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">AVLTreeNode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">insert&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="c1"># AVL 树旋转后根节点可能不再是现在这个节点，需要重新寻找根节点&lt;/span>
+&lt;span class="n">top&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span>
+&lt;span class="k">while&lt;/span> &lt;span class="n">top&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">top&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">top&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">parent&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">top&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">search&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">bool&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;search a value
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Args:
+&lt;/span>&lt;span class="s2"> value (int): searching value
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">False&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">root&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">search&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>AVL树只要理解和左右旋转的方法和作用，就不难理解左右旋转与双旋转的意义了。&lt;/p>
+&lt;p>单次旋转的目的都是将两侧子树，一颗子树高度+1，一颗子树高度-1，将高度相差2的两颗子树重新平衡。&lt;/p>
+&lt;p>单次旋转的限制是只能降低子树中一颗子树的高度，左子树的左子树或右子树的右子树，所以一旦出现左右子树中最高的子树不是左-左或右-右，单次旋转就不能重新平衡。对这种情况，先旋转子树，令左-左或右-右成为最高的子树后，再对根节点旋转，就能重新平衡了。&lt;/p></description></item></channel></rss>

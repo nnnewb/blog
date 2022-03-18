@@ -1,4 +1,4 @@
-<!doctype html><html lang=zh-cn>
+<!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 还是从 Igor Ostrvsky 的博客里发现的一篇有意思的文章，Fast and slow if-statements: branch prediction in modern processors 开始。
 分支预测对性能的影响 介绍 分支预测器 - Wikipedia 我直接抄一段。
@@ -7,7 +7,7 @@
 所以这篇博客主要还是聊一下分支预测对性能的影响，但大概总结不出 Igor Ostrvsky 的博客里的规律。顺带一提，不要随便针对分支预测优化，要是有人看了 Igor Ostrvsky 那篇博客费了老大功夫优化成连续 T/F 分支，换上新 CPU 之后性能还倒退这能找谁说理去。针对微架构分支预测失败回退做优化我还在爆栈上看到个回答很有意思，avoid stalling pipeline by calculating conditional early ，很难想到还能用这种办法榨干 CPU 的每一滴性能。
 基准测试 这个基准测试的主要目的是体现出分支预测失败对执行时间的影响，测试方法是喂 10MB 的随机 T/F ，为 T 时计数器 +1。除了输入数据外测试代码一样。"><title>分支预测对执行效率和安全的影响</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/how-branch-prediction-effects-executoin-performance-and-security/>
-<link rel=stylesheet href=/blog/scss/style.min.css><meta property="og:title" content="分支预测对执行效率和安全的影响">
+<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="分支预测对执行效率和安全的影响">
 <meta property="og:description" content="前言 还是从 Igor Ostrvsky 的博客里发现的一篇有意思的文章，Fast and slow if-statements: branch prediction in modern processors 开始。
 分支预测对性能的影响 介绍 分支预测器 - Wikipedia 我直接抄一段。
  在计算机体系结构中，分支预测器（英语：Branch predictor）是一种数字电路，在分支指令执行结束之前猜测哪一路分支将会被执行，以提高处理器的指令流水线的性能。使用分支预测器的目的，在于改善指令流水线的流程，就像一家公司的员工提前预测公司所需要的东西，即交付不同单位进行准备工作，而那各个部门之间的等待交办的时间大大地缩短，整个公司的效率就会提高了。现代使用指令流水线处理器的性能能够提高，分支预测器对于现今的指令流水线微处理器获得高性能是非常关键的技术。
@@ -25,15 +25,53 @@
 所以这篇博客主要还是聊一下分支预测对性能的影响，但大概总结不出 Igor Ostrvsky 的博客里的规律。顺带一提，不要随便针对分支预测优化，要是有人看了 Igor Ostrvsky 那篇博客费了老大功夫优化成连续 T/F 分支，换上新 CPU 之后性能还倒退这能找谁说理去。针对微架构分支预测失败回退做优化我还在爆栈上看到个回答很有意思，avoid stalling pipeline by calculating conditional early ，很难想到还能用这种办法榨干 CPU 的每一滴性能。
 基准测试 这个基准测试的主要目的是体现出分支预测失败对执行时间的影响，测试方法是喂 10MB 的随机 T/F ，为 T 时计数器 +1。除了输入数据外测试代码一样。">
 </head>
-<body class="article-page has-toc">
+<body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex
-extended">
-<div id=article-toolbar>
-<a href=/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
-<span>返回</span>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
 </div>
+</header><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+<li id=dark-mode-toggle><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span>
+</li>
+</div>
+</ol>
+</aside>
 <main class="main full-width">
 <article class=main-article>
 <header class=article-header>
@@ -43,9 +81,11 @@ extended">
 c++
 </a>
 </header>
+<div class=article-title-wrapper>
 <h2 class=article-title>
 <a href=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/>分支预测对执行效率和安全的影响</a>
 </h2>
+</div>
 <footer class=article-time>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
 <time class=article-time--published>2022年 2月 16日</time>
@@ -151,19 +191,9 @@ unpredictable avg: 191ms best: 184ms worst: 265ms total: 19115ms
 <li>访问主存 (Load/Store)</li>
 <li>写回</li>
 </ul>
-<p><figure class=gallery-image style=flex-grow:212;flex-basis:509px>
-<a href=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531.png data-size=1237x583>
-<img src=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531.png width=1237 height=583 srcset="/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531_hud9ed14138f8676bf12375622c7bab6ae_181582_480x0_resize_box_3.png 480w, /blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531_hud9ed14138f8676bf12375622c7bab6ae_181582_1024x0_resize_box_3.png 1024w" loading=lazy alt=单周期处理器和流水线处理器>
-</a>
-<figcaption>单周期处理器和流水线处理器</figcaption>
-</figure></p>
+<p><img src=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531.png width=1237 height=583 srcset="/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531_hud9ed14138f8676bf12375622c7bab6ae_181582_480x0_resize_box_3.png 480w, /blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531_hud9ed14138f8676bf12375622c7bab6ae_181582_1024x0_resize_box_3.png 1024w" loading=lazy alt=单周期处理器和流水线处理器 class=gallery-image data-flex-grow=212 data-flex-basis=509px></p>
 <p>更简化一点的话可以把ALU算数运算和访存都算作指令的“执行”阶段，CPU就是在不断循环执行这四个动作。</p>
-<p><figure class=gallery-image style=flex-grow:104;flex-basis:250px>
-<a href=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg.png data-size=500x479>
-<img src=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg.png width=500 height=479 srcset="/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_480x0_resize_box_3.png 480w, /blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_1024x0_resize_box_3.png 1024w" loading=lazy alt=4阶段流水线>
-</a>
-<figcaption>4阶段流水线</figcaption>
-</figure></p>
+<p><img src=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg.png width=500 height=479 srcset="/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_480x0_resize_box_3.png 480w, /blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_1024x0_resize_box_3.png 1024w" loading=lazy alt=4阶段流水线 class=gallery-image data-flex-grow=104 data-flex-basis=250px></p>
 <p>流水线处理器为了充分利用硬件，在译码上一条指令时，就开始取指下一条指令了，执行速度可以是单周期处理器的很多倍。显然流水线越长，每个阶段的耗时越短，整体执行的效率就越高。</p>
 <p>如果指令一直按顺序执行，流水线只要不断加长加快就能获得更高的性能，但“分支”打破了这个美梦。一个简短的例子如下。</p>
 <div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>loop:</span>
@@ -389,9 +419,9 @@ counter avg: 407ms best: 402ms worst: 512ms total: 40726ms
 </aside>
 <link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
 <div id=vssue></div>
-<script src=https://unpkg.com/vue/dist/vue.runtime.min.js></script>
-<script src=https://unpkg.com/vssue/dist/vssue.github.min.js></script>
-<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"分支预测对执行效率和安全的影响",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"分支预测对执行效率和安全的影响",options:{autoCreateIssue:!0,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
 <footer class=site-footer>
 <section class=copyright>
 &copy;
@@ -401,7 +431,7 @@ counter avg: 407ms best: 402ms worst: 512ms total: 40726ms
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.5.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>
@@ -441,36 +471,8 @@ Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=
 </div>
 </div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
 </main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 </div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#分支预测对性能的影响>分支预测对性能的影响</a>
-<ol>
-<li><a href=#介绍>介绍</a></li>
-<li><a href=#基准测试>基准测试</a></li>
-<li><a href=#分支预测扮演的角色>分支预测扮演的角色</a></li>
-<li><a href=#减少分支预测失败的损失>减少分支预测失败的损失</a></li>
-</ol>
-</li>
-<li><a href=#分支预测对安全的影响>分支预测对安全的影响</a>
-<ol>
-<li><a href=#spectre>spectre</a></li>
-</ol>
-</li>
-<li><a href=#总结>总结</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>

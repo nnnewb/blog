@@ -1,9 +1,222 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>gocc on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/gocc/</link><description>Recent content in gocc on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 09 Dec 2021 17:11:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/gocc/index.xml" rel="self" type="application/rss+xml"/><item><title>一个s表达式求值器</title><link>https://nnnewb.github.io/blog/p/a-s-exp-evaluator/</link><pubDate>Thu, 09 Dec 2021 17:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/a-s-exp-evaluator/</guid><description>前言 翻没看过的藏书的时候找出一本《SICP》的 PDF（PS：已经买了正版书），想起曾经拿 Rust 写玩具解释器，结果现在连 Rust 本身都已经快忘光了。
-所以就当怀旧，写个很简单的玩具，s表达式求值器。
-技术栈 语言选择了 Go，用 gocc 生成 Parser/Lexer 。虽然说手写+调试 Lexer/Parser 也是挺快乐的，但毕竟只是怀旧重温下当年愣头青的自己，不想花太多时间。
-词法定义 简单解释下 gocc 定义词法元素的 DSL 是怎么回事。gocc 的这个 DSL 是类似于 EBNF 的语法（自称）， _letter: 'a'-'z' 就是一条产生式，:前面是产生式的名称，后面是模式。
-产生式名称也有特殊含义。
-! 开头的产生式会被 Lexer 忽略。 _ 开头的产生式叫做 regDefId，可以理解成给后面的模式定义的别名。 a-z小写字母开头的是 token，也就是一般说的词法元素定义了。 值得注意的是 token 不能被用作其他词法元素产生式的模式部分，但 regDefId 可以，所以要注意要复用的规则应该定义成下划线开头。
-比如说下面的例子。
-// example 1 letter: &amp;#39;a&amp;#39;-&amp;#39;z&amp;#39;; identifier: letter; // Error! // example 2 _letter: &amp;#39;a&amp;#39;-&amp;#39;z&amp;#39;; identifier: _letter; // OK 下面是求值器的词法元素定义。
-!whitespace: &amp;#39; &amp;#39; | &amp;#39;\t&amp;#39; | &amp;#39;\r&amp;#39; | &amp;#39;\n&amp;#39;; !</description></item></channel></rss>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>gocc on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/gocc/</link><description>Recent content in gocc on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 09 Dec 2021 17:11:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/gocc/index.xml" rel="self" type="application/rss+xml"/><item><title>一个s表达式求值器</title><link>https://nnnewb.github.io/blog/p/a-s-exp-evaluator/</link><pubDate>Thu, 09 Dec 2021 17:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/a-s-exp-evaluator/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>翻没看过的藏书的时候找出一本《SICP》的 PDF（PS：已经买了正版书），想起曾经拿 Rust 写玩具解释器，结果现在连 Rust 本身都已经快忘光了。&lt;/p>
+&lt;p>所以就当怀旧，写个很简单的玩具，s表达式求值器。&lt;/p>
+&lt;h2 id="技术栈">技术栈&lt;/h2>
+&lt;p>语言选择了 Go，用 gocc 生成 Parser/Lexer 。虽然说手写+调试 Lexer/Parser 也是挺快乐的，但毕竟只是怀旧重温下当年愣头青的自己，不想花太多时间。&lt;/p>
+&lt;h2 id="词法定义">词法定义&lt;/h2>
+&lt;p>简单解释下 gocc 定义词法元素的 DSL 是怎么回事。gocc 的这个 DSL 是类似于 EBNF 的语法（自称）， &lt;code>_letter: 'a'-'z'&lt;/code> 就是一条产生式，&lt;code>:&lt;/code>前面是产生式的名称，后面是模式。&lt;/p>
+&lt;p>产生式名称也有特殊含义。&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>!&lt;/code> 开头的产生式会被 Lexer 忽略。&lt;/li>
+&lt;li>&lt;code>_&lt;/code> 开头的产生式叫做 &lt;code>regDefId&lt;/code>，可以理解成给后面的模式定义的别名。&lt;/li>
+&lt;li>&lt;code>a-z&lt;/code>小写字母开头的是 &lt;code>token&lt;/code>，也就是一般说的词法元素定义了。&lt;/li>
+&lt;/ul>
+&lt;p>值得注意的是 &lt;code>token&lt;/code> 不能被用作其他词法元素产生式的模式部分，但 &lt;code>regDefId&lt;/code> 可以，所以要注意要复用的规则应该定义成下划线开头。&lt;/p>
+&lt;p>比如说下面的例子。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">// example 1
+letter: &amp;#39;a&amp;#39;-&amp;#39;z&amp;#39;;
+identifier: letter; // Error!
+// example 2
+_letter: &amp;#39;a&amp;#39;-&amp;#39;z&amp;#39;;
+identifier: _letter; // OK
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>下面是求值器的词法元素定义。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">!whitespace: &amp;#39; &amp;#39; | &amp;#39;\t&amp;#39; | &amp;#39;\r&amp;#39; | &amp;#39;\n&amp;#39;;
+!comment: &amp;#39;;&amp;#39; {.} &amp;#39;\n&amp;#39;;
+//
+// identifier
+//
+_letter : &amp;#39;a&amp;#39;-&amp;#39;z&amp;#39; | &amp;#39;A&amp;#39;-&amp;#39;Z&amp;#39;;
+_initial: _letter;
+_digit : &amp;#39;0&amp;#39;-&amp;#39;9&amp;#39; ;
+_special_subsequent : &amp;#39;.&amp;#39; | &amp;#39;+&amp;#39; | &amp;#39;-&amp;#39; | &amp;#39;!&amp;#39; | &amp;#39;?&amp;#39;;
+_subsequent: _initial | _digit | _special_subsequent;
+_peculiar_identifier: &amp;#39;+&amp;#39; | &amp;#39;-&amp;#39; | &amp;#39;.&amp;#39; &amp;#39;.&amp;#39; &amp;#39;.&amp;#39;;
+_identifier : _initial { _subsequent } | _peculiar_identifier;
+identifier: _identifier;
+quoted_identifier: &amp;#39;#&amp;#39; _identifier;
+//
+// boolean
+//
+_boolean_t: &amp;#39;#&amp;#39; &amp;#39;t&amp;#39;;
+_boolean_f: &amp;#39;#&amp;#39; &amp;#39;f&amp;#39;;
+boolean_t: _boolean_t;
+boolean_f: _boolean_f;
+//
+// string
+//
+_string_element: &amp;#39;\\&amp;#39; &amp;#39;&amp;#34;&amp;#39; | . | &amp;#39;\\&amp;#39; &amp;#39;\\&amp;#39;;
+_string : &amp;#39;&amp;#34;&amp;#39; { _string_element } &amp;#39;&amp;#34;&amp;#39;;
+string: _string;
+//
+// number
+//
+_sign: &amp;#39;+&amp;#39; | &amp;#39;-&amp;#39;;
+_uint10: _digit { _digit };
+_ureal10 : [&amp;#39;.&amp;#39;] _uint10 | _uint10 &amp;#39;.&amp;#39; _digit {_digit};
+_number : [_sign] _ureal10;
+number: _number;
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>词法元素很简单，运算符也当成 identifier 处理了，万一要扩展也容易。&lt;/p>
+&lt;h2 id="语法定义">语法定义&lt;/h2>
+&lt;p>gocc 的语法元素定义和词法元素定义差不多。产生式名称要用大写字母开头，后面跟的元素只能是 &lt;code>token&lt;/code>、语法元素还有字符串字面量。另外就是在每个规则后面可以加上一个 “动作”，用过 flex/bison 的应该知道我说的啥。这个动作是一个表达式，求值后必须是 &lt;code>interface{}, error&lt;/code> 这样的元组。这个求值结果会被 Parser 返回，所以需要在 Action 里就把 AST 组装好。&lt;/p>
+&lt;p>另外值得一提的就是语法元素的定义是不支持 &lt;code>[]&lt;/code>、&lt;code>{}&lt;/code> 这样的糖的，所以可选就得自己写成 &lt;code>Opt: Value | empty&lt;/code> ，重复一或多次就得自己写成 &lt;code>Elements: Element | Elements Element&lt;/code> 诸如此类。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">//
+// Syntax start here
+//
+&amp;lt;&amp;lt;
+import (
+&amp;#34;github.com/nnnewb/minilang/pkg/ast&amp;#34;
+&amp;#34;github.com/nnnewb/minilang/pkg/bnf/token&amp;#34;
+)
+&amp;gt;&amp;gt;
+//
+// value
+//
+Value
+: identifier &amp;lt;&amp;lt; ast.Identifier(string($0.(*token.Token).Lit)), nil &amp;gt;&amp;gt;
+| quoted_identifier &amp;lt;&amp;lt; ast.NewQuoted(ast.Identifier(string($0.(*token.Token).Lit[1:]))), nil &amp;gt;&amp;gt;
+| boolean_t &amp;lt;&amp;lt; ast.Boolean(true), nil &amp;gt;&amp;gt;
+| boolean_f &amp;lt;&amp;lt; ast.Boolean(false), nil &amp;gt;&amp;gt;
+| number &amp;lt;&amp;lt; ast.NewNumber(string($0.(*token.Token).Lit)) &amp;gt;&amp;gt;
+| string &amp;lt;&amp;lt; ast.String(string($0.(*token.Token).Lit)), nil &amp;gt;&amp;gt;
+| List &amp;lt;&amp;lt; $0, nil &amp;gt;&amp;gt;
+;
+//
+// list
+//
+ListElements
+: Value &amp;lt;&amp;lt; ast.NewListWithInitial($0.(ast.Node)), nil &amp;gt;&amp;gt;
+| ListElements Value &amp;lt;&amp;lt; $0.(*ast.List).Append($1.(ast.Node)), nil &amp;gt;&amp;gt;
+;
+List
+: &amp;#34;(&amp;#34; ListElements &amp;#34;)&amp;#34; &amp;lt;&amp;lt; $1, nil &amp;gt;&amp;gt;
+| &amp;#34;(&amp;#34; &amp;#34;)&amp;#34; &amp;lt;&amp;lt; ast.NewList(), nil &amp;gt;&amp;gt;
+| &amp;#34;#(&amp;#34; ListElements &amp;#34;)&amp;#34; &amp;lt;&amp;lt; ast.NewQuoted($1.(ast.Node)), nil &amp;gt;&amp;gt;
+| &amp;#34;#(&amp;#34; &amp;#34;)&amp;#34; &amp;lt;&amp;lt; ast.NewQuoted(ast.NewList()), nil &amp;gt;&amp;gt;
+;
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>s表达式本身就是一个括号括起来的列表，所以语法元素更简单了，直接把词法元素放进去就行。&lt;/p>
+&lt;h2 id="解析和执行">解析和执行&lt;/h2>
+&lt;h3 id="执行环境">执行环境&lt;/h3>
+&lt;p>执行环境就是保存变量（考虑作用域的话还要嵌套）、函数（或者叫 procedure）、解释器内建的函数之类的东西的地方，简单实现成一个 map 就完事了。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">ExecutionEnv&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">symbols&lt;/span> &lt;span class="kd">map&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="nx">Value&lt;/span>
+&lt;span class="nx">parent&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">ExecutionEnv&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">NewExecutionEnv&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">parent&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">ExecutionEnv&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">ExecutionEnv&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">ExecutionEnv&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;span class="nx">symbols&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">make&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kd">map&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="nx">Value&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="nx">parent&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">parent&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">ee&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">ExecutionEnv&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">SetValue&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">name&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">val&lt;/span> &lt;span class="nx">Value&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nx">Value&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">old&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">ee&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">symbols&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nx">name&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="nx">ee&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">symbols&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nx">name&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">val&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">old&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">ee&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">ExecutionEnv&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">LookupName&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">name&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nx">Value&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">val&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">ee&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">LookupLocalName&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">name&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="nx">val&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">val&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">ee&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">parent&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">LookupName&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">name&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">ee&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">ExecutionEnv&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">LookupLocalName&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">name&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nx">Value&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">val&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">ee&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">symbols&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nx">name&lt;/span>&lt;span class="p">];&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">val&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="求值">求值&lt;/h3>
+&lt;p>语言定义里（不是 scheme 的语言定义，那个去参考 r4rs/r5rs/r6rs/r7rs，这里指的是我给这个玩具求值器的语言定义），&lt;code>(a b c)&lt;/code> 这样的列表等于是 &lt;code>a(b, c)&lt;/code> 这样的函数调用，而原始列表得写成 &lt;code>#(a b c)&lt;/code>，可以理解成告诉求值器要把给出的表达式当成数据还是代码。&lt;/p>
+&lt;p>类似的还有&lt;code>ident&lt;/code>会被求值，在执行环境里寻找对应的变量；&lt;code>#ident&lt;/code> 求值结果就是标识符&lt;code>ident&lt;/code>。&lt;/p>
+&lt;p>求值过程就是简单的做个 type switch，字面量不管，原始列表和标识符返回内容，再然后就是列表当成函数求值。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">ee&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">ExecutionEnv&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">EvaluateList&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">list&lt;/span> &lt;span class="nx">List&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">Value&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">list&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">first&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">ee&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Evaluate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">list&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">fn&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">first&lt;/span>&lt;span class="p">.(&lt;/span>&lt;span class="nx">BuiltinFunc&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="p">!&lt;/span>&lt;span class="nx">ok&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Errorf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;TypeError: %v(%T) is not callable&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">first&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">first&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">args&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nb">make&lt;/span>&lt;span class="p">([]&lt;/span>&lt;span class="nx">Value&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">list&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">:]))&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">v&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">list&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">:]&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">arg&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">ee&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Evaluate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">v&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">args&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">args&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">arg&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nf">fn&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ee&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">args&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">ee&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">ExecutionEnv&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">Evaluate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">val&lt;/span> &lt;span class="nx">Value&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">Value&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">switch&lt;/span> &lt;span class="nx">v&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">val&lt;/span>&lt;span class="p">.(&lt;/span>&lt;span class="kd">type&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">List&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">ee&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">EvaluateList&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">v&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nx">Identifier&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">ee&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">LookupName&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">string&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">v&lt;/span>&lt;span class="p">)),&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">Quoted&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">v&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">GetValue&lt;/span>&lt;span class="p">().(&lt;/span>&lt;span class="nx">Value&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">v&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>因为还没写 procdure 的定义，所以直接拿 Builtin 做了类型断言判断是不是可以调用。我寻思传参大概会是个挺麻烦的事情。&lt;/p>
+&lt;h3 id="repl">REPL&lt;/h3>
+&lt;p>最后就是解释器本体了，用 &lt;code>go-prompt&lt;/code> 做了个简单的循环，再加上一点算数函数。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">package&lt;/span> &lt;span class="nx">main&lt;/span>
+&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;fmt&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;github.com/c-bata/go-prompt&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;github.com/nnnewb/minilang/internal/builtin&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;github.com/nnnewb/minilang/internal/environment&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;github.com/nnnewb/minilang/pkg/ast&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;github.com/nnnewb/minilang/pkg/bnf/lexer&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;github.com/nnnewb/minilang/pkg/bnf/parser&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">input&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">prompt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Input&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;&amp;gt;&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">d&lt;/span> &lt;span class="nx">prompt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Document&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="nx">prompt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Suggest&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="nx">prompt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Suggest&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="p">})&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">input&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="s">&amp;#34;.quit&amp;#34;&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">break&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">ee&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">environment&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewExecutionEnv&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kc">nil&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">builtin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">RegisterArithmeticBuiltin&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ee&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">ee&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">SetValue&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;display&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">environment&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">BuiltinFunc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ee&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">environment&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">ExecutionEnv&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">args&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="nx">environment&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Value&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">environment&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Value&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">v&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">args&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;%v&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">v&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nb">println&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}))&lt;/span>
+&lt;span class="nx">lexer&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">lexer&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewLexer&lt;/span>&lt;span class="p">([]&lt;/span>&lt;span class="nb">byte&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">input&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="nx">parser&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">parser&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewParser&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="nx">parseResult&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">parser&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Parse&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">lexer&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;parse error %v\n&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">continue&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">val&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">environment&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewValueFromASTNode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">parseResult&lt;/span>&lt;span class="p">.(&lt;/span>&lt;span class="nx">ast&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Node&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="nx">evaluated&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">ee&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Evaluate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">val&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;evaluation failed, error %v\n&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">continue&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;# (%T) %v\n&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">evaluated&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">evaluated&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>最后执行的效果就是这样：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">&amp;gt;(display &amp;#34;Hello world!&amp;#34;)
+&amp;#34;Hello world!&amp;#34;
+# (&amp;lt;nil&amp;gt;) &amp;lt;nil&amp;gt;
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>s表达式求值不是什么大不了的东西，但 Lisp/Scheme 中体现出的那种 “代码即数据” 的思想还是很有意思的，甚至是很有想象力的。&lt;/p>
+&lt;p>不管是命令式语言还是函数式语言，代码和数据都是被分开讨论的。“代码”处理“数据”，放在 Lisp 家族里就是 “代码”处理“代码”，有没有联想到 AI ？&lt;/p>
+&lt;p>好吧，毕竟是上世纪的古董了，现在说起 AI 都是 Python 和神经网络。但不管怎么说吧，Lisp/Scheme 还是挺好玩的对吧？没事可以上 &lt;a class="link" href="https://racket-lang.org/" target="_blank" rel="noopener"
+>Racket&lt;/a> 官网看看，说不定会喜欢上 Lisp 的奇妙之处呢。&lt;/p></description></item></channel></rss>

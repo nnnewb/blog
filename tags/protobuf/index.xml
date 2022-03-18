@@ -1,6 +1,158 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>protobuf on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/protobuf/</link><description>Recent content in protobuf on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 21 Feb 2022 16:32:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/protobuf/index.xml" rel="self" type="application/rss+xml"/><item><title>protogen代码生成</title><link>https://nnnewb.github.io/blog/p/protogen-code-generation/</link><pubDate>Mon, 21 Feb 2022 16:32:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/protogen-code-generation/</guid><description>前言 最大的问题其实是 proto 直接生成的 swagger 不好用，过去的 gRPC 写法只在服务端，客户端没享受到静态类型定义的接口的快乐，而且手工写的文档还有一堆很无语的问题，整个系统维护起来蛋疼无比。
-后来解决办法也简单，代码生成，缺什么生成什么，先后经历了用 go + proto解析写改成用 typescript 写，再改回 go + protogen，一番折腾下来最后还是用 protogen 最简单舒服。
-这篇博客主要就是介绍下 protogen 配上 go 模板能做到的事情。
-protogen介绍 protogen的官方文档在这里，protogen是google官方protoc-gen-go插件使用的支持库，代码托管在github.com/protocolbuffers/protobuf-go 。可以通过 protoc-gen-go 的 main 包代码 初窥门径。
-不过在开始前，还得先了解下 protoc 插件是怎么工作的。从官方文档other languages and plugins摘录如下。
-protoc, the Protocol Buffers Compiler, can be extended to support new languages via plugins. A plugin is just a program which reads a CodeGeneratorRequest protocol buffer from standard input and then writes a CodeGeneratorResponse protocol buffer to standard output.</description></item></channel></rss>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>protobuf on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/protobuf/</link><description>Recent content in protobuf on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 21 Feb 2022 16:32:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/protobuf/index.xml" rel="self" type="application/rss+xml"/><item><title>protogen代码生成</title><link>https://nnnewb.github.io/blog/p/protogen-code-generation/</link><pubDate>Mon, 21 Feb 2022 16:32:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/protogen-code-generation/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>最大的问题其实是 proto 直接生成的 swagger 不好用，过去的 gRPC 写法只在服务端，客户端没享受到静态类型定义的接口的快乐，而且手工写的文档还有一堆很无语的问题，整个系统维护起来蛋疼无比。&lt;/p>
+&lt;p>后来解决办法也简单，代码生成，缺什么生成什么，先后经历了用 &lt;code>go&lt;/code> + proto解析写改成用 &lt;code>typescript&lt;/code> 写，再改回 &lt;code>go&lt;/code> + &lt;code>protogen&lt;/code>，一番折腾下来最后还是用 &lt;code>protogen&lt;/code> 最简单舒服。&lt;/p>
+&lt;p>这篇博客主要就是介绍下 &lt;code>protogen&lt;/code> 配上 go 模板能做到的事情。&lt;/p>
+&lt;h2 id="protogen介绍">&lt;code>protogen&lt;/code>介绍&lt;/h2>
+&lt;p>&lt;code>protogen&lt;/code>的官方文档在&lt;a class="link" href="https://pkg.go.dev/google.golang.org/protobuf/compiler/protogen" target="_blank" rel="noopener"
+>这里&lt;/a>，&lt;code>protogen&lt;/code>是google官方&lt;code>protoc-gen-go&lt;/code>插件使用的支持库，代码托管在&lt;a class="link" href="https://github.com/protocolbuffers/protobuf-go" target="_blank" rel="noopener"
+>github.com/protocolbuffers/protobuf-go&lt;/a> 。可以通过 &lt;a class="link" href="https://github.com/protocolbuffers/protobuf-go/blob/master/cmd/protoc-gen-go/main.go" target="_blank" rel="noopener"
+>&lt;code>protoc-gen-go&lt;/code> 的 &lt;code>main&lt;/code> 包代码&lt;/a> 初窥门径。&lt;/p>
+&lt;p>不过在开始前，还得先了解下 &lt;code>protoc&lt;/code> 插件是怎么工作的。从官方文档&lt;a class="link" href="https://developers.google.com/protocol-buffers/docs/reference/other" target="_blank" rel="noopener"
+>other languages and plugins&lt;/a>摘录如下。&lt;/p>
+&lt;blockquote>
+&lt;p>&lt;code>protoc&lt;/code>, the Protocol Buffers Compiler, can be extended to support new languages via plugins. &lt;strong>A plugin is just a program which reads a&lt;/strong> &lt;code>CodeGeneratorRequest&lt;/code> &lt;strong>protocol buffer from standard input and then writes a&lt;/strong> &lt;code>CodeGeneratorResponse&lt;/code> &lt;strong>protocol buffer to standard output.&lt;/strong> These message types are defined in &lt;code>plugin.proto&lt;/code>. We recommend that all third-party code generators be written as plugins, as this allows all generators to provide a consistent interface and share a single parser implementation.&lt;/p>
+&lt;/blockquote>
+&lt;p>简单地说，&lt;code>protoc&lt;/code>插件从&lt;code>stdin&lt;/code>读取一个&lt;code>protobuf&lt;/code>消息，往&lt;code>stdout&lt;/code>写一个&lt;code>protobuf&lt;/code>消息。把&lt;code>protoc&lt;/code>插件理解成服务器，&lt;code>protoc&lt;/code>发送请求，插件返回响应，交互过程不经过网络，而是标准输入/输出，就这样。&lt;/p>
+&lt;p>我也不想解释为什么不从零开始写了。&lt;code>protogen&lt;/code>提供了相当完善的封装，很轻松就可以写出一个完整的 &lt;code>protoc&lt;/code> 插件。&lt;/p>
+&lt;h3 id="helloworld">HelloWorld&lt;/h3>
+&lt;p>先来个惯例。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">package&lt;/span> &lt;span class="nx">main&lt;/span>
+&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;log&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;flags&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;google.golang.org/protobuf/compiler/protogen&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">SetFlags&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">SetPrefix&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;protoc-gen-hello: &amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">flags&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">FlagSet&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="nx">protogen&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Options&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="nx">ParamFunc&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">flags&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Set&lt;/span>&lt;span class="p">}.&lt;/span>&lt;span class="nf">Run&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">Gen&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">Gen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">plugin&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">protogen&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Plugin&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Hello world&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>什么也不生成，就只是输出一句 Hello world。&lt;/p>
+&lt;h3 id="简单生成">简单生成&lt;/h3>
+&lt;p>一个简单的&lt;code>proto&lt;/code>文件。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-protobuf" data-lang="protobuf">&lt;span class="n">syntax&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s">&amp;#34;proto3&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="k">option&lt;/span> &lt;span class="n">go_package&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s">&amp;#34;play/proto&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="kd">message&lt;/span> &lt;span class="nc">Hello&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="n">name&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="p">}&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="kd">message&lt;/span> &lt;span class="nc">World&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="n">greeting&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="p">}&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="kd">service&lt;/span> &lt;span class="n">greeter&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="k">rpc&lt;/span> &lt;span class="n">SayHello&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">Hello&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">returns&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">World&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="p">}&lt;/span>&lt;span class="err">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>输出文件里所有的结构、服务、RPC方法名称。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">package&lt;/span> &lt;span class="nx">main&lt;/span>
+&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;flag&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;log&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;google.golang.org/protobuf/compiler/protogen&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">SetFlags&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">SetPrefix&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;protoc-gen-hello: &amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">flags&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">FlagSet&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="nx">protogen&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Options&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="nx">ParamFunc&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">flags&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Set&lt;/span>&lt;span class="p">}.&lt;/span>&lt;span class="nf">Run&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">Gen&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">Gen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">plugin&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">protogen&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Plugin&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">filename&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">plugin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Request&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">FileToGenerate&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">file&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">plugin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">FilesByPath&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nx">filename&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">msg&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">file&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Messages&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;message: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">msg&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Desc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">FullName&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">svc&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">file&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Services&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;service: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">svc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Desc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">FullName&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">method&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">svc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Methods&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;method: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">method&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Desc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">FullName&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以看出来使用非常简单，但需要注意的是 &lt;code>message&lt;/code> 是可以嵌套的，&lt;code>message&lt;/code>内还能定义&lt;code>message&lt;/code>和&lt;code>enum&lt;/code>，上面的例子没有处理。&lt;/p>
+&lt;p>接下来我们把命令行输出改成输出到文件，让程序有点实际用途。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">package&lt;/span> &lt;span class="nx">main&lt;/span>
+&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;flag&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;log&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;path&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;strings&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;google.golang.org/protobuf/compiler/protogen&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">SetFlags&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">SetPrefix&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;protoc-gen-hello: &amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">flags&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">FlagSet&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="nx">protogen&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Options&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="nx">ParamFunc&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">flags&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Set&lt;/span>&lt;span class="p">}.&lt;/span>&lt;span class="nf">Run&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">Gen&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">Gen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">plugin&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">protogen&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Plugin&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">filename&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">plugin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Request&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">FileToGenerate&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">g&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">plugin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewGeneratedFile&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">strings&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ReplaceAll&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">path&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Base&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">filename&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="s">&amp;#34;.proto&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;.md&amp;#34;&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="s">&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">g&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">P&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;# API 文档&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">g&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">P&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="nx">g&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">P&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;## 结构定义&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">g&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">P&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="nx">file&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">plugin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">FilesByPath&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nx">filename&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">msg&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">file&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Messages&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;message: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">msg&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Desc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">FullName&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="nx">g&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">P&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;### &amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">msg&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Desc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Name&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="nx">g&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">P&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">svc&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">file&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Services&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">g&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">P&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;## 服务 &amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">svc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Desc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">FullName&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="nx">g&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">P&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;service: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">svc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Desc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">FullName&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">method&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">svc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Methods&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;method: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">method&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Desc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">FullName&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="nx">g&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">P&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;### 接口 &amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">method&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Desc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Name&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意使用了 &lt;code>plugin.NewGeneratedFile&lt;/code>而不是直接&lt;code>os.Open&lt;/code>，因为这是&lt;code>protoc&lt;/code>插件的约定之一。&lt;code>protoc&lt;/code>插件系统允许插件提供&lt;code>insert point&lt;/code>，让别的插件修改插件生成的代码。不过目前我们没有这种功能，但遵循约定的方式来编写代码总是没坏处的。&lt;/p>
+&lt;p>代码里会有很多没看懂的东西，比如 &lt;code>Desc&lt;/code> ，其实是&lt;code>Descriptor&lt;/code>的缩写。&lt;code>Descriptor&lt;/code>是一种设计模式，我自己的粗暴理解就是&lt;code>Descriptor&lt;/code>“描述”对象的结构和属性，借助&lt;code>Descriptor&lt;/code>来访问和修改对象。听起来像是反射，用起来也是反射的感觉。在 Python 里也有个 &lt;code>descriptor&lt;/code>，&lt;a class="link" href="https://docs.python.org/3/howto/descriptor.html" target="_blank" rel="noopener"
+>Descriptor HowTo Guide&lt;/a>，和这里的&lt;code>Descriptor&lt;/code>有相似的地方，仅供参考。&lt;/p>
+&lt;h3 id="模板化">模板化&lt;/h3>
+&lt;p>虽然也能直接在代码里用 &lt;code>g.P&lt;/code> 完成生成工作，但是未免麻烦。&lt;code>g.P&lt;/code>这个接口实话说我觉得不行，怎么不实现一个&lt;code>StringWriter&lt;/code>。&lt;/p>
+&lt;p>这里用模板最大的好处是能轻松地完成一大堆字符串拼接混合一些简单的逻辑的情况，如果用 go 代码实现会非常啰嗦。&lt;/p>
+&lt;p>先展示下我使用的模板，代码太罗嗦就不贴了。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-markdown" data-lang="markdown">{{ define &amp;#34;message-link&amp;#34; -}}
+{{ if .Message -}}
+../../../{{ .Message.ParentFile.Path | base | replace &amp;#34;.proto&amp;#34; &amp;#34;&amp;#34; }}/types/{{ .Message.FullName | toString | replace &amp;#34;.&amp;#34; &amp;#34;_&amp;#34;}}/
+{{- else if .Enum -}}
+../../../{{ .Enum.ParentFile.Path | base | replace &amp;#34;.proto&amp;#34; &amp;#34;&amp;#34; }}/types/{{ .Enum.FullName | toString | replace &amp;#34;.&amp;#34; &amp;#34;_&amp;#34; }}/
+{{- end }}
+{{- end -}}
+{{ define &amp;#34;message&amp;#34; -}}
+&lt;span class="gs">**JSON:**&lt;/span>
+&lt;span class="s">```json
+&lt;/span>&lt;span class="s">&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="err">{&lt;/span> &lt;span class="err">.Desc&lt;/span> &lt;span class="err">|&lt;/span> &lt;span class="err">GenerateExample&lt;/span> &lt;span class="p">}&lt;/span>&lt;span class="err">}&lt;/span>
+&lt;span class="s">```&lt;/span>
+&lt;span class="gs">**字段说明:**&lt;/span>
+|字段|类型|说明|
+|----|----|----|
+{{ range .Fields -}}
+|`{{- .Desc.Name }}`|[`{{ template &amp;#34;field-type&amp;#34; .Desc }}`]({{template &amp;#34;message-link&amp;#34; .Desc }})|{{ .Comments | InlineMarkdownDocString | default &amp;#34;*此字段没有文档注释*&amp;#34;}}|
+{{ end }}
+{{- end -}}
+&lt;span class="gh"># {{ .Desc.FullName | toString | replace &amp;#34;.&amp;#34; &amp;#34;_&amp;#34; }}
+&lt;/span>&lt;span class="gh">&lt;/span>
+{{ template &amp;#34;message&amp;#34; . }}
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>最终生成结果就像是这样。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/protogen-code-generation/image-20220221161802205.png"
+width="778"
+height="404"
+srcset="https://nnnewb.github.io/blog/blog/p/protogen-code-generation/image-20220221161802205_hu2efbed3d0c9645c8b3aebafcdc662339_25912_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/protogen-code-generation/image-20220221161802205_hu2efbed3d0c9645c8b3aebafcdc662339_25912_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="生成结果"
+class="gallery-image"
+data-flex-grow="192"
+data-flex-basis="462px"
+>&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>本身是个很简单的东西。原先用解析proto文件语法树再生成文档的方法不是不行，但一来第三方的解析库经常有不支持的语法和奇怪的bug，&lt;code>protoc&lt;/code>本身又是事实标准，官方的 DSL Specification 文档就是个废物文档，连 &lt;code>option(http) {}&lt;/code> 这样的都算是 specification 之外，还有 &lt;code>optional&lt;/code> 在 proto3 还能用之类的让人想骂傻逼的问题。&lt;/p>
+&lt;p>后来改成了 &lt;code>typescript&lt;/code> + &lt;code>protobuf.js&lt;/code> ，官方支持的稳定性一下子就好多了，但这个跑起来性能实在有点拉，而且 ts 版本用了 &lt;code>ejs&lt;/code> 作为模板引擎，&lt;code>ejs&lt;/code>的标签写起来罗嗦到不行，内嵌 js 的写法一时爽，爽完自己都快看不懂写了什么玩意儿了。&lt;/p>
+&lt;p>最后换回 &lt;code>go&lt;/code>+&lt;code>protogen&lt;/code>，一下子就舒服多了。&lt;/p></description></item></channel></rss>

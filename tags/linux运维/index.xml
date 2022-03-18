@@ -1,53 +1,355 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>linux运维 on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/linux%E8%BF%90%E7%BB%B4/</link><description>Recent content in linux运维 on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 27 Dec 2021 15:21:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/linux%E8%BF%90%E7%BB%B4/index.xml" rel="self" type="application/rss+xml"/><item><title>排查一个kubectl无反应的问题</title><link>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</link><pubDate>Mon, 27 Dec 2021 15:21:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</guid><description>懒得分段了，就当做是讲个故事吧。
-背景大概是这样。
-内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。
-今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。
-所以，当当当~当~，整一个持续部署呗，反正是个纯前端项目，不用部署配套的后端代码，写个dockerfile再写个helm chart就差不多了，ci调了调构建镜像就完事，不过因为ci部署需要访问集群，所以又改了下.kube/config，删了之前尝试csr方式添加用户的时候加多的 user 和 context ，复制了一份挂载到 runner 容器里。
-然后&amp;hellip;&amp;hellip;问题就来了。
-同事忽然告诉我办公室的服务挂了，于是下意识地打出kgp，卡住。
-等了一会儿，还是卡住。
-又等了一会儿，坐不住了。试了下kubectl cluster-info，继续卡住。
-开始慌了，想起今天的机器有点卡，先看看 free -h 有没有内存泄漏之类的问题导致阻塞，结果发现并没有，于是继续看 htop，cpu使用率也比较正常。再看df -h | grep -vE 'shm|overlay'，发现硬盘使用率96%（估计硬盘主控想死的心都有了，揪着4%的可用空间想把PE数平均到各个区块恐怕不容易）。
-找到问题后松了口气，十有八九是又出现 evicted 了。二话不说直接 docker system df，看到30多G的 build cache 顿时惊了，肯定不是go的构建缓存（手动挂载优化了），那就是 node_modules 又立奇功了。node_modules=黑洞果然不是吹的。
-清理完使用率恢复到63%，但依然有种不安感萦绕于心，于是再次尝试kgp，卡住。
-等了一会儿，喝口水，继续卡着。
-又等了一会儿，淦。
-想了想，journalctl -r -u k3s看看日志，并没有什么发现，倒是注意到很多linkerd之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。
-6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.</description></item><item><title>在raspbian上手动编译vim8.2</title><link>https://nnnewb.github.io/blog/p/build-vim8.2-manually-on-raspbian/</link><pubDate>Sat, 25 Dec 2021 10:37:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/build-vim8.2-manually-on-raspbian/</guid><description>前言 raspbian上自带的vim版本还是低了点，像是coc.nvim之类的插件弹警告就搞得很烦。我寻思自己编译一个吧。
-0x01 下载源码 从vim官网下载源码（或者可以从GitHub下，出于网络考虑还是直接从ftp下了），下完直接scp传到树莓派上，tar xf解压好准备开整。
-0x02 配置 惯例先看看文档，README.md里指出源码安装去看src/INSTALL，所以跟着去看。
-在 Unix 一节中提到直接make+make install就完事，但我要的不是编译个默认版本的vim，毕竟还有插件会用到vim的 Pyhon/Python3 特性，比如ycm。
-继续往下翻会看到编译依赖。
-% sudo apt install git % sudo apt install make % sudo apt install clang % sudo apt install libtool-bin 跟着把依赖装好，clang估计是可选项，gcc肯定是能编译vim的。不过以防万一反正全装上。
-后面终于看到了Python3添加支持的方式。
-Add Python 3 support: % sudo apt install libpython3-dev Uncomment this line in Makefile: &amp;quot;CONF_OPT_PYTHON3 = --enable-python3interp&amp;quot; % make reconfig 虽然说文档让取消注释，但是我不想改东西。所以记一下--enable-python3interp，等会儿加入configure的参数。
-后面又有个关于gui的，因为不使用gui，所以也记一下。
-Unix: COMPILING WITH/WITHOUT GUI
-NOTE: This is incomplete, look in Makefile for more info.</description></item><item><title>简单的ECK部署</title><link>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</link><pubDate>Tue, 30 Nov 2021 11:13:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</guid><description>前言 因为工作需要，得在自己搭建的集群里部署一个 Elasticsearch 。又因为是云端的集群，在 k8s 外用 docker 单独起一个 ES 明显更难维护（但部署更简单），于是选择用 ECK 。
-ECK 就是 Elastic Cloud on Kubernetes 的缩写，可以理解成部署在 Kubernetes 上的 Elasticsearch 。当然不止 ES 。
-部署 ES 的过程遇到几个问题记录下怎么解决的。
-ES 使用自签名证书，导致 HTTP 不能连接。 ECK 需要安装 IK 分词插件。 ECK 默认密码每次部署都重新生成，而且默认用户权限过大。 ECK 默认没配 PVC ，数据没有持久化。 接下来逐个解决。
-0x01 自签名证书 自签名证书解决方法有几个
-改客户端，让客户端用自签名证书连接。很麻烦。 生成一个固定的证书，让ES和客户端都用这个证书，客户端和ES都要改。很麻烦。 禁用 ES 的自签名证书。 考虑到是私有的测试环境，不搞这些烦人的东西，直接禁用。
-修改 YAML 如下。
-apiVersion:elasticsearch.k8s.elastic.co/v1kind:Elasticsearchmetadata:name:elasticsearchspec:http:tls:selfSignedCertificate:disabled:true注意 spec.http.tls.selfSignedCertificate.disabled 这个字段。
-参考文档：Orchestrating Elastic Stack applications - Access Elastic Stack services - TLS certificates</description></item><item><title>运维瞎记 2021年11月11日</title><link>https://nnnewb.github.io/blog/p/blind-op-2021-11-11/</link><pubDate>Thu, 11 Nov 2021 10:19:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/blind-op-2021-11-11/</guid><description>记虚拟机网络未连接 起因 因为Ubuntu server安装时更新的话需要从网络下载，慢的一批，所以安装的时候虚拟机的网络断开了，安装好启动之后才重新链接。
-但是&amp;hellip;
-连接后进入系统却发现并没有网络（VirtualBox），检查 networkctl 发现 enp0s3 是 off 状态。
-原因 别问，不知道。
-处理 顺藤摸瓜不求甚解了。
-看到 enp0s3 是 off 那就先查查怎么解决。
-sudo ip link set enp0s3 up 再检查连接状态。
-networkctl status 发现连接进入 downgrade 状态，搜索得知是未分配 IP 地址。
-sudo dhclient enp0s3 报了一个奇怪的CMP什么的错误，不管了。再检查下网络。
-networkctl 发现 enp0s3 进入 routable 状态，大功告成。
-总结 我总结个蛋。</description></item><item><title>升级公司的 GitLab</title><link>https://nnnewb.github.io/blog/p/%E5%8D%87%E7%BA%A7%E5%85%AC%E5%8F%B8%E7%9A%84-gitlab/</link><pubDate>Thu, 15 Jul 2021 16:02:41 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%8D%87%E7%BA%A7%E5%85%AC%E5%8F%B8%E7%9A%84-gitlab/</guid><description>公司目前跑的 gitlab 是很久以前部署的，当前版本 8.4.2 。升级目标是 13.12.Z 。部署方式是 docker 。
-宿主机配置不高，系统 Ubuntu 15.04 。眼下这个时间，这个Ubuntu版本，基本宣告没法用了。直接在线升级容易把引导搞挂，到时候还得亲自去实体机上折腾引导，麻烦。暂时不管宿主机。
-情况概述 因为 GitLab 版本实在太低了，以至于连一个能集成的 CI/CD 工具都找不到。即使 jenkins 都只能很勉强地动起来，偏偏 jenkins 还不能满足需要（也可能是我太菜，反正公司没人玩得转 jenkins）。
-但开发需要 CI/CD 来解决持续构建和部署的问题，不得不考虑升级了。
-1. 备份 什么都别说了，开干前最重要的事情就是备份，免得把自己玩死。
-最常用的备份手段自然是 tar 。不过 gitlab 数据目录实在太大了，要是直接运行 tar -czpf gitlab.tar.gz ./gitlab 不知道跑多久，也不知道有没有卡死。
-于是上技术手段：用 pv 显示个进度条。
-pv 项目的首页在 ivarch.com。因为服务器还在跑ubuntu 15.10，现在连个能用的源都没啦。只好下载了源码，在 wsl 里编译好推上去。
-最终命令如下。
-sudo tar cf - ./gitlab -P | pv -s $(sudo du -sb ./gitlab | awk &amp;#39;{print $1}&amp;#39;) | gzip &amp;gt; gitlab.</description></item></channel></rss>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>linux运维 on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/linux%E8%BF%90%E7%BB%B4/</link><description>Recent content in linux运维 on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 27 Dec 2021 15:21:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/linux%E8%BF%90%E7%BB%B4/index.xml" rel="self" type="application/rss+xml"/><item><title>排查一个kubectl无反应的问题</title><link>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</link><pubDate>Mon, 27 Dec 2021 15:21:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</guid><description>&lt;p>懒得分段了，就当做是讲个故事吧。&lt;/p>
+&lt;p>背景大概是这样。&lt;/p>
+&lt;p>内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。&lt;/p>
+&lt;p>今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。&lt;/p>
+&lt;p>所以，当当当~当~，整一个持续部署呗，反正是个纯前端项目，不用部署配套的后端代码，写个dockerfile再写个helm chart就差不多了，ci调了调构建镜像就完事，不过因为ci部署需要访问集群，所以又改了下&lt;code>.kube/config&lt;/code>，删了之前尝试&lt;code>csr&lt;/code>方式添加用户的时候加多的 user 和 context ，复制了一份挂载到 runner 容器里。&lt;/p>
+&lt;p>然后&amp;hellip;&amp;hellip;问题就来了。&lt;/p>
+&lt;p>同事忽然告诉我办公室的服务挂了，于是下意识地打出&lt;code>kgp&lt;/code>，卡住。&lt;/p>
+&lt;p>等了一会儿，还是卡住。&lt;/p>
+&lt;p>又等了一会儿，坐不住了。试了下&lt;code>kubectl cluster-info&lt;/code>，继续卡住。&lt;/p>
+&lt;p>开始慌了，想起今天的机器有点卡，先看看 &lt;code>free -h&lt;/code> 有没有内存泄漏之类的问题导致阻塞，结果发现并没有，于是继续看 &lt;code>htop&lt;/code>，cpu使用率也比较正常。再看&lt;code>df -h | grep -vE 'shm|overlay'&lt;/code>，发现硬盘使用率96%（估计硬盘主控想死的心都有了，揪着4%的可用空间想把PE数平均到各个区块恐怕不容易）。&lt;/p>
+&lt;p>找到问题后松了口气，十有八九是又出现 evicted 了。二话不说直接 &lt;code>docker system df&lt;/code>，看到30多G的 build cache 顿时惊了，肯定不是go的构建缓存（手动挂载优化了），那就是 node_modules 又立奇功了。node_modules=黑洞果然不是吹的。&lt;/p>
+&lt;p>清理完使用率恢复到63%，但依然有种不安感萦绕于心，于是再次尝试&lt;code>kgp&lt;/code>，卡住。&lt;/p>
+&lt;p>等了一会儿，喝口水，继续卡着。&lt;/p>
+&lt;p>又等了一会儿，淦。&lt;/p>
+&lt;p>想了想，&lt;code>journalctl -r -u k3s&lt;/code>看看日志，并没有什么发现，倒是注意到很多&lt;code>linkerd&lt;/code>之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。&lt;/p>
+&lt;pre>&lt;code class="language-log" data-lang="log"> 6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.685149 794 container_gc.go:85] attempting to delete unused containers
+7 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.687723 794 image_gc_manager.go:321] attempting to delete unused images
+8 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.782390 794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
+9 12月 25 21:16:17 office k3s[794]: W1225 13:16:17.939242 794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
+10 12月 25 21:16:17 office k3s[794]: I1225 13:16:17.939267 794 container_gc.go:85] attempting to delete unused containers
+11 12月 25 21:16:17 office k3s[794]: I1225 13:16:17.941771 794 image_gc_manager.go:321] attempting to delete unused images
+12 12月 25 21:16:18 office k3s[794]: I1225 13:16:18.033724 794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
+13 12月 25 21:16:28 office k3s[794]: W1225 13:16:28.214032 794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
+&lt;/code>&lt;/pre>&lt;p>这个是老问题了，一直没去研究怎么解决。&lt;/p>
+&lt;pre>&lt;code class="language-log" data-lang="log"> 154 12月 25 21:21:55 office k3s[794]: I1225 13:21:55.021937 794 image_gc_manager.go:304] [imageGCManager]: Disk usage on image filesystem is at 95% which is over the high threshold (85%). Trying to free 182 155 12月 25 21:21:55 office k3s[794]: E1225 13:21:55.025140 794 kubelet.go:1292] Image garbage collection failed multiple times in a row: failed to garbage collect required amount of images. Wanted to free
+&lt;/code>&lt;/pre>&lt;p>这次搜了下，应该是 &lt;code>docker system prune&lt;/code> 造成 &lt;code>kubelet&lt;/code> 找不到可回收的镜像才报错（猜测），不过依然不能解释为啥 &lt;code>kubectl&lt;/code> 没反应。于是继续翻了会儿日志，搜索错误，但始终没有什么结果。&lt;/p>
+&lt;p>但是同事还要干活，没辙了，先重启下服务器吧。群里说了一声要重启了，等了一会儿跑&lt;code>sudo reboot&lt;/code>，重启完连接，继续&lt;code>kgp&lt;/code>，卡住。&lt;/p>
+&lt;p>嗯&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>早有预料。&lt;/p>
+&lt;p>&lt;code>journalctl -r -u k3s --boot&lt;/code> 看看重启后的日志，发现还是老一套的问题，&lt;code>docker&lt;/code> 手动处理镜像和容器造成的和 kubernetes 的管理机制的冲突，各种找不到镜像或者容器的警告，还有一些错误和trace，但没有一个能解释为什么&lt;code>kubectl&lt;/code>没有反应。。。&lt;/p>
+&lt;p>直到在&lt;code>kubectl&lt;/code>的终端里按下了ctrl+c，在顺手&lt;code>clear&lt;/code>之前看到了一行请输入用户名（eng）&amp;hellip;&lt;/p>
+&lt;p>警觉。&lt;/p>
+&lt;p>忽然想起来，因为 &lt;code>kubectl&lt;/code> 这破玩意儿是没有颜色输出的，用习惯了各种彩色输出的命令行工具，&lt;code>kubectl&lt;/code>就格外不顺眼。所以在发现&lt;code>kubecolors&lt;/code>后，我就直接把&lt;code>kubectl&lt;/code>配置成了&lt;code>kubecolor&lt;/code>的别名。&lt;/p>
+&lt;p>所以&amp;hellip;&amp;hellip;难道是&lt;code>kubecolor&lt;/code>的问题？&lt;/p>
+&lt;p>&lt;code>whereis kubectl&lt;/code>找到&lt;code>kubectl&lt;/code>的绝对路径之后，尝试手动运行&lt;code>/usr/local/bin/kubectl cluster-info&lt;/code>，再次出现了那个输入用户名的提示，顿时开始怀疑起&lt;code>.kube/config&lt;/code>配置有问题，正好在出现问题之前改过了&lt;code>.kube/config&lt;/code>，这里出问题的嫌疑就很吉尔大。&lt;/p>
+&lt;p>于是打开&lt;code>.kube/config&lt;/code>，检查了一下集群的用户配置，发现果然，是我手欠把办公室集群的用户给删了。草。&lt;/p>
+&lt;p>急忙从&lt;code>/etc/rancher/k3s/k3s.yaml&lt;/code>复制下用户证书配置，贴进去，再运行&lt;code>kgp&lt;/code>果然屁事没有了。&lt;/p>
+&lt;p>所以总结如下。&lt;/p>
+&lt;ol>
+&lt;li>别被表面的问题迷惑。&lt;/li>
+&lt;li>自己犯傻的几率大于基础设施/常用工具犯傻的几率。&lt;/li>
+&lt;li>遇到问题解决步骤很重要，准确的方向可以省很多时间。
+&lt;ol>
+&lt;li>先确定故障表现和复现条件&lt;/li>
+&lt;li>确定故障点（出现在网络、网关还是应用、数据库），弄清楚是不是新问题&lt;/li>
+&lt;li>再排查相关配置是否正确，回忆是否有做过相关修改变更&lt;/li>
+&lt;li>再排查故障点日志，必要的时候参考下代码，毕竟有的时候日志没写清楚错误的上下文&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;/ol></description></item><item><title>在raspbian上手动编译vim8.2</title><link>https://nnnewb.github.io/blog/p/build-vim8.2-manually-on-raspbian/</link><pubDate>Sat, 25 Dec 2021 10:37:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/build-vim8.2-manually-on-raspbian/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>raspbian上自带的vim版本还是低了点，像是&lt;code>coc.nvim&lt;/code>之类的插件弹警告就搞得很烦。我寻思自己编译一个吧。&lt;/p>
+&lt;h2 id="0x01-下载源码">0x01 下载源码&lt;/h2>
+&lt;p>从&lt;a class="link" href="https://www.vim.org/download.php" target="_blank" rel="noopener"
+>vim官网&lt;/a>下载源码（或者可以从GitHub下，出于网络考虑还是直接从ftp下了），下完直接&lt;code>scp&lt;/code>传到树莓派上，&lt;code>tar xf&lt;/code>解压好准备开整。&lt;/p>
+&lt;h2 id="0x02-配置">0x02 配置&lt;/h2>
+&lt;p>惯例先看看文档，&lt;code>README.md&lt;/code>里指出源码安装去看&lt;code>src/INSTALL&lt;/code>，所以跟着去看。&lt;/p>
+&lt;p>在 Unix 一节中提到直接&lt;code>make&lt;/code>+&lt;code>make install&lt;/code>就完事，但我要的不是编译个默认版本的vim，毕竟还有插件会用到&lt;code>vim&lt;/code>的 &lt;code>Pyhon&lt;/code>/&lt;code>Python3&lt;/code> 特性，比如&lt;code>ycm&lt;/code>。&lt;/p>
+&lt;p>继续往下翻会看到编译依赖。&lt;/p>
+&lt;pre>&lt;code>% sudo apt install git
+% sudo apt install make
+% sudo apt install clang
+% sudo apt install libtool-bin
+&lt;/code>&lt;/pre>
+&lt;p>跟着把依赖装好，clang估计是可选项，gcc肯定是能编译vim的。不过以防万一反正全装上。&lt;/p>
+&lt;p>后面终于看到了Python3添加支持的方式。&lt;/p>
+&lt;pre>&lt;code>Add Python 3 support:
+% sudo apt install libpython3-dev
+Uncomment this line in Makefile:
+&amp;quot;CONF_OPT_PYTHON3 = --enable-python3interp&amp;quot;
+% make reconfig
+&lt;/code>&lt;/pre>
+&lt;p>虽然说文档让取消注释，但是我不想改东西。所以记一下&lt;code>--enable-python3interp&lt;/code>，等会儿加入&lt;code>configure&lt;/code>的参数。&lt;/p>
+&lt;p>后面又有个关于gui的，因为不使用gui，所以也记一下。&lt;/p>
+&lt;blockquote>
+&lt;p>Unix: COMPILING WITH/WITHOUT GUI&lt;/p>
+&lt;p>NOTE: This is incomplete, look in Makefile for more info.&lt;/p>
+&lt;p>These configure arguments can be used to select which GUI to use:&lt;/p>
+&lt;pre>&lt;code>--enable-gui=gtk or: gtk2, motif, athena or auto
+--disable-gtk-check
+--disable-motif-check
+--disable-athena-check
+&lt;/code>&lt;/pre>&lt;p>This configure argument can be used to disable the GUI, even when the necessary
+files are found:&lt;/p>
+&lt;pre>&lt;code>--disable-gui
+&lt;/code>&lt;/pre>&lt;/blockquote>
+&lt;p>到时候&lt;code>--disable-gui&lt;/code>可以省一点编译时间，虽然本来也没多少编译时间。树莓派性能不是很好，tf卡读写寿命也有限，省一点是一点咯。&lt;/p>
+&lt;p>还有个&lt;code>--with-features=big&lt;/code>，实际参考&lt;a class="link" href="http://www.drchip.org/astronaut/vim/vimfeat.html" target="_blank" rel="noopener"
+>vim&amp;rsquo;s versions and features&lt;/a>，还是用&lt;code>huge&lt;/code>，因为看起来功能比较全。&lt;/p>
+&lt;p>再加上参数&lt;code>--enable-multibyte&lt;/code>和&lt;code>--enable-cscope&lt;/code>就差不多了。再加上必要的一些依赖库。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">sudo apt install -y libpython-dev libpython3-dev libperl-dev libncurses-dev
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="0x03-编译">0x03 编译&lt;/h2>
+&lt;p>按照&lt;code>autoconf&lt;/code>这套编译系统的常规套路，先运行&lt;code>./configure&lt;/code>，带上之前考虑好的参数。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">./configure &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --prefix&lt;span class="o">=&lt;/span>/usr/local/ &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --with-features&lt;span class="o">=&lt;/span>huge &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --enable-multibyte &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --disable-gui &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --enable-pythoninterp &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --enable-python3interp &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --enable-perlinterp &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --enable-cscope
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>最后&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">make
+sudo make install
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>等编译完成。&lt;/p>
+&lt;h2 id="0x04-设置默认编辑器">0x04 设置默认编辑器&lt;/h2>
+&lt;p>用&lt;code>update-alternatives&lt;/code>配置默认编辑器，或者在&lt;code>.zshrc&lt;/code>里加上&lt;code>alias vim=/usr/local/bin/vim&lt;/code>也是可以的。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">sudo update-alternatives --install /usr/bin/editor editor /usr/local/bin/vim &lt;span class="m">1&lt;/span>
+sudo update-alternatives --set editor /usr/local/bin/vim
+sudo update-alternatives --install /usr/bin/vi vi /usr/local/bin/vim &lt;span class="m">1&lt;/span>
+sudo update-alternatives --set vi /usr/local/bin/vim
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>vim的编译这么简单应该把功劳算到良好的架构上，功能开关这种东西是要架构清晰地给组件之间划出边界的。&lt;/p>
+&lt;p>很多杂鱼公司根本不考虑系统维护，所谓的 &lt;strong>创造价值&lt;/strong> 就是以最快的速度 &lt;strong>应付需求&lt;/strong> ，想起几年前的自己还真的是天真，以为软件从业起码是有点基本的素养的，起码工程能力是有的。现在我的想法变了，软件从业不是有手就行？产品最想要的就是直接把别家的软件 &lt;em>copy&amp;amp;paste&lt;/em> 成自己的，我寻思做软件键盘上磨损最快的就是 &lt;code>ctrl&lt;/code> &lt;code>c&lt;/code> &lt;code>v&lt;/code>这三个键了。&lt;/p>
+&lt;p>产品嘛。什么工程性？什么可维护？那跟我有什么关系，反正改需求的dead line是码农的，修bug是码农修，我产品设计要与时俱进，要紧随市场，要服务客户，你就是个写代码的，这也不做那也不做雇你来干什么？&lt;/p>
+&lt;p>平常心平常心，扯远了。&lt;/p>
+&lt;p>总之，vim，好软件。顺便记得关注下乌干达儿童生存状况（不扯政治地说，vim自称慈善软件(charityware)还是有点东西的，再说下去鲁迅先生就要出来赶苍蝇了）。&lt;/p></description></item><item><title>简单的ECK部署</title><link>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</link><pubDate>Tue, 30 Nov 2021 11:13:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>因为工作需要，得在自己搭建的集群里部署一个 Elasticsearch 。又因为是云端的集群，在 k8s 外用 docker 单独起一个 ES 明显更难维护（但部署更简单），于是选择用 ECK 。&lt;/p>
+&lt;p>ECK 就是 Elastic Cloud on Kubernetes 的缩写，可以理解成部署在 Kubernetes 上的 Elasticsearch 。当然不止 ES 。&lt;/p>
+&lt;p>部署 ES 的过程遇到几个问题记录下怎么解决的。&lt;/p>
+&lt;ol>
+&lt;li>ES 使用自签名证书，导致 HTTP 不能连接。&lt;/li>
+&lt;li>ECK 需要安装 IK 分词插件。&lt;/li>
+&lt;li>ECK 默认密码每次部署都重新生成，而且默认用户权限过大。&lt;/li>
+&lt;li>ECK 默认没配 PVC ，数据没有持久化。&lt;/li>
+&lt;/ol>
+&lt;p>接下来逐个解决。&lt;/p>
+&lt;h2 id="0x01-自签名证书">0x01 自签名证书&lt;/h2>
+&lt;p>自签名证书解决方法有几个&lt;/p>
+&lt;ol>
+&lt;li>改客户端，让客户端用自签名证书连接。很麻烦。&lt;/li>
+&lt;li>生成一个固定的证书，让ES和客户端都用这个证书，客户端和ES都要改。很麻烦。&lt;/li>
+&lt;li>禁用 ES 的自签名证书。&lt;/li>
+&lt;/ol>
+&lt;p>考虑到是私有的测试环境，不搞这些烦人的东西，直接禁用。&lt;/p>
+&lt;p>修改 YAML 如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">apiVersion&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">elasticsearch.k8s.elastic.co/v1&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">kind&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">Elasticsearch&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">metadata&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">elasticsearch&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">http&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">tls&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">selfSignedCertificate&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">disabled&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="kc">true&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意 &lt;code>spec.http.tls.selfSignedCertificate.disabled&lt;/code> 这个字段。&lt;/p>
+&lt;p>参考文档：&lt;a class="link" href="https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-tls-certificates.html" target="_blank" rel="noopener"
+>Orchestrating Elastic Stack applications - Access Elastic Stack services - TLS certificates&lt;/a>&lt;/p>
+&lt;h2 id="0x02-安装-ik-分词组件">0x02 安装 IK 分词组件&lt;/h2>
+&lt;p>官方文档提供的安装插件思路是利用 initContainer 。参考文档：&lt;a class="link" href="https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-init-containers-plugin-downloads.html" target="_blank" rel="noopener"
+>init containers for plugin downloads&lt;/a> 。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">nodeSets&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">default&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">count&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">3&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">podTemplate&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">initContainers&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">install-plugins&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">command&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">sh&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- -&lt;span class="l">c&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="p">|&lt;/span>&lt;span class="sd">
+&lt;/span>&lt;span class="sd"> &lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">bin/elasticsearch-plugin install --batch repository-gcs&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>initContainer 容器默认会继承自下面的内容：&lt;/p>
+&lt;ul>
+&lt;li>没有另外指定的情况下，继承主容器的镜像(我的例子中，就是 &lt;code>Elasticsearch:7.9.1&lt;/code>)&lt;/li>
+&lt;li>主容器的 volume 挂载，如果 initContainer 有同名同路径的 volume 则优先用 initContainer 的。&lt;/li>
+&lt;li>POD 名称和 IP 。&lt;/li>
+&lt;/ul>
+&lt;h2 id="0x03-添加自定义用户">0x03 添加自定义用户&lt;/h2>
+&lt;p>有好几种方式：&lt;/p>
+&lt;ol>
+&lt;li>官方文档中的方法：&lt;a class="link" href="https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-users-and-roles.html" target="_blank" rel="noopener"
+>k8s users and roles&lt;/a>，比较稳定，但还是挺麻烦的。&lt;/li>
+&lt;li>修改 &lt;code>[es-cluster-name]-es-elastic-user&lt;/code> 这个 &lt;code>secret&lt;/code>，好处是简单，但要求必须先创建 secret 再创建 ES ，单个 YAML 去 &lt;code>create -f&lt;/code> 的情况下不友好。&lt;/li>
+&lt;li>基于第2节中利用 initContainer 的做法和官方文档里提到的 &lt;code>elasticsearch-users&lt;/code> 命令行工具，直接在 initContainer 里创建指定用户名密码的用户。不确定这个做法会不会在多节点 ECK 里出问题，毕竟这等于是每个节点都创建了一次用户。不过我只需要单节点，所以也还过得去。&lt;/li>
+&lt;/ol>
+&lt;p>最终决定用第 3 种方法，因为做一个单节点集群简单不费事，多节点的话，目前开的服务器配置也吃不消。（其实是搞完才仔细读文档，第 1 种方法其实也不算太麻烦&amp;hellip;）&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">nodeSets&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">default&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">count&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">3&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">podTemplate&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">initContainers&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">donviewclass-initialize&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">command&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">sh&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- -&lt;span class="l">c&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="p">|&lt;/span>&lt;span class="sd">
+&lt;/span>&lt;span class="sd"> ./bin/elasticsearch-plugin install -batch https://ghproxy.com/https://github.com/medcl/elasticsearch-analysis-ik/releases/download/v7.9.1/elasticsearch-analysis-ik-7.9.1.zip
+&lt;/span>&lt;span class="sd"> ./bin/elasticsearch-users useradd tsdonviewclass -p tsdonviewclass -r superuser&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>./bin/elasticsearch-users useradd tsdonviewclass -p tsdonviewclass -r superuser&lt;/code> 主要就是增加这一句。同样是因为懒，权限直接给了 superuser 。&lt;/p>
+&lt;p>参考文档：&lt;a class="link" href="https://www.elastic.co/guide/en/elasticsearch/reference/current/users-command.html" target="_blank" rel="noopener"
+>elasticsearch-users&lt;/a> 。&lt;/p>
+&lt;h2 id="0x04-配置pvc">0x04 配置PVC&lt;/h2>
+&lt;p>依然是参考官方文档来：&lt;a class="link" href="https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-volume-claim-templates.html" target="_blank" rel="noopener"
+>k8s-volume-claim-templates&lt;/a>。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">nodeSets&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">default&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">count&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">1&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">config&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">node.store.allow_mmap&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="kc">false&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">volumeClaimTemplates&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">metadata&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">elasticsearch-data&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="c"># Do not change this name unless you set up a volume mount for the data path.&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">accessModes&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">ReadWriteOnce&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">resources&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">requests&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">storage&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">5Gi&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">storageClassName&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">local-path&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意 &lt;code>volumeClaimTemplates&lt;/code> 下 &lt;code>metadata.name&lt;/code> 不要变，除非你自己在 &lt;code>podTemplate&lt;/code> 里覆写挂载字段。&lt;/p>
+&lt;p>其他的 &lt;code>spec&lt;/code> 下内容和通常的 PVC 一样，可以参考 &lt;a class="link" href="https://kubernetes.io/zh/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims" target="_blank" rel="noopener"
+>Kubernetes - PersistentVolumeClaims&lt;/a> 。&lt;/p>
+&lt;p>值得注意的是 ECK 默认在集群节点数量 scaled down 时删除 PVC ，对应的 PV 可能保留，具体看&lt;a class="link" href="https://kubernetes.io/docs/concepts/storage/storage-classes/#reclaim-policy" target="_blank" rel="noopener"
+>存储类的回收策略&lt;/a>。ECK 的 CRD 里也给了相关的配置项。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">apiVersion&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">elasticsearch.k8s.elastic.co/v1&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">kind&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">Elasticsearch&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">metadata&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">es&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">version&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">7.15.2&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">volumeClaimDeletePolicy&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">DeleteOnScaledownOnly&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">nodeSets&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">default&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">count&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">3&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意 &lt;code>volumeClaimDeletePolicy: DeleteOnScaledownOnly&lt;/code> 。可选的策略包括：&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>DeleteOnScaledownAndClusterDeletion&lt;/code>&lt;/li>
+&lt;li>&lt;code>DeleteOnScaledownOnly&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>默认策略是 &lt;code>DeleteOnScaledownAndClusterDeletion&lt;/code> ，集群删除和 scaled down 时删除 PVC。&lt;/p>
+&lt;p>如果是一次性的部署，可以直接用 &lt;code>emptyDir&lt;/code> 作为存储类，不用管数据丢不丢。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>这几步配置下来，一个开发用的 ES 集群就算是配完了，资源给够就能开始玩了。&lt;/p>
+&lt;p>讲道理我不太会运维 ES 啊，ES 这东西实在有点重量级，现阶段的能力也就只能看文档这里那里配一下，在上面开发什么的。真要遇到大问题还得抓瞎。&lt;/p>
+&lt;p>就先这样吧。&lt;/p></description></item><item><title>运维瞎记 2021年11月11日</title><link>https://nnnewb.github.io/blog/p/blind-op-2021-11-11/</link><pubDate>Thu, 11 Nov 2021 10:19:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/blind-op-2021-11-11/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/blind-op-2021-11-11/cover.png" alt="Featured image of post 运维瞎记 2021年11月11日" />&lt;h2 id="记虚拟机网络未连接">记虚拟机网络未连接&lt;/h2>
+&lt;h3 id="起因">起因&lt;/h3>
+&lt;p>因为Ubuntu server安装时更新的话需要从网络下载，慢的一批，所以安装的时候虚拟机的网络断开了，安装好启动之后才重新链接。&lt;/p>
+&lt;p>但是&amp;hellip;&lt;/p>
+&lt;p>连接后进入系统却发现并没有网络（VirtualBox），检查 &lt;code>networkctl&lt;/code> 发现 &lt;code>enp0s3&lt;/code> 是 &lt;code>off&lt;/code> 状态。&lt;/p>
+&lt;h3 id="原因">原因&lt;/h3>
+&lt;p>别问，不知道。&lt;/p>
+&lt;h3 id="处理">处理&lt;/h3>
+&lt;p>顺藤摸瓜不求甚解了。&lt;/p>
+&lt;p>看到 &lt;code>enp0s3&lt;/code> 是 &lt;code>off&lt;/code> 那就先查查怎么解决。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">sudo ip link &lt;span class="nb">set&lt;/span> enp0s3 up
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>再检查连接状态。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">networkctl status
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>发现连接进入 &lt;code>downgrade&lt;/code> 状态，搜索得知是未分配 IP 地址。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">sudo dhclient enp0s3
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>报了一个奇怪的CMP什么的错误，不管了。再检查下网络。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">networkctl
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>发现 &lt;code>enp0s3&lt;/code> 进入 &lt;code>routable&lt;/code> 状态，大功告成。&lt;/p>
+&lt;h3 id="总结">总结&lt;/h3>
+&lt;p>我总结个蛋。&lt;/p></description></item><item><title>升级公司的 GitLab</title><link>https://nnnewb.github.io/blog/p/%E5%8D%87%E7%BA%A7%E5%85%AC%E5%8F%B8%E7%9A%84-gitlab/</link><pubDate>Thu, 15 Jul 2021 16:02:41 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%8D%87%E7%BA%A7%E5%85%AC%E5%8F%B8%E7%9A%84-gitlab/</guid><description>&lt;p>公司目前跑的 gitlab 是很久以前部署的，当前版本 &lt;em>8.4.2&lt;/em> 。升级目标是 &lt;em>13.12.Z&lt;/em> 。部署方式是 docker 。&lt;/p>
+&lt;!-- more -->
+&lt;p>宿主机配置不高，系统 &lt;em>Ubuntu 15.04&lt;/em> 。眼下这个时间，这个Ubuntu版本，基本宣告没法用了。直接在线升级容易把引导搞挂，到时候还得亲自去实体机上折腾引导，麻烦。暂时不管宿主机。&lt;/p>
+&lt;h2 id="情况概述">情况概述&lt;/h2>
+&lt;p>因为 GitLab 版本实在太低了，以至于连一个能集成的 CI/CD 工具都找不到。即使 jenkins 都只能很勉强地动起来，偏偏 jenkins 还不能满足需要（也可能是我太菜，反正公司没人玩得转 jenkins）。&lt;/p>
+&lt;p>但开发需要 CI/CD 来解决持续构建和部署的问题，不得不考虑升级了。&lt;/p>
+&lt;h2 id="1-备份">1. 备份&lt;/h2>
+&lt;p>什么都别说了，开干前最重要的事情就是备份，免得把自己玩死。&lt;/p>
+&lt;p>最常用的备份手段自然是 &lt;code>tar&lt;/code> 。不过 gitlab 数据目录实在太大了，要是直接运行 &lt;code>tar -czpf gitlab.tar.gz ./gitlab&lt;/code> 不知道跑多久，也不知道有没有卡死。&lt;/p>
+&lt;p>于是上技术手段：用 &lt;code>pv&lt;/code> 显示个进度条。&lt;/p>
+&lt;p>pv 项目的首页在 &lt;a class="link" href="http://www.ivarch.com/programs/pv.shtml" target="_blank" rel="noopener"
+>ivarch.com&lt;/a>。因为服务器还在跑&lt;em>ubuntu 15.10&lt;/em>，现在连个能用的源都没啦。只好下载了源码，在 wsl 里编译好推上去。&lt;/p>
+&lt;p>最终命令如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">sudo tar cf - ./gitlab -P &lt;span class="p">|&lt;/span> pv -s &lt;span class="k">$(&lt;/span>sudo du -sb ./gitlab &lt;span class="p">|&lt;/span> awk &lt;span class="s1">&amp;#39;{print $1}&amp;#39;&lt;/span>&lt;span class="k">)&lt;/span> &lt;span class="p">|&lt;/span> gzip &amp;gt; gitlab.tar.gz
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>为啥 sudo 呢，postgres 数据库和 redis 数据都没有读权限，没辙。&lt;/p>
+&lt;h2 id="2-升级总体思路">2. 升级总体思路&lt;/h2>
+&lt;p>gitlab 的手册还是比较全面的。在&lt;a class="link" href="https://docs.gitlab.com/ee/update/index.html#upgrading-to-a-new-major-version" target="_blank" rel="noopener"
+>upgrading to a new major version&lt;/a> 这篇文档提到的说法，跨大版本升级主要分三步：&lt;/p>
+&lt;ol>
+&lt;li>升级至当前大版本(&lt;em>major version&lt;/em>)的最新小版本(&lt;em>latest minor version&lt;/em>)&lt;/li>
+&lt;li>升级至目标大版本(&lt;em>target major version&lt;/em>)的首个小版本(&lt;em>first minor version&lt;/em>)&lt;/li>
+&lt;li>继续升级至更新的版本&lt;/li>
+&lt;/ol>
+&lt;p>根据 &lt;a class="link" href="https://docs.gitlab.com/ee/update/index.html#upgrades-from-versions-earlier-than-812" target="_blank" rel="noopener"
+>gitlab upgrading guide 的说法&lt;/a>，版本低于 &lt;em>8.11.Z&lt;/em> 时，先更新到 &lt;em>8.12.0&lt;/em> 是比较稳妥的方案。&lt;/p>
+&lt;p>so 开干。&lt;/p>
+&lt;h2 id="3-升级至-8120">3. 升级至 8.12.0&lt;/h2>
+&lt;p>由于部署方式是 docker（准确的说是 docker-compose），所以按照&lt;a class="link" href="https://docs.gitlab.com/ee/install/docker.html#update-gitlab-using-docker-engine" target="_blank" rel="noopener"
+>Update GitLab Using Docker Engine&lt;/a> 的说法，我们先停止容器，然后直接修改镜像标签。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">docker-compose stop
+&lt;/code>&lt;/pre>&lt;/div>&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">gitlab&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">restart&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">always&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">image&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">sameersbn/gitlab:8.12.0&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="c"># &amp;lt;= sameersbn/gitlab:8.4.2&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>再启动&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">docker-compose up -d
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="故障gitlab_secrets_otp_key_base-must-set">故障：GITLAB_SECRETS_OTP_KEY_BASE must set&lt;/h3>
+&lt;p>使用的镜像 &lt;code>sameersbn/docker-gitlab&lt;/code> 需要这几个环境变量，&lt;a class="link" href="https://github.com/sameersbn/docker-gitlab#quick-start" target="_blank" rel="noopener"
+>参考文档&lt;/a>完成设置。&lt;/p>
+&lt;h3 id="故障you-must-enable-the-pg_trgm-extension">故障：You must enable the pg_trgm extension&lt;/h3>
+&lt;p>这个故障就比较奇怪了，但还是可以处理。&lt;/p>
+&lt;p>先设置一下 postgres 账号密码&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">docker &lt;span class="nb">exec&lt;/span> -it gitlab_postgresql_1 psql -U postgres
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="err">\&lt;/span>&lt;span class="n">password&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">postgres&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>输入新密码，按 ctrl+d 退出。&lt;/p>
+&lt;p>再用随便啥连接上去，运行 &lt;code>create extension pg_trgm;&lt;/code> 就完事了。&lt;/p>
+&lt;p>最后就是重启下容器，gitlab 自动迁移完成后即可访问。&lt;/p>
+&lt;h2 id="4-升级至-v8174">4. 升级至 v8.17.4&lt;/h2>
+&lt;p>原本应该升级到 v8.17.7，但 &lt;code>sameersbn/docker-gitlab&lt;/code> 没提供这个版本的镜像，只能先升级到 v8.17.4 ，求老天保佑别折腾出问题。&lt;/p>
+&lt;p>老规矩改了 docker-compose ，然后 up 。&lt;/p>
+&lt;p>直接成功，没有错误。&lt;/p>
+&lt;h2 id="5-升级至-v955">5. 升级至 v9.5.5&lt;/h2>
+&lt;p>老规矩，还是缺少镜像，原本应该升级到 v9.5.10。&lt;/p>
+&lt;p>改了 docker-compose 再 up。&lt;/p>
+&lt;p>成功。&lt;/p>
+&lt;h2 id="6-升级至-v1084">6. 升级至 v10.8.4&lt;/h2>
+&lt;p>原本应该升级 v10.8.7 。懒得说了。改了 compose 再 up 。&lt;/p>
+&lt;h3 id="故障this-probably-isnt-the-expected-value-for-this-secret">故障：This probably isn&amp;rsquo;t the expected value for this secret&lt;/h3>
+&lt;p>错误内容&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-text" data-lang="text">This probably isn&amp;#39;t the expected value for this secret. To keep using a literal Erb string in config/secrets.yml, replace &amp;amp;lt;%with&amp;amp;lt;%%.
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>不知道为什么，重启了一次容器后就恢复了。&lt;/p>
+&lt;p>可以参考下&lt;a class="link" href="https://github.com/sameersbn/docker-gitlab/issues/1625" target="_blank" rel="noopener"
+>这个&lt;/a>。&lt;/p>
+&lt;h2 id="7-升级至-v11113">7. 升级至 v11.11.3&lt;/h2>
+&lt;p>根据 v12 的升级指引，&lt;/p>
+&lt;blockquote>
+&lt;p>In 12.0.0 we made various database related changes. These changes require that users first upgrade to the latest 11.11 patch release.&lt;/p>
+&lt;/blockquote>
+&lt;p>必须先升级到 v11.11.Z 版本，再升级 v12.0.Z 才能完成数据库迁移。&lt;/p>
+&lt;p>于是先升级到 v11.11.3 (也是因为没有 v11.11.8 的镜像)。&lt;/p>
+&lt;p>成功。&lt;/p>
+&lt;h2 id="8-升级至-v1204">8. 升级至 v12.0.4&lt;/h2>
+&lt;p>根据 12.0 升级指引，先升级到 12.0.Z 版本来完成 11-&amp;gt;12 的迁移，再继续升级。&lt;/p>
+&lt;p>成功。&lt;/p>
+&lt;h2 id="9-升级至-v1216">9. 升级至 v12.1.6&lt;/h2>
+&lt;p>根据 12.1 升级指引，在升级到 12.10.Z 之前，必须先升级到 12.1.Z 。&lt;/p>
+&lt;blockquote>
+&lt;p>If you are planning to upgrade from 12.0.Z to 12.10.Z, it is necessary to perform an intermediary upgrade to 12.1.Z before upgrading to 12.10.Z to avoid issues like #215141.&lt;/p>
+&lt;/blockquote>
+&lt;p>成功。&lt;/p>
+&lt;h2 id="10-升级至-v12106-1">10. 升级至 v12.10.6-1&lt;/h2>
+&lt;p>缺少最新的 12.10.Z 镜像，先升级到能升级到的 12.10.Z 最高版本。&lt;/p>
+&lt;p>成功。&lt;/p>
+&lt;h2 id="11-升级至-v1306">11. 升级至 v13.0.6&lt;/h2>
+&lt;p>这个版本对 postgres 数据库版本有要求，故升级 postgresql 到 9.6.4 版本。镜像自动完成了数据迁移。&lt;/p>
+&lt;p>之后启动 gitlab 完成升级。&lt;/p>
+&lt;p>成功。&lt;/p>
+&lt;h2 id="12-升级至-v13124">12. 升级至 v13.12.4&lt;/h2>
+&lt;p>这个版本对 postgres 数据库版本又有要求，最低在 11 以上，故升级 postgresql 到 11-20200524 (sameersbn/postgresql)。&lt;/p>
+&lt;p>同时，需要安装插件 &lt;code>btree_gist&lt;/code>，故连接 postgresql 数据库创建。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">create&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">extension&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">if&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">not&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">exists&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">btree_gist&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>之后启动 gitlab 完成升级。&lt;/p>
+&lt;h2 id="13-总结">13. 总结&lt;/h2>
+&lt;p>由于 gitlab 设计良好，升级基本没有太大难度。按照文档的升级路线逐个版本升级即可。&lt;/p>
+&lt;p>也是我运气好，在升级 10.8.Z 版本的时候遇到的问题重启后自己消失了，不然光是这个问题可能就要折腾很久。&lt;/p>
+&lt;p>最终 gitlab 版本停留在 13.12.Z ，14.0 虽然已经发布了，但出于稳定考虑还是先不升级。&lt;/p></description></item></channel></rss>

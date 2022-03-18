@@ -1,11 +1,125 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>redis on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/redis/</link><description>Recent content in redis on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 17 Dec 2018 14:57:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/redis/index.xml" rel="self" type="application/rss+xml"/><item><title>python 实现 redis 分布式锁</title><link>https://nnnewb.github.io/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/</link><pubDate>Mon, 17 Dec 2018 14:57:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/</guid><description>Intro 分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。
-在单机并发的情况下，我们可以用 mutex，可以用 os 的文件锁，全局锁，多台服务器的并发就需要另一个持有并保护锁的角色了。
-概述如何使用 redis 实现一个分布式锁。
-为何是 Lua redis 保证了 lua 解释器执行脚本的事务性，即执行结果要么不可见，要么已完成。
-参考这篇文档。
-简单锁 简单锁指的是简单互斥锁，一旦锁定，则其他锁定请求都必须等待。
-加锁 直觉的想法是通过 redis 的键来保持锁，故准备一个用于锁定互斥的名字（比如说 mutex-1）然后指定为键。
-直接使用 set 是显然不正确的，如果临界区内程序崩溃或意外断网将导致死锁，所以 setnx 和 expire 是必选项。
-加锁需要判断锁的键为空，才能加锁，这两步必须保证原子性，要么都执行，要么一个都不执行。幸好 redis 提供了这方面保证，只要使用 lua 脚本的话。
--- 加锁 if redis.call(&amp;#34;get&amp;#34;, KEYS[1]) == nil then if redis.call(&amp;#34;setnx&amp;#34;, KEYS[1], ARGV[1]) == 1 then redis.call(&amp;#34;expire&amp;#34;, KEYS[1], ARGV[2]) return 1 else return end end 上面的 lua 代码用 python 再封装一层，就是这样
-def lock(key, expire): redis.eval( &amp;#39;&amp;#39;&amp;#39; -- 加锁 if redis.</description></item></channel></rss>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>redis on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/redis/</link><description>Recent content in redis on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 17 Dec 2018 14:57:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/redis/index.xml" rel="self" type="application/rss+xml"/><item><title>python 实现 redis 分布式锁</title><link>https://nnnewb.github.io/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/</link><pubDate>Mon, 17 Dec 2018 14:57:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/</guid><description>&lt;h2 id="intro">Intro&lt;/h2>
+&lt;p>分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。&lt;/p>
+&lt;p>在单机并发的情况下，我们可以用 mutex，可以用 os 的文件锁，全局锁，多台服务器的并发就需要另一个持有并保护锁的角色了。&lt;/p>
+&lt;p>概述如何使用 redis 实现一个分布式锁。&lt;/p>
+&lt;h2 id="为何是-lua">为何是 Lua&lt;/h2>
+&lt;p>redis 保证了 lua 解释器执行脚本的事务性，即执行结果要么不可见，要么已完成。&lt;/p>
+&lt;p>参考&lt;a class="link" href="http://redisdoc.com/script/eval.html" target="_blank" rel="noopener"
+>这篇文档&lt;/a>。&lt;/p>
+&lt;h2 id="简单锁">简单锁&lt;/h2>
+&lt;p>简单锁指的是简单互斥锁，一旦锁定，则其他锁定请求都必须等待。&lt;/p>
+&lt;h3 id="加锁">加锁&lt;/h3>
+&lt;p>直觉的想法是通过 redis 的键来保持锁，故准备一个用于锁定互斥的名字（比如说 mutex-1）然后指定为键。&lt;/p>
+&lt;p>直接使用 set 是显然不正确的，如果临界区内程序崩溃或意外断网将导致死锁，所以 setnx 和 expire 是必选项。&lt;/p>
+&lt;p>加锁需要判断锁的键为空，才能加锁，这两步必须保证原子性，要么都执行，要么一个都不执行。幸好 redis 提供了这方面保证，只要使用 lua 脚本的话。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-lua" data-lang="lua">&lt;span class="c1">-- 加锁&lt;/span>
+&lt;span class="kr">if&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;get&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">])&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="kr">then&lt;/span>
+&lt;span class="kr">if&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;setnx&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">ARGV&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">])&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">1&lt;/span> &lt;span class="kr">then&lt;/span>
+&lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;expire&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">ARGV&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;span class="kr">return&lt;/span> &lt;span class="mi">1&lt;/span>
+&lt;span class="kr">else&lt;/span>
+&lt;span class="kr">return&lt;/span>
+&lt;span class="kr">end&lt;/span>
+&lt;span class="kr">end&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>上面的 lua 代码用 python 再封装一层，就是这样&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">def&lt;/span> &lt;span class="nf">lock&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">key&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">expire&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">redis&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">eval&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;span class="s1">&amp;#39;&amp;#39;&amp;#39;
+&lt;/span>&lt;span class="s1">-- 加锁
+&lt;/span>&lt;span class="s1">if redis.call(&amp;#34;get&amp;#34;, KEYS[1]) == nil then
+&lt;/span>&lt;span class="s1"> if redis.call(&amp;#34;setnx&amp;#34;, KEYS[1], ARGV[1]) ~= nil then
+&lt;/span>&lt;span class="s1"> redis.call(&amp;#34;expire&amp;#34;, KEYS[1], ARGV[2])
+&lt;/span>&lt;span class="s1"> return 1
+&lt;/span>&lt;span class="s1"> else
+&lt;/span>&lt;span class="s1"> return
+&lt;/span>&lt;span class="s1"> end
+&lt;/span>&lt;span class="s1">end
+&lt;/span>&lt;span class="s1"> &amp;#39;&amp;#39;&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">key&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s2">&amp;#34;lock&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">expire&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="解锁">解锁&lt;/h3>
+&lt;p>解锁代码同样是通过 lua 实现。&lt;/p>
+&lt;p>下面是&lt;strong>错误实现例子&lt;/strong>。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-lua" data-lang="lua">&lt;span class="kr">return&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;del&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>错误之处在于会解除非自己加的锁。如果临界区内的工作时间超过预期时间，那么就会造成误解锁的问题。&lt;/p>
+&lt;p>下面是&lt;strong>正确例子&lt;/strong>。&lt;/p>
+&lt;p>为了标记锁持有者，需要修改加锁代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">def&lt;/span> &lt;span class="nf">lock&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">key&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">owner&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">expire&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">redis&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">eval&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;span class="s1">&amp;#39;&amp;#39;&amp;#39;
+&lt;/span>&lt;span class="s1">-- 加锁
+&lt;/span>&lt;span class="s1">if redis.call(&amp;#34;get&amp;#34;, KEYS[1]) == nil then
+&lt;/span>&lt;span class="s1"> if redis.call(&amp;#34;setnx&amp;#34;, KEYS[1], ARGV[1]) ~= nil then
+&lt;/span>&lt;span class="s1"> redis.call(&amp;#34;expire&amp;#34;, KEYS[1], ARGV[2])
+&lt;/span>&lt;span class="s1"> return 1
+&lt;/span>&lt;span class="s1"> else
+&lt;/span>&lt;span class="s1"> return
+&lt;/span>&lt;span class="s1"> end
+&lt;/span>&lt;span class="s1">end
+&lt;/span>&lt;span class="s1"> &amp;#39;&amp;#39;&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">key&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">owner&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">expire&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>解锁的 lua 代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-lua" data-lang="lua">&lt;span class="c1">-- 解锁&lt;/span>
+&lt;span class="kr">if&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;get&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">])&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">ARGV&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="kr">then&lt;/span>
+&lt;span class="kr">return&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;del&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;span class="kr">else&lt;/span>
+&lt;span class="kr">return&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;span class="kr">end&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>解锁的 python 代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">def&lt;/span> &lt;span class="nf">unlock&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">key&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">lock&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">redis&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">eval&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;span class="s1">&amp;#39;&amp;#39;&amp;#39;
+&lt;/span>&lt;span class="s1">-- 解锁
+&lt;/span>&lt;span class="s1">if redis.call(&amp;#34;get&amp;#34;, KEYS[1]) == ARGV[1] then
+&lt;/span>&lt;span class="s1"> return redis.call(&amp;#34;del&amp;#34;, KEYS[1])
+&lt;/span>&lt;span class="s1">else
+&lt;/span>&lt;span class="s1"> return 0
+&lt;/span>&lt;span class="s1">end
+&lt;/span>&lt;span class="s1"> &amp;#39;&amp;#39;&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">key&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">lock&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="超时和一致性">超时和一致性&lt;/h3>
+&lt;p>关于超时有这样一个问题在。如果超时时间过长，那么超时的设置意义就不大，服务宕机 1 小时和宕机 24 小时都是事故。如果超时时间过短，那么超时就可能造成一致性上的损害。&lt;/p>
+&lt;p>举例来说，付款处理花了 2.1s，但是锁超时 2.0s。这 0.1s 的数据竞争时间里，更新&lt;code>update balance where id = xxx&lt;/code>和下一个更新 blance 的请求就指不定谁先执行了。&lt;/p>
+&lt;pre>&lt;code class="language-mermaid" data-lang="mermaid">sequenceDiagram
+participant 付款
+participant 汇款
+participant 锁
+付款-&amp;gt;&amp;gt;锁:请求锁
+锁--&amp;gt;&amp;gt;付款:已锁定
+汇款-&amp;gt;&amp;gt;锁:请求锁
+note over 付款,锁: 锁在2秒后超时，付款程序在2.1秒后完成
+note over 锁: 2.0s到了，超时解锁
+锁--&amp;gt;&amp;gt;汇款:已锁定
+note over 付款,汇款:数据竞争
+note over 付款:完成。
+&lt;/code>&lt;/pre>&lt;p>所以，设置了超时，那么必须保证一致性，整个处理要么全部完成，要么超时全部未完成，对编程能力提出了挑战。&lt;/p>
+&lt;p>后续再想想能不能写篇博文。&lt;/p>
+&lt;h2 id="读写锁">读写锁&lt;/h2>
+&lt;p>读写锁的实现和简单锁别无二致，特征是多个读，一个写。在大量读取，少量写入的情况下，读写锁可以有效提高效率。&lt;/p>
+&lt;h3 id="加读锁">加读锁&lt;/h3>
+&lt;p>读锁实现和简单锁差别不大，在简单锁基础上稍作修改即可。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-lua" data-lang="lua">&lt;span class="c1">-- 读锁&lt;/span>
+&lt;span class="kr">if&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;get&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">..&lt;/span>&lt;span class="s2">&amp;#34;:write&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kr">then&lt;/span>
+&lt;span class="kr">return&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;span class="kr">else&lt;/span>
+&lt;span class="kr">return&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;hset&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">..&lt;/span>&lt;span class="s2">&amp;#34;:read&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">ARGV&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="kr">end&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="加写锁">加写锁&lt;/h3>
+&lt;p>写锁实现差别也不大，这里使用 hash table 解决标记持有人的问题。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-lua" data-lang="lua">&lt;span class="c1">-- 写锁&lt;/span>
+&lt;span class="kr">if&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;hlen&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">..&lt;/span>&lt;span class="s2">&amp;#34;:read&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kr">then&lt;/span>
+&lt;span class="kr">return&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;span class="kr">else&lt;/span>
+&lt;span class="kr">return&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;setnx&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">..&lt;/span>&lt;span class="s2">&amp;#34;:write&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">ARGV&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;span class="kr">end&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="解读锁">解读锁&lt;/h3>
+&lt;p>读锁的解除只需要删除 hash table 里的自己就行了。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-lua" data-lang="lua">&lt;span class="c1">-- 解读锁&lt;/span>
+&lt;span class="kr">return&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;hdel&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">..&lt;/span>&lt;span class="s2">&amp;#34;:read&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">ARGV&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="解写锁">解写锁&lt;/h3>
+&lt;p>写锁解除如解除简单锁一样。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-lua" data-lang="lua">&lt;span class="c1">-- 解锁&lt;/span>
+&lt;span class="kr">if&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;get&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">..&lt;/span>&lt;span class="s2">&amp;#34;:write&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">ARGV&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="kr">then&lt;/span>
+&lt;span class="kr">return&lt;/span> &lt;span class="n">redis.call&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;del&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">KEYS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">..&lt;/span>&lt;span class="s2">&amp;#34;:write&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="kr">else&lt;/span>
+&lt;span class="kr">return&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;span class="kr">end&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div></description></item></channel></rss>

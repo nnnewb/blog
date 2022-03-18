@@ -1,63 +1,49 @@
-<!doctype html><html lang=zh-cn>
+<!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 还记得很久以前学数据结构只看到二叉树，讲到平衡，但平衡方法当时看纸质书手头也没有实验环境，后来就没继续学下去。现在有闲就重新捡起来学一下。先从AVL树继续看。
 AVL树 AVL 树是以提出者名字命名的，Adelson-Velskii &amp;amp; Landis，俄国人，后来移居以色列。人怎么样不管啦。
 AVL 树是一种平衡二叉树，左右子树高度差不超过1。保持平衡的方法是每次插入数据的时候发现子树不平衡，就把较高的子树提升为根，把根变成新的根的子树，把较高的子树变矮，较矮的子树变高，实现平衡。这个过程被叫做旋转，下面介绍旋转。
-左旋转/右旋转  右旋转 
- 左旋转 
-左旋转和右旋转的逻辑是一样的。如果右子树比左子树高，就把右子树提升成根。如果左子树比右子树高，就把左子树提升成根。提升右子树叫左旋转，提升左子树叫右旋转。
+左旋转/右旋转 左旋转和右旋转的逻辑是一样的。如果右子树比左子树高，就把右子树提升成根。如果左子树比右子树高，就把左子树提升成根。提升右子树叫左旋转，提升左子树叫右旋转。
 把子树提升成根会有点麻烦。比如右子树提升为根，原来的根和左子树怎么办？我们并不想重新平衡树的时候把整个左子树都删掉，那原来的根和左子树就必须插回新的树里。
 我们知道右子树的 key 肯定比根和左子树所有节点大，所以根要插回树的话，一个很直接的想法就是把旧的根接到右子树左下角的叶子节点。
- 旧的根插回新根 
 的确，这样保持了二叉搜索树的特征，但新的树依然不平衡：节点5的左子树高度2，右子树高度0，高度差超过了1。稍微想想就知道，旧的根和左子树直接接到左下角叶子节点的话，会让原本平衡的新树左子树高度增加，进而失去平衡。
 解决方法也很简单，不要把旧的树接到新的树最小值上，而是把新树的左子树，移植成旧树的右子树，再把旧树移植成新树的左子树。这样一来，右子树的左子树和左子树的右子树不管怎么旋转，高度都一样。
- image-20220211135807095 
 为什么这样可以保持平衡呢？首先AVL树的子树也是AVL树，所以子树的子树之间高度差也不超过1。左旋转、右旋转的的作用是让子树高度一侧升高，一侧降低——注意，左旋转只能降低右儿子的右子树高度，右儿子的左子树高度不变。右旋转只能降低左儿子的左子树高度，左儿子的右子树高度不变。
 举例来说，上图中右儿子的右子树（4-6-7-8）较高，旋转后变成了（6-7-8），而原本的（4-6-5）变成了（6-4-5），高度不变。
 这个规律很好理解，因为原来的右子树变成了根，整个右子树剩下的节点高度都降低了。而右子树的左子树变成了现在的左子树的右子树，和根的距离一样，所以高度不变。
 左旋转让右子树的右子树高度-1，左子树的左子树高度+1。左子树的右子树高度等于右子树的左子树，旋转后新树的左右子树的高度相等。
 双旋转 对于往左儿子的左子树插入节点造成的不平衡，右旋转可以实现降低左儿子的左子树高度，再次平衡。往右儿子的右子树插入节点造成的不平衡，左旋转可以降低右儿子的右子树高度，再次平衡。但对于左儿子的右子树或右儿子的左子树插入节点造成的不平衡，一次左、右旋转无法实现再平衡。
 再看一个例子。
- image-20220211141652944 
 旋转前，右儿子的左子树（4-7-6-5）高度是4，旋转后（7-4-6-5）高度不变，依然是4，树仍然不平衡。解决办法也很简单，先把右子树（7）右旋，让右儿子的左子树高度低于右子树，再对整棵树左旋，也就是AVL树的双旋转。
 一步一步看双旋转是怎么解决这个问题的。
 第一步，右儿子的左子树比右儿子右子树高，所以将右儿子右旋，使得右儿子的右子树高于右儿子的左子树。
- image-20220211142847329 
 我们知道的左旋转时右儿子的左子树高度不变，右儿子的右子树高度-1。这一步前，直接对整棵树左旋时，最高的那颗子树（右儿子的左子树）高度没有变化，树依然不平衡，只是变成了右子树更矮，左子树更高而已。
 而这一步之后，最高的子树变成了右子树的右子树。现在对整棵树左旋，右子树的右子树高度下降了，和原本右子树的左子树高度一致，达成平衡。
- image-20220211151253277 
 这个原则简单地说，就是左子树下最高的子树应该是左子树，右子树下最高的子树应该是右子树。如果新增节点后不满足这个条件，就要先对左子树左旋，或者对右子树右旋，来满足这个条件。
-代码实现 from typing import Optional class AVLTreeNode: &amp;#34;&amp;#34;&amp;#34;树节点 &amp;#34;&amp;#34;&amp;#34; def __init__(self, value: int, parent: &amp;#39;AVLTreeNode&amp;#39;) -&amp;gt; None: self.value = value self."><title>AVL树</title>
+代码实现 from typing import Optional class AVLTreeNode: &amp;#34;&amp;#34;&amp;#34;树节点 &amp;#34;&amp;#34;&amp;#34; def __init__(self, value: int, parent: &amp;#39;AVLTreeNode&amp;#39;) -&amp;gt; None: self.value = value self.parent = parent self.left: Optional[&amp;#39;AVLTreeNode&amp;#39;] = None self.right: Optional[&amp;#39;AVLTreeNode&amp;#39;] = None @property def height(self) -&amp;gt; int: &amp;#34;&amp;#34;&amp;#34;子树高度 Returns: int: 子树高度 &amp;#34;&amp;#34;&amp;#34; return max(self."><title>AVL树</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/avl-tree/>
-<link rel=stylesheet href=/blog/scss/style.min.css><meta property="og:title" content="AVL树">
+<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="AVL树">
 <meta property="og:description" content="前言 还记得很久以前学数据结构只看到二叉树，讲到平衡，但平衡方法当时看纸质书手头也没有实验环境，后来就没继续学下去。现在有闲就重新捡起来学一下。先从AVL树继续看。
 AVL树 AVL 树是以提出者名字命名的，Adelson-Velskii &amp;amp; Landis，俄国人，后来移居以色列。人怎么样不管啦。
 AVL 树是一种平衡二叉树，左右子树高度差不超过1。保持平衡的方法是每次插入数据的时候发现子树不平衡，就把较高的子树提升为根，把根变成新的根的子树，把较高的子树变矮，较矮的子树变高，实现平衡。这个过程被叫做旋转，下面介绍旋转。
-左旋转/右旋转  右旋转 
- 左旋转 
-左旋转和右旋转的逻辑是一样的。如果右子树比左子树高，就把右子树提升成根。如果左子树比右子树高，就把左子树提升成根。提升右子树叫左旋转，提升左子树叫右旋转。
+左旋转/右旋转 左旋转和右旋转的逻辑是一样的。如果右子树比左子树高，就把右子树提升成根。如果左子树比右子树高，就把左子树提升成根。提升右子树叫左旋转，提升左子树叫右旋转。
 把子树提升成根会有点麻烦。比如右子树提升为根，原来的根和左子树怎么办？我们并不想重新平衡树的时候把整个左子树都删掉，那原来的根和左子树就必须插回新的树里。
 我们知道右子树的 key 肯定比根和左子树所有节点大，所以根要插回树的话，一个很直接的想法就是把旧的根接到右子树左下角的叶子节点。
- 旧的根插回新根 
 的确，这样保持了二叉搜索树的特征，但新的树依然不平衡：节点5的左子树高度2，右子树高度0，高度差超过了1。稍微想想就知道，旧的根和左子树直接接到左下角叶子节点的话，会让原本平衡的新树左子树高度增加，进而失去平衡。
 解决方法也很简单，不要把旧的树接到新的树最小值上，而是把新树的左子树，移植成旧树的右子树，再把旧树移植成新树的左子树。这样一来，右子树的左子树和左子树的右子树不管怎么旋转，高度都一样。
- image-20220211135807095 
 为什么这样可以保持平衡呢？首先AVL树的子树也是AVL树，所以子树的子树之间高度差也不超过1。左旋转、右旋转的的作用是让子树高度一侧升高，一侧降低——注意，左旋转只能降低右儿子的右子树高度，右儿子的左子树高度不变。右旋转只能降低左儿子的左子树高度，左儿子的右子树高度不变。
 举例来说，上图中右儿子的右子树（4-6-7-8）较高，旋转后变成了（6-7-8），而原本的（4-6-5）变成了（6-4-5），高度不变。
 这个规律很好理解，因为原来的右子树变成了根，整个右子树剩下的节点高度都降低了。而右子树的左子树变成了现在的左子树的右子树，和根的距离一样，所以高度不变。
 左旋转让右子树的右子树高度-1，左子树的左子树高度+1。左子树的右子树高度等于右子树的左子树，旋转后新树的左右子树的高度相等。
 双旋转 对于往左儿子的左子树插入节点造成的不平衡，右旋转可以实现降低左儿子的左子树高度，再次平衡。往右儿子的右子树插入节点造成的不平衡，左旋转可以降低右儿子的右子树高度，再次平衡。但对于左儿子的右子树或右儿子的左子树插入节点造成的不平衡，一次左、右旋转无法实现再平衡。
 再看一个例子。
- image-20220211141652944 
 旋转前，右儿子的左子树（4-7-6-5）高度是4，旋转后（7-4-6-5）高度不变，依然是4，树仍然不平衡。解决办法也很简单，先把右子树（7）右旋，让右儿子的左子树高度低于右子树，再对整棵树左旋，也就是AVL树的双旋转。
 一步一步看双旋转是怎么解决这个问题的。
 第一步，右儿子的左子树比右儿子右子树高，所以将右儿子右旋，使得右儿子的右子树高于右儿子的左子树。
- image-20220211142847329 
 我们知道的左旋转时右儿子的左子树高度不变，右儿子的右子树高度-1。这一步前，直接对整棵树左旋时，最高的那颗子树（右儿子的左子树）高度没有变化，树依然不平衡，只是变成了右子树更矮，左子树更高而已。
 而这一步之后，最高的子树变成了右子树的右子树。现在对整棵树左旋，右子树的右子树高度下降了，和原本右子树的左子树高度一致，达成平衡。
- image-20220211151253277 
 这个原则简单地说，就是左子树下最高的子树应该是左子树，右子树下最高的子树应该是右子树。如果新增节点后不满足这个条件，就要先对左子树左旋，或者对右子树右旋，来满足这个条件。
-代码实现 from typing import Optional class AVLTreeNode: &amp;#34;&amp;#34;&amp;#34;树节点 &amp;#34;&amp;#34;&amp;#34; def __init__(self, value: int, parent: &amp;#39;AVLTreeNode&amp;#39;) -&amp;gt; None: self.value = value self.">
+代码实现 from typing import Optional class AVLTreeNode: &amp;#34;&amp;#34;&amp;#34;树节点 &amp;#34;&amp;#34;&amp;#34; def __init__(self, value: int, parent: &amp;#39;AVLTreeNode&amp;#39;) -&amp;gt; None: self.value = value self.parent = parent self.left: Optional[&amp;#39;AVLTreeNode&amp;#39;] = None self.right: Optional[&amp;#39;AVLTreeNode&amp;#39;] = None @property def height(self) -&amp;gt; int: &amp;#34;&amp;#34;&amp;#34;子树高度 Returns: int: 子树高度 &amp;#34;&amp;#34;&amp;#34; return max(self.">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/avl-tree/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="数据结构"><meta property="article:tag" content="python"><meta property="article:published_time" content="2022-02-11T15:07:00+08:00"><meta property="article:modified_time" content="2022-02-11T15:07:00+08:00">
@@ -65,41 +51,72 @@ AVL 树是一种平衡二叉树，左右子树高度差不超过1。保持平衡
 <meta name=twitter:description content="前言 还记得很久以前学数据结构只看到二叉树，讲到平衡，但平衡方法当时看纸质书手头也没有实验环境，后来就没继续学下去。现在有闲就重新捡起来学一下。先从AVL树继续看。
 AVL树 AVL 树是以提出者名字命名的，Adelson-Velskii &amp;amp; Landis，俄国人，后来移居以色列。人怎么样不管啦。
 AVL 树是一种平衡二叉树，左右子树高度差不超过1。保持平衡的方法是每次插入数据的时候发现子树不平衡，就把较高的子树提升为根，把根变成新的根的子树，把较高的子树变矮，较矮的子树变高，实现平衡。这个过程被叫做旋转，下面介绍旋转。
-左旋转/右旋转  右旋转 
- 左旋转 
-左旋转和右旋转的逻辑是一样的。如果右子树比左子树高，就把右子树提升成根。如果左子树比右子树高，就把左子树提升成根。提升右子树叫左旋转，提升左子树叫右旋转。
+左旋转/右旋转 左旋转和右旋转的逻辑是一样的。如果右子树比左子树高，就把右子树提升成根。如果左子树比右子树高，就把左子树提升成根。提升右子树叫左旋转，提升左子树叫右旋转。
 把子树提升成根会有点麻烦。比如右子树提升为根，原来的根和左子树怎么办？我们并不想重新平衡树的时候把整个左子树都删掉，那原来的根和左子树就必须插回新的树里。
 我们知道右子树的 key 肯定比根和左子树所有节点大，所以根要插回树的话，一个很直接的想法就是把旧的根接到右子树左下角的叶子节点。
- 旧的根插回新根 
 的确，这样保持了二叉搜索树的特征，但新的树依然不平衡：节点5的左子树高度2，右子树高度0，高度差超过了1。稍微想想就知道，旧的根和左子树直接接到左下角叶子节点的话，会让原本平衡的新树左子树高度增加，进而失去平衡。
 解决方法也很简单，不要把旧的树接到新的树最小值上，而是把新树的左子树，移植成旧树的右子树，再把旧树移植成新树的左子树。这样一来，右子树的左子树和左子树的右子树不管怎么旋转，高度都一样。
- image-20220211135807095 
 为什么这样可以保持平衡呢？首先AVL树的子树也是AVL树，所以子树的子树之间高度差也不超过1。左旋转、右旋转的的作用是让子树高度一侧升高，一侧降低——注意，左旋转只能降低右儿子的右子树高度，右儿子的左子树高度不变。右旋转只能降低左儿子的左子树高度，左儿子的右子树高度不变。
 举例来说，上图中右儿子的右子树（4-6-7-8）较高，旋转后变成了（6-7-8），而原本的（4-6-5）变成了（6-4-5），高度不变。
 这个规律很好理解，因为原来的右子树变成了根，整个右子树剩下的节点高度都降低了。而右子树的左子树变成了现在的左子树的右子树，和根的距离一样，所以高度不变。
 左旋转让右子树的右子树高度-1，左子树的左子树高度+1。左子树的右子树高度等于右子树的左子树，旋转后新树的左右子树的高度相等。
 双旋转 对于往左儿子的左子树插入节点造成的不平衡，右旋转可以实现降低左儿子的左子树高度，再次平衡。往右儿子的右子树插入节点造成的不平衡，左旋转可以降低右儿子的右子树高度，再次平衡。但对于左儿子的右子树或右儿子的左子树插入节点造成的不平衡，一次左、右旋转无法实现再平衡。
 再看一个例子。
- image-20220211141652944 
 旋转前，右儿子的左子树（4-7-6-5）高度是4，旋转后（7-4-6-5）高度不变，依然是4，树仍然不平衡。解决办法也很简单，先把右子树（7）右旋，让右儿子的左子树高度低于右子树，再对整棵树左旋，也就是AVL树的双旋转。
 一步一步看双旋转是怎么解决这个问题的。
 第一步，右儿子的左子树比右儿子右子树高，所以将右儿子右旋，使得右儿子的右子树高于右儿子的左子树。
- image-20220211142847329 
 我们知道的左旋转时右儿子的左子树高度不变，右儿子的右子树高度-1。这一步前，直接对整棵树左旋时，最高的那颗子树（右儿子的左子树）高度没有变化，树依然不平衡，只是变成了右子树更矮，左子树更高而已。
 而这一步之后，最高的子树变成了右子树的右子树。现在对整棵树左旋，右子树的右子树高度下降了，和原本右子树的左子树高度一致，达成平衡。
- image-20220211151253277 
 这个原则简单地说，就是左子树下最高的子树应该是左子树，右子树下最高的子树应该是右子树。如果新增节点后不满足这个条件，就要先对左子树左旋，或者对右子树右旋，来满足这个条件。
-代码实现 from typing import Optional class AVLTreeNode: &amp;#34;&amp;#34;&amp;#34;树节点 &amp;#34;&amp;#34;&amp;#34; def __init__(self, value: int, parent: &amp;#39;AVLTreeNode&amp;#39;) -&amp;gt; None: self.value = value self.">
+代码实现 from typing import Optional class AVLTreeNode: &amp;#34;&amp;#34;&amp;#34;树节点 &amp;#34;&amp;#34;&amp;#34; def __init__(self, value: int, parent: &amp;#39;AVLTreeNode&amp;#39;) -&amp;gt; None: self.value = value self.parent = parent self.left: Optional[&amp;#39;AVLTreeNode&amp;#39;] = None self.right: Optional[&amp;#39;AVLTreeNode&amp;#39;] = None @property def height(self) -&amp;gt; int: &amp;#34;&amp;#34;&amp;#34;子树高度 Returns: int: 子树高度 &amp;#34;&amp;#34;&amp;#34; return max(self.">
 </head>
-<body class="article-page has-toc">
+<body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex
-extended">
-<div id=article-toolbar>
-<a href=/blog class=back-home><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="15 6 9 12 15 18"/></svg>
-<span>返回</span>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
 </div>
+</header><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+<li id=dark-mode-toggle><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span>
+</li>
+</div>
+</ol>
+</aside>
 <main class="main full-width">
 <article class=main-article>
 <header class=article-header>
@@ -109,9 +126,11 @@ extended">
 python
 </a>
 </header>
+<div class=article-title-wrapper>
 <h2 class=article-title>
 <a href=/blog/p/avl-tree/>AVL树</a>
 </h2>
+</div>
 <footer class=article-time>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
 <time class=article-time--published>2022年 2月 11日</time>
@@ -131,35 +150,15 @@ python
 <p>AVL 树是以提出者名字命名的，Adelson-Velskii & Landis，俄国人，后来移居以色列。人怎么样不管啦。</p>
 <p>AVL 树是一种平衡二叉树，左右子树高度差不超过1。保持平衡的方法是每次插入数据的时候发现子树不平衡，就把较高的子树提升为根，把根变成新的根的子树，把较高的子树变矮，较矮的子树变高，实现平衡。这个过程被叫做旋转，下面介绍旋转。</p>
 <h2 id=左旋转右旋转>左旋转/右旋转</h2>
-<p><figure class=gallery-image style=flex-grow:357;flex-basis:858px>
-<a href=/blog/p/avl-tree/640.webp data-size=1080x302>
-<img src=/blog/p/avl-tree/640.webp width=1080 height=302 srcset="/blog/p/avl-tree/640_hue4f2eb0b84b4ee9edbff095635b31765_16328_480x0_resize_q75_h2_box_2.webp 480w, /blog/p/avl-tree/640_hue4f2eb0b84b4ee9edbff095635b31765_16328_1024x0_resize_q75_h2_box_2.webp 1024w" loading=lazy alt=右旋转>
-</a>
-<figcaption>右旋转</figcaption>
-</figure></p>
-<p><figure class=gallery-image style=flex-grow:407;flex-basis:978px>
-<a href=/blog/p/avl-tree/640-16445510501782.webp data-size=1080x265>
-<img src=/blog/p/avl-tree/640-16445510501782.webp width=1080 height=265 srcset="/blog/p/avl-tree/640-16445510501782_hu6ffc1b8ea7f9226d8e679d85cbb8998e_14524_480x0_resize_q75_h2_box_2.webp 480w, /blog/p/avl-tree/640-16445510501782_hu6ffc1b8ea7f9226d8e679d85cbb8998e_14524_1024x0_resize_q75_h2_box_2.webp 1024w" loading=lazy alt=左旋转>
-</a>
-<figcaption>左旋转</figcaption>
-</figure></p>
+<p><img src=/blog/p/avl-tree/640.webp width=1080 height=302 srcset="/blog/p/avl-tree/640_hue4f2eb0b84b4ee9edbff095635b31765_16328_480x0_resize_q75_h2_box_2.webp 480w, /blog/p/avl-tree/640_hue4f2eb0b84b4ee9edbff095635b31765_16328_1024x0_resize_q75_h2_box_2.webp 1024w" loading=lazy alt=右旋转 class=gallery-image data-flex-grow=357 data-flex-basis=858px></p>
+<p><img src=/blog/p/avl-tree/640-16445510501782.webp width=1080 height=265 srcset="/blog/p/avl-tree/640-16445510501782_hu6ffc1b8ea7f9226d8e679d85cbb8998e_14524_480x0_resize_q75_h2_box_2.webp 480w, /blog/p/avl-tree/640-16445510501782_hu6ffc1b8ea7f9226d8e679d85cbb8998e_14524_1024x0_resize_q75_h2_box_2.webp 1024w" loading=lazy alt=左旋转 class=gallery-image data-flex-grow=407 data-flex-basis=978px></p>
 <p>左旋转和右旋转的逻辑是一样的。如果右子树比左子树高，就把右子树提升成根。如果左子树比右子树高，就把左子树提升成根。提升右子树叫左旋转，提升左子树叫右旋转。</p>
 <p>把子树提升成根会有点麻烦。比如右子树提升为根，原来的根和左子树怎么办？我们并不想重新平衡树的时候把整个左子树都删掉，那原来的根和左子树就必须插回新的树里。</p>
 <p>我们知道右子树的 key 肯定比根和左子树所有节点大，所以根要插回树的话，一个很直接的想法就是把旧的根接到右子树左下角的叶子节点。</p>
-<p><figure class=gallery-image style=flex-grow:125;flex-basis:301px>
-<a href=/blog/p/avl-tree/image-20220211115435552.png data-size=442x352>
-<img src=/blog/p/avl-tree/image-20220211115435552.png width=442 height=352 srcset="/blog/p/avl-tree/image-20220211115435552_hudaf66137716a342688a9fcb78a9ab8fa_32310_480x0_resize_box_3.png 480w, /blog/p/avl-tree/image-20220211115435552_hudaf66137716a342688a9fcb78a9ab8fa_32310_1024x0_resize_box_3.png 1024w" loading=lazy alt=旧的根插回新根>
-</a>
-<figcaption>旧的根插回新根</figcaption>
-</figure></p>
+<p><img src=/blog/p/avl-tree/image-20220211115435552.png width=442 height=352 srcset="/blog/p/avl-tree/image-20220211115435552_hudaf66137716a342688a9fcb78a9ab8fa_32310_480x0_resize_box_3.png 480w, /blog/p/avl-tree/image-20220211115435552_hudaf66137716a342688a9fcb78a9ab8fa_32310_1024x0_resize_box_3.png 1024w" loading=lazy alt=旧的根插回新根 class=gallery-image data-flex-grow=125 data-flex-basis=301px></p>
 <p>的确，这样保持了二叉搜索树的特征，但新的树依然不平衡：节点5的左子树高度2，右子树高度0，高度差超过了1。稍微想想就知道，旧的根和左子树直接接到左下角叶子节点的话，会让原本平衡的新树左子树高度增加，进而失去平衡。</p>
 <p>解决方法也很简单，不要把旧的树接到新的树最小值上，而是把新树的左子树，移植成旧树的右子树，再把旧树移植成新树的左子树。这样一来，右子树的左子树和左子树的右子树不管怎么旋转，高度都一样。</p>
-<p><figure class=gallery-image style=flex-grow:152;flex-basis:365px>
-<a href=/blog/p/avl-tree/image-20220211135807095.png data-size=559x367>
-<img src=/blog/p/avl-tree/image-20220211135807095.png width=559 height=367 srcset="/blog/p/avl-tree/image-20220211135807095_huce0ca6d6e6da680d37b57191522379d3_34024_480x0_resize_box_3.png 480w, /blog/p/avl-tree/image-20220211135807095_huce0ca6d6e6da680d37b57191522379d3_34024_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220211135807095>
-</a>
-<figcaption>image-20220211135807095</figcaption>
-</figure></p>
+<p><img src=/blog/p/avl-tree/image-20220211135807095.png width=559 height=367 srcset="/blog/p/avl-tree/image-20220211135807095_huce0ca6d6e6da680d37b57191522379d3_34024_480x0_resize_box_3.png 480w, /blog/p/avl-tree/image-20220211135807095_huce0ca6d6e6da680d37b57191522379d3_34024_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220211135807095 class=gallery-image data-flex-grow=152 data-flex-basis=365px></p>
 <p>为什么这样可以保持平衡呢？首先AVL树的子树也是AVL树，所以子树的子树之间高度差也不超过1。左旋转、右旋转的的作用是让子树高度一侧升高，一侧降低——注意，左旋转只能降低右儿子的右子树高度，右儿子的左子树高度不变。右旋转只能降低左儿子的左子树高度，左儿子的右子树高度不变。</p>
 <p>举例来说，上图中右儿子的右子树（4-6-7-8）较高，旋转后变成了（6-7-8），而原本的（4-6-5）变成了（6-4-5），高度不变。</p>
 <p>这个规律很好理解，因为原来的右子树变成了根，整个右子树剩下的节点高度都降低了。而右子树的左子树变成了现在的左子树的右子树，和根的距离一样，所以高度不变。</p>
@@ -167,29 +166,14 @@ python
 <h2 id=双旋转>双旋转</h2>
 <p>对于往左儿子的左子树插入节点造成的不平衡，右旋转可以实现降低左儿子的左子树高度，再次平衡。往右儿子的右子树插入节点造成的不平衡，左旋转可以降低右儿子的右子树高度，再次平衡。但对于左儿子的右子树或右儿子的左子树插入节点造成的不平衡，一次左、右旋转无法实现再平衡。</p>
 <p>再看一个例子。</p>
-<p><figure class=gallery-image style=flex-grow:134;flex-basis:321px>
-<a href=/blog/p/avl-tree/image-20220211141652944.png data-size=535x399>
-<img src=/blog/p/avl-tree/image-20220211141652944.png width=535 height=399 srcset="/blog/p/avl-tree/image-20220211141652944_hue06f3e4447c8c13119165b1bee1e7d22_36072_480x0_resize_box_3.png 480w, /blog/p/avl-tree/image-20220211141652944_hue06f3e4447c8c13119165b1bee1e7d22_36072_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220211141652944>
-</a>
-<figcaption>image-20220211141652944</figcaption>
-</figure></p>
+<p><img src=/blog/p/avl-tree/image-20220211141652944.png width=535 height=399 srcset="/blog/p/avl-tree/image-20220211141652944_hue06f3e4447c8c13119165b1bee1e7d22_36072_480x0_resize_box_3.png 480w, /blog/p/avl-tree/image-20220211141652944_hue06f3e4447c8c13119165b1bee1e7d22_36072_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220211141652944 class=gallery-image data-flex-grow=134 data-flex-basis=321px></p>
 <p>旋转前，右儿子的左子树（4-7-6-5）高度是4，旋转后（7-4-6-5）高度不变，依然是4，树仍然不平衡。解决办法也很简单，先把右子树（7）右旋，让右儿子的左子树高度低于右子树，再对整棵树左旋，也就是AVL树的双旋转。</p>
 <p>一步一步看双旋转是怎么解决这个问题的。</p>
 <p>第一步，右儿子的左子树比右儿子右子树高，所以将右儿子右旋，使得右儿子的右子树高于右儿子的左子树。</p>
-<p><figure class=gallery-image style=flex-grow:141;flex-basis:339px>
-<a href=/blog/p/avl-tree/image-20220211142847329.png data-size=490x346>
-<img src=/blog/p/avl-tree/image-20220211142847329.png width=490 height=346 srcset="/blog/p/avl-tree/image-20220211142847329_hudfe01573f636ba8f14106612b6b86fbd_23701_480x0_resize_box_3.png 480w, /blog/p/avl-tree/image-20220211142847329_hudfe01573f636ba8f14106612b6b86fbd_23701_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220211142847329>
-</a>
-<figcaption>image-20220211142847329</figcaption>
-</figure></p>
+<p><img src=/blog/p/avl-tree/image-20220211142847329.png width=490 height=346 srcset="/blog/p/avl-tree/image-20220211142847329_hudfe01573f636ba8f14106612b6b86fbd_23701_480x0_resize_box_3.png 480w, /blog/p/avl-tree/image-20220211142847329_hudfe01573f636ba8f14106612b6b86fbd_23701_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220211142847329 class=gallery-image data-flex-grow=141 data-flex-basis=339px></p>
 <p>我们知道的左旋转时右儿子的左子树高度不变，右儿子的右子树高度-1。这一步前，直接对整棵树左旋时，最高的那颗子树（右儿子的左子树）高度没有变化，树依然不平衡，只是变成了右子树更矮，左子树更高而已。</p>
 <p>而这一步之后，最高的子树变成了右子树的右子树。现在对整棵树左旋，右子树的右子树高度下降了，和原本右子树的左子树高度一致，达成平衡。</p>
-<p><figure class=gallery-image style=flex-grow:162;flex-basis:390px>
-<a href=/blog/p/avl-tree/image-20220211151253277.png data-size=573x352>
-<img src=/blog/p/avl-tree/image-20220211151253277.png width=573 height=352 srcset="/blog/p/avl-tree/image-20220211151253277_hu3754058aad682cd96a93972186837210_33976_480x0_resize_box_3.png 480w, /blog/p/avl-tree/image-20220211151253277_hu3754058aad682cd96a93972186837210_33976_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220211151253277>
-</a>
-<figcaption>image-20220211151253277</figcaption>
-</figure></p>
+<p><img src=/blog/p/avl-tree/image-20220211151253277.png width=573 height=352 srcset="/blog/p/avl-tree/image-20220211151253277_hu3754058aad682cd96a93972186837210_33976_480x0_resize_box_3.png 480w, /blog/p/avl-tree/image-20220211151253277_hu3754058aad682cd96a93972186837210_33976_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220211151253277 class=gallery-image data-flex-grow=162 data-flex-basis=390px></p>
 <p>这个原则简单地说，就是左子树下最高的子树应该是左子树，右子树下最高的子树应该是右子树。如果新增节点后不满足这个条件，就要先对左子树左旋，或者对右子树右旋，来满足这个条件。</p>
 <h2 id=代码实现>代码实现</h2>
 <div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=kn>from</span> <span class=nn>typing</span> <span class=kn>import</span> <span class=n>Optional</span>
@@ -464,9 +448,9 @@ python
 </aside>
 <link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
 <div id=vssue></div>
-<script src=https://unpkg.com/vue/dist/vue.runtime.min.js></script>
-<script src=https://unpkg.com/vssue/dist/vssue.github.min.js></script>
-<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"AVL树",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"AVL树",options:{autoCreateIssue:!0,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
 <footer class=site-footer>
 <section class=copyright>
 &copy;
@@ -476,7 +460,7 @@ python
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.5.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>
@@ -516,27 +500,8 @@ Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=
 </div>
 </div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
 </main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 </div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#avl树>AVL树</a></li>
-<li><a href=#左旋转右旋转>左旋转/右旋转</a></li>
-<li><a href=#双旋转>双旋转</a></li>
-<li><a href=#代码实现>代码实现</a></li>
-<li><a href=#总结>总结</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous defer></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>

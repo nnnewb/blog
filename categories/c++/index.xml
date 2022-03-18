@@ -1,83 +1,1495 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>c++ on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/c++/</link><description>Recent content in c++ on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 16 Feb 2022 16:00:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/c++/index.xml" rel="self" type="application/rss+xml"/><item><title>分支预测对执行效率和安全的影响</title><link>https://nnnewb.github.io/blog/p/how-branch-prediction-effects-executoin-performance-and-security/</link><pubDate>Wed, 16 Feb 2022 16:00:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/how-branch-prediction-effects-executoin-performance-and-security/</guid><description>前言 还是从 Igor Ostrvsky 的博客里发现的一篇有意思的文章，Fast and slow if-statements: branch prediction in modern processors 开始。
-分支预测对性能的影响 介绍 分支预测器 - Wikipedia 我直接抄一段。
-在计算机体系结构中，分支预测器（英语：Branch predictor）是一种数字电路，在分支指令执行结束之前猜测哪一路分支将会被执行，以提高处理器的指令流水线的性能。使用分支预测器的目的，在于改善指令流水线的流程，就像一家公司的员工提前预测公司所需要的东西，即交付不同单位进行准备工作，而那各个部门之间的等待交办的时间大大地缩短，整个公司的效率就会提高了。现代使用指令流水线处理器的性能能够提高，分支预测器对于现今的指令流水线微处理器获得高性能是非常关键的技术。
-现代 CPU 的分支预测没有 Igor Ostrvsky 的博客里写的分支预测器那么傻了，实际上，那篇博客里的代码在 i5-6600 的环境下跑起来，TTFF或者TTTTFFFF甚至比TTTT还要快。那篇博客创作于 2010 年， 而 Skylake 架构在 2015 年替代 Broadwell 架构，而现在是 2022年， Intel 已经发布了 GoldenCove ，AMD 也要发 Zen 4了。内容过时不可避免。
-所以这篇博客主要还是聊一下分支预测对性能的影响，但大概总结不出 Igor Ostrvsky 的博客里的规律。顺带一提，不要随便针对分支预测优化，要是有人看了 Igor Ostrvsky 那篇博客费了老大功夫优化成连续 T/F 分支，换上新 CPU 之后性能还倒退这能找谁说理去。针对微架构分支预测失败回退做优化我还在爆栈上看到个回答很有意思，avoid stalling pipeline by calculating conditional early ，很难想到还能用这种办法榨干 CPU 的每一滴性能。
-基准测试 这个基准测试的主要目的是体现出分支预测失败对执行时间的影响，测试方法是喂 10MB 的随机 T/F ，为 T 时计数器 +1。除了输入数据外测试代码一样。</description></item><item><title>CPU缓存、缺页和伪共享</title><link>https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/</link><pubDate>Tue, 15 Feb 2022 17:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/</guid><description>前言 看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美哉。结合下面的参考文章大概聊一下。
-Gallery of Processor Cache Effects 缓存行 介绍 首先，缓存行不是“行”，这是对 cache line 的直译，cache line 和 cache block 是同义的，忽略这个“行”字即可。
-cache line 指的是 CPU 高速缓存（L1~L3）中的一个缓存块，通常大小在 32/64/128 bytes ，现在常见的应该是 64 bytes 。cache line 之所以重要，是因为这是 CPU 访问主存的必经之路，频繁访问主存数据的场合，或者并发编程时，cache line 的影响还是不容忽视的。
-简单的基准测试 光是说 cache line 多重要没有卵用，写个 demo 看看 cache line 的影响更直观。来一个最简单不过的单链表遍历。
-#include &amp;lt;chrono&amp;gt;#include &amp;lt;cstddef&amp;gt;#include &amp;lt;functional&amp;gt;#include &amp;lt;iostream&amp;gt;#include &amp;lt;iterator&amp;gt;#include &amp;lt;ostream&amp;gt;#include &amp;lt;string&amp;gt; using namespace std; using namespace std::chrono; typedef struct _data { struct _data *next; int value; } mydata; void time_it(const std::string name, function&amp;lt;void(void)&amp;gt; fn) { auto start = system_clock::now(); fn(); auto stop = system_clock::now(); cout &amp;lt;&amp;lt; name &amp;lt;&amp;lt; &amp;#34;: &amp;#34; &amp;lt;&amp;lt; duration_cast&amp;lt;milliseconds&amp;gt;(stop - start).</description></item><item><title>编译LIEF的各种姿势</title><link>https://nnnewb.github.io/blog/p/how-to-compile-lief-on-windows/</link><pubDate>Fri, 08 Oct 2021 16:25:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/how-to-compile-lief-on-windows/</guid><description>前言 惯例得有个前言。
-LIEF是一个二进制文件分析和操作库，官方推荐的是 Python 版本，确实更好用，就是类型的问题有点多，而且没附送 .pyi 导致不大好写。而C++版本就没这问题，C++版本有自己的问题=，=
-一个是官方提供下载的SDK是静态链接的，用到SDK的程序必须指定 /MT 不然编译器就会抱怨运行库不匹配。虽然看issue里已经有人解决了（-DLIEF_USE_CRT_{DEBUG,RELEASE}=MD/MT），但CI还是老样子，反正直接下载的SDK用起来就蛋疼，vcpkg 全都是 /MD 链接的，没法配合用。
-更别提 MinGW 了，就没官方的SDK。
-以上就是问题，解决问题的最简单办法就是自己编译了。
-0x01 Visual C++ 工具链 msbuild 代码下载下来之后，用 CMake 去编译。下面的命令都是 Powershell 下的，注意折行用的是反引号 backquote，就是波浪号那个键，和 bash 用 反斜杠不一样。直接复制到命令行是跑不起来的。
-cmake .. -G &amp;#34;Visual Studio 2019&amp;#34; # Generator，你的工具链，可以用 cmake --help 来看看有哪些可用的 -A Win32 # 选择 Visual C++ 工具链的情况下可以用 -A Win32 选择编译32位代码，或者 Win64 -DCMAKE_BUILD_TYPE=Debug # 常用的 Debug/Release/RelWithDebInfo -DLIEF_PYTHON_API=off # 不编译 Python 模块，这样就不用装 Python 了 -DLIEF_USE_CRT_DEBUG=MD # 使用 /MD 链接 msvcrt.dll 而不是 libcmt 这儿有个坑，用 Visual Studio 这个 Generator 的时候，虽然指定了 CMAKE_BUILD_TYPE，但实际没什么卵用，还得在编译的时候给参数 --config Debug 才会真的按 Debug 编译。</description></item><item><title>在C++中嵌入Python解释器</title><link>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</link><pubDate>Fri, 07 Feb 2020 21:59:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</guid><description>先不说废话，项目地址：https://github.com/nnnewb/CQPy 。欢迎给个 Star 什么的。
-背景 想给最近在玩的酷 Q 写个插件，发现没有合适的直接使用 Python 的解决方案。
-Richard Chien 提供了一个比较通用的插件，CQHttp。CQHttp本体是用 C++ 编写的插件，将酷 Q 的回调包装成 HTTP 请求转发至指定的地址，支持http和websocket两种协议。
-不过由于个人想折腾折腾的想法，打算试试把 Python 解释器直接嵌入到 C++ 里得了。
-整个思路如下。
-graph LR; CQP[酷Q] --事件回调--&amp;gt; dll[插件DLL]; dll --事件回调--&amp;gt; python[Python脚本]; python --调用API--&amp;gt; dll; dll --调用API--&amp;gt; CQP; 依赖 为了简化操作 Python 接口，我没有使用 Python 自带的 C API，而是pybind11，使用vcpkg管理依赖。
-安装命令：
-vcpkg install pybind11:x86-windows 0x1 编译 DLL 我使用 CMake 作为编译系统，因此可以很简单地写一个编译出 DLL 的 CMakeLists.txt
-cmake_minimum_required(VERSION 3.15)project(top.weak-ptr.cqpy LANGUAGES CXX VERSION 0.1.0)include_directories(src)aux_source_directory(src SOURCES)set(CMAKE_CXX_STANDARD 17)# 引入 pybind11 find_package(pybind11 CONFIG REQUIRED)# 添加 target set(OUT_NAME &amp;#34;app&amp;#34;)add_library(${OUT_NAME} SHARED ${SOURCES})set_target_properties(${OUT_NAME} PROPERTIES LINKER_LANGUAGE CXX)target_link_libraries(${OUT_NAME} PRIVATE pybind11::embed)源代码使用 MSVC 和 MinGW 编译，另外再处理下源码编码的问题和宏。</description></item><item><title>GameHollywood 面试笔记</title><link>https://nnnewb.github.io/blog/p/gamehollywood-%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</link><pubDate>Tue, 26 Jun 2018 17:22:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/gamehollywood-%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</guid><description>Intro 面试的职位是 C++后端开发工程师，主要聊的还是 C++。在过程中自我感觉面得还行，至少没上次那么蠢。
-聊的内容主要集中在 STL 和线程安全、资源管理的层面。
-惯例的，填完面试信息表并简历一起上交，然后等面试官来客套完，就开始聊技术了。
-注意，面试官的提问并非原话，有修饰和脑补。
-0. 预热：你用哪个版本的 C++？ 客套话什么的就略了。
-面试官：&amp;hellip;行，那我们就聊聊 C++吧。你常用哪个版本的 C++？
-我：我比较常用的是 C++11。
-C++版本这个问题面试里应该不多见，不过作为引入的话题还行，标准之神会瞑目的。
-对于C++版本这个词，很大概率上大家说的应该就是 C++标准委员会WG21制定的 C++标准了，最新版本的标准文档是 C++17 定稿N4659，制定中的 C++20 标准文档可以访问WG21/docs/papers/2018查阅。
-需要注意的是，如果答成了我用 VC6之类的骚话，很大概率会留下不好的映像——或者对方也是忠实的 VC6 神教教徒的话，达成共识也说不定。
-闲话少叙。
-1. 起手式：std::shared_ptr 面试官：说说std::shared_ptr是怎么实现的？一般怎么去使用它？
-答：shared_ptr是通过引用计数实现的，它可以作为容器元素，在程序里传递 blabal&amp;hellip;..而且shared_ptr不是线程安全的，它不能跨线程传递，要额外做一层包装 blabla&amp;hellip;&amp;hellip;
-正巧最近有想写一篇智能指针相关的博客，面试官的第一问就提到了。
-说到智能指针，就必须提一下 RAII 了。
-1.1 异常安全和 RAII std::shared_ptr和其他智能指针类型都在&amp;lt;memory&amp;gt;头文件里定义，主要的作用是实现自动化的资源管理，基于RAII的理念设计和实现。
-RAII指的是获取资源即初始化，英文全写是Resource Acquisition Is Initialization，属于一种面向对象编程语言中常见的惯用法。
-它的思路是这样子的：初始化即获取资源，离开作用域就自动销毁。
-RAII 解决的问题是，当异常发生时，如何确保资源释放。这是个异常安全的问题。
-常见的非 RAII 风格代码里，如果要确保资源被正确释放，就要用try {} catch() {} finally {}块捕获异常，然后执行资源释放的代码，再将异常重新抛出。</description></item><item><title>可重入和异步安全</title><link>https://nnnewb.github.io/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/</link><pubDate>Sun, 24 Jun 2018 22:48:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/</guid><description>这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。
-可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具体定义可能有所不同。这里聊的是 C++语言中的可重入性。
-所谓可重入性（reetrant），指的是同时具备并发安全和中断安全的特征，这是目前为止我对可重入性的认识，也是这篇博客在写下时给可重入性下的定义。
-这个认知可能并不准确，因为在wiki上的定义是这样的。
-若一个程序或子程序可以「在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错」，则称其为可重入（reentrant 或 re-entrant）的。即当该子程序正在运行时，执行线程可以再次进入并执行它，仍然获得符合設計時預期的结果。与多线程并发执行的线程安全不同，可重入强调对单个线程执行时重新进入同一个子程序仍然是安全的。
-但是在很多中文博客里，聊到可重入性的时候往往也会把并发安全混为一谈。实际上来说的话&amp;hellip;&amp;hellip;一个可重入的函数，常常也是并发安全的。
-那么先从并发安全讲起吧。
-并发安全性和可重入性 所谓并发安全已经是老生常谈了。
-以一段非常简单的代码为例，我们打算初始化一个对象，这个对象被两个线程共享。
-void initialize(Something** someshit) { if(!*someshit) { *someshit = createSomeShit(); } } 显而易见，如果线程在执行到特定环节时发生了切换
-void initialize(Something** someshit) { if(!*someshit) { // &amp;lt;-------- 线程切换 // 线程2() { // initialize(something); // } // 线程切换 ---------&amp;gt; *someshit = createSomeShit(); } } 那么 createSomeShit这段代码就会被执行两次。
-显然这和我们预期的行为不符。
-这里要聊的不是并发，而是&amp;hellip;&amp;hellip;可重入性。所以我们再看看这个函数能否被重入。
-按照 wiki 提供的定义，函数可重入指的是
-在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错。
-符合吗？不。为什么？因为同样在那个线程切换的位置上中断，然后再另一段代码里再次执行这个函数，也会触发同样的问题，导致createSomeShit被执行两次。
-void initialize(Something** someshit) { if(!</description></item><item><title>鲸鱼游戏面试笔记</title><link>https://nnnewb.github.io/blog/p/%E9%B2%B8%E9%B1%BC%E6%B8%B8%E6%88%8F%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</link><pubDate>Wed, 20 Jun 2018 19:15:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E9%B2%B8%E9%B1%BC%E6%B8%B8%E6%88%8F%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</guid><description>Intro 简单介绍下面试的前置情况。
-面试的公司是鲸鱼游戏，职位是后端开发工程师，开发语言 C++。
-这篇博文主要是为了记录面试中发现的自身不足。
-这次面试里，因为面试约得比较匆忙，所以基本没做任何准备。讲道理的说我是有点盲目自信了，毕竟 C/C++是我的第一语言来着，本来以为考察语言的部分不会有什么问题，但没想到因为紧张而错漏百出。
-那么接下来就直接进入正题，以下是对面试中遇到的问题重新思考后的回答和想法。
-下面面试官的提问并非原话，有经过脑补润色。
-起手式：面向对象 面试官：讲讲面向对象，继承，还有多态。我们都知道程序设计有两种常见的范式，面向过程和面向对象，讲讲面向对象给我们带来了什么好处？
-实话说第一问就已经有点出乎意料，但想想其实还是在意料之中。初级职位更注重于基础概念和技能，中高级职位可能会在数据结构和并发一类的问题上更深入。
-答：抽象，归类 blabla&amp;hellip;易于维护 blabla&amp;hellip;
-全错。
-现在回忆起来，面试官想问的其实只有一点，就是那句封装。
-封装是面向对象的核心概念之一。
-封装使代码成为一个黑箱，让我们不必关注它的实现，而是关注它的行为和接口。
-这产生了面向接口编程的概念，我们不再关注封装后的对象内部的逻辑，我们给封装后的对象以输入，然后从封装后的对象里取出数据。
-封装并不只是一系列接口的集合，更包含了数据和状态，它就是一个微型化的服务，调用者告诉它去做什么事，而不关心它怎么做。
-第二招：继承 面试官：讲讲继承。
-我：代码复用，blabla&amp;hellip;&amp;hellip;
-代码复用，这是核心。
-代码复用是继承最主要的作用，大家都知道。面试官并没有在这方面继续深入，所以能答出代码复用其实已经差不多了。
-除非再抠上语言相关的语法细节：多继承和单继承。
-多继承 C++ 采用了多继承模型，即一个子类可以有多个父类。
-Father ------| |====&amp;gt; child Mother ------| 多继承可以允许一些特殊的编程范式。比如说mixin模式。但是多继承也存在其固有的复杂性，主要表现在运行时多态上。
-举几个多继承上常见的问题。
-父类成员冲突 典型场景如下
-class ParentA { public: void func(){} }; class ParentB { public: void func(){} }; class Child: public ParentA,ParentB {}; int main() { Child c; c.</description></item></channel></rss>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>c++ on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/c++/</link><description>Recent content in c++ on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 16 Feb 2022 16:00:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/c++/index.xml" rel="self" type="application/rss+xml"/><item><title>分支预测对执行效率和安全的影响</title><link>https://nnnewb.github.io/blog/p/how-branch-prediction-effects-executoin-performance-and-security/</link><pubDate>Wed, 16 Feb 2022 16:00:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/how-branch-prediction-effects-executoin-performance-and-security/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>还是从 &lt;em>Igor Ostrvsky&lt;/em> 的博客里发现的一篇有意思的文章，&lt;a class="link" href="http://igoro.com/archive/fast-and-slow-if-statements-branch-prediction-in-modern-processors/" target="_blank" rel="noopener"
+>Fast and slow if-statements: branch prediction in modern processors&lt;/a> 开始。&lt;/p>
+&lt;h2 id="分支预测对性能的影响">分支预测对性能的影响&lt;/h2>
+&lt;h3 id="介绍">介绍&lt;/h3>
+&lt;p>&lt;a class="link" href="https://zh.wikipedia.org/wiki/%E5%88%86%E6%94%AF%E9%A0%90%E6%B8%AC%E5%99%A8" target="_blank" rel="noopener"
+>分支预测器 - Wikipedia&lt;/a> 我直接抄一段。&lt;/p>
+&lt;blockquote>
+&lt;p>在&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e9%9b%bb%e8%85%a6%e6%9e%b6%e6%a7%8b" target="_blank" rel="noopener"
+>计算机体系结构&lt;/a>中，&lt;strong>分支预测器&lt;/strong>（英语：Branch predictor）是一种&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e6%95%b8%e4%bd%8d%e9%9b%bb%e8%b7%af" target="_blank" rel="noopener"
+>数字电路&lt;/a>，在分支指令执行结束之前猜测哪一路&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e5%88%86%e6%94%af_%28%e8%a8%88%e7%ae%97%e6%a9%9f%e7%a7%91%e5%ad%b8%29" target="_blank" rel="noopener"
+>分支&lt;/a>将会被执行，以提高处理器的&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e6%8c%87%e4%bb%a4%e6%b5%81%e6%b0%b4%e7%ba%bf" target="_blank" rel="noopener"
+>指令流水线&lt;/a>的性能。使用分支预测器的目的，在于改善&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e6%8c%87%e4%bb%a4%e7%ae%a1%e7%b7%9a%e5%8c%96" target="_blank" rel="noopener"
+>指令流水线&lt;/a>的流程，就像一家公司的员工提前预测公司所需要的东西，即交付不同单位进行准备工作，而那各个部门之间的等待交办的时间大大地缩短，整个公司的效率就会提高了。现代使用&lt;a class="link" href="https://zh.wikipedia.org/wiki/%e6%8c%87%e4%bb%a4%e7%ae%a1%e7%b7%9a%e5%8c%96" target="_blank" rel="noopener"
+>指令流水线&lt;/a>处理器的性能能够提高，分支预测器对于现今的指令流水线微处理器获得高性能是非常关键的技术。&lt;/p>
+&lt;/blockquote>
+&lt;p>现代 CPU 的分支预测没有 &lt;em>Igor Ostrvsky&lt;/em> 的博客里写的分支预测器那么傻了，实际上，那篇博客里的代码在 i5-6600 的环境下跑起来，&lt;code>TTFF&lt;/code>或者&lt;code>TTTTFFFF&lt;/code>甚至比&lt;code>TTTT&lt;/code>还要快。那篇博客创作于 2010 年， 而 Skylake 架构在 2015 年替代 Broadwell 架构，而现在是 2022年， Intel 已经发布了 GoldenCove ，AMD 也要发 Zen 4了。内容过时不可避免。&lt;/p>
+&lt;p>所以这篇博客主要还是聊一下分支预测对性能的影响，但大概总结不出 Igor Ostrvsky 的博客里的规律。顺带一提，不要随便针对分支预测优化，要是有人看了 Igor Ostrvsky 那篇博客费了老大功夫优化成连续 T/F 分支，换上新 CPU 之后性能还倒退这能找谁说理去。针对微架构分支预测失败回退做优化我还在爆栈上看到个回答很有意思，&lt;a class="link" href="https://stackoverflow.com/questions/49932119/avoid-stalling-pipeline-by-calculating-conditional-early" target="_blank" rel="noopener"
+>avoid stalling pipeline by calculating conditional early&lt;/a> ，很难想到还能用这种办法榨干 CPU 的每一滴性能。&lt;/p>
+&lt;h3 id="基准测试">基准测试&lt;/h3>
+&lt;p>这个基准测试的主要目的是体现出分支预测失败对执行时间的影响，测试方法是喂 10MB 的随机 T/F ，为 T 时计数器 +1。除了输入数据外测试代码一样。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;functional&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;chrono&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;stdlib.h&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;vector&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;cstdlib&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">chrono&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">string&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">uint32_t&lt;/span> &lt;span class="n">loops&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">milliseconds&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">lowest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">highest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">loops&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">start&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">fn&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">stop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">milliseconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stop&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">start&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">sum&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">lowest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">lowest&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="nl">d&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">min&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">lowest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">highest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">max&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">highest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; avg: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">sum&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">loops&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; best: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">lowest&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; worst: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">highest&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; total: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">sum&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">srand&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">seconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="n">time_since_epoch&lt;/span>&lt;span class="p">()).&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">());&lt;/span>
+&lt;span class="n">vector&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">int&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">always_true&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">unpredictable&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">always_true&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">resize&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">10&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">unpredictable&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">resize&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">10&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nl">i&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">unpredictable&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">rand&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">%&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;always true&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">always_true&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">i&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">always_true&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="n">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;unpredictable&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">unpredictable&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">i&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">unpredictable&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>使用 clang++ 编译&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="c1"># clang version 13.0.0&lt;/span>
+&lt;span class="c1"># Target: x86_64-pc-windows-msvc&lt;/span>
+&lt;span class="c1"># Thread model: posix&lt;/span>
+&lt;span class="c1"># InstalledDir: C:\Program Files\LLVM\bin&lt;/span>
+clang++.exe -m32 -O0 -g -std&lt;span class="o">=&lt;/span>c++20 .&lt;span class="se">\b&lt;/span>ranch-prediction-1.cpp -o branch-prediction-1.exe
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>统计平均、最佳、最差耗时，输出结果如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">always true avg: 120ms best: 116ms worst: 246ms total: 12056ms
+unpredictable avg: 191ms best: 184ms worst: 265ms total: 19115ms
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以看到，数据量相同的情况下，输入数据是随机 T/F 的平均耗时比总为真的耗时高出 50%，总耗时多出 7 秒左右（差不多也是50%多一点）。可想而知，如果输入数据更有规律（比如前半段都是T后半段都是F），数据量不变的情况下，性能也会有相当不错的提高。&lt;/p>
+&lt;p>顺便我还要说一下这个基准测试不够好，应该每个测试循环都生成一次随机数输入的。&lt;/p>
+&lt;h3 id="分支预测扮演的角色">分支预测扮演的角色&lt;/h3>
+&lt;p>这还得从CPU执行指令的过程说起。这里聊的 CPU 执行一条指令需要经过下面的步骤，称作流水线。计算机组成原理课应该有说。&lt;/p>
+&lt;ul>
+&lt;li>取指 (fetch)&lt;/li>
+&lt;li>译码 (decode)&lt;/li>
+&lt;li>执行 (算数指令走 ALU)&lt;/li>
+&lt;li>访问主存 (Load/Store)&lt;/li>
+&lt;li>写回&lt;/li>
+&lt;/ul>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531.png"
+width="1237"
+height="583"
+srcset="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531_hud9ed14138f8676bf12375622c7bab6ae_181582_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/1365470-20181201231438070-1210623531_hud9ed14138f8676bf12375622c7bab6ae_181582_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="单周期处理器和流水线处理器"
+class="gallery-image"
+data-flex-grow="212"
+data-flex-basis="509px"
+>&lt;/p>
+&lt;p>更简化一点的话可以把ALU算数运算和访存都算作指令的“执行”阶段，CPU就是在不断循环执行这四个动作。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg.png"
+width="500"
+height="479"
+srcset="https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="4阶段流水线"
+class="gallery-image"
+data-flex-grow="104"
+data-flex-basis="250px"
+>&lt;/p>
+&lt;p>流水线处理器为了充分利用硬件，在译码上一条指令时，就开始取指下一条指令了，执行速度可以是单周期处理器的很多倍。显然流水线越长，每个阶段的耗时越短，整体执行的效率就越高。&lt;/p>
+&lt;p>如果指令一直按顺序执行，流水线只要不断加长加快就能获得更高的性能，但“分支”打破了这个美梦。一个简短的例子如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="nl">loop:&lt;/span>
+&lt;span class="nf">inc&lt;/span> &lt;span class="no">eax&lt;/span>
+&lt;span class="nf">cmp&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">ebx&lt;/span>
+&lt;span class="nf">jne&lt;/span> &lt;span class="no">loop&lt;/span>
+&lt;span class="nf">call&lt;/span> &lt;span class="no">exit&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>CPU 从 &lt;code>cmp eax,ebx&lt;/code> 开始，取指 &lt;code>jne loop&lt;/code>。译码 &lt;code>jne loop&lt;/code> 时，问题来了，接下来是取指 &lt;code>call exit&lt;/code> 还是 &lt;code>inc eax&lt;/code>？&lt;/p>
+&lt;p>此时我们还不知道 &lt;code>cmp eax,ebx&lt;/code> 的结果，CPU 能做的事情只有：傻等(stall)，或者猜测下一条要执行的指令是什么(predict)。&lt;/p>
+&lt;p>现代处理器的流水线长度可以达到几十，如果 CPU 遇到需要上一条指令的结果来继续下一条指令就开始等，那么流水线就不得不闲置到上一条指令完成，结果就是分支指令的代价会是其他指令的几十倍，对循环语句来说是个噩耗。&lt;/p>
+&lt;p>影响流水线效率的还有其他元素，比如说上面的 取值-译码-执行-写回 过程里，四个阶段的执行速度也是不同的。通常取值和译码的速度更慢，执行写回更快。如何尽可能让每个执行单元都不浪费时间等待，也是个难题。&lt;/p>
+&lt;p>关于流水线，&lt;a class="link" href="https://plantegg.github.io/2021/05/16/Perf_IPC%E4%BB%A5%E5%8F%8ACPU%E5%88%A9%E7%94%A8%E7%8E%87/" target="_blank" rel="noopener"
+>Perf IPC 以及 CPU 利用率&lt;/a> 这篇文章感觉不错。&lt;/p>
+&lt;p>继续说。既然让流水线退化到单周期不可取，那就瞎猜一个，先把流水线填满再说呗，反正不会比傻等更差了。于是就有了分支预测器：虽然是瞎猜，但尽可能猜得准一点总没坏处。&lt;/p>
+&lt;h3 id="减少分支预测失败的损失">减少分支预测失败的损失&lt;/h3>
+&lt;p>实话说我不确定这个代价有多大，因为没法控制失败率，不知道现在正在用的 CPU 的分支预测器是怎么工作的。&lt;/p>
+&lt;p>直接构造随机的 T/F 序列是一种办法，前面的基准测试已经验证了随机 T/F 干扰分支预测会产生接近 50% 的多余开销。那么有没有办法降低分支预测失败的损失呢？怎么让 CPU 更早发现到分支预测失败，减少要抛弃、清空的流水线长度？&lt;/p>
+&lt;p>参考前面爆栈的链接 &lt;a class="link" href="https://stackoverflow.com/questions/49932119/avoid-stalling-pipeline-by-calculating-conditional-early" target="_blank" rel="noopener"
+>avoid stalling pipeline by calculating conditional early&lt;/a> ，我简单写一个基准测试看看。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;functional&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;chrono&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;vector&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;cstdlib&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;random&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">chrono&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">milliseconds&lt;/span> &lt;span class="nf">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">start&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">fn&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">stop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">milliseconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stop&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">start&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">string&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">uint32_t&lt;/span> &lt;span class="n">loops&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">milliseconds&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">lowest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">highest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">loops&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">fn&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">sum&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">lowest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">lowest&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="n">ms&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="nl">d&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">min&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">lowest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">highest&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">max&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">highest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; avg: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">sum&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">loops&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; best: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">lowest&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; worst: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">highest&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34; total: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">sum&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">typedef&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="nc">my_node&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_node&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_node&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">next&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">nullptr&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{}&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="n">my_node&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">typedef&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="nc">my_list&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">length&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_node&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">head&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_node&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">last&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_list&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="n">length&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">head&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">nullptr&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">last&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">nullptr&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">append&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">head&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="k">nullptr&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">head&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">new&lt;/span> &lt;span class="n">my_node&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">last&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">head&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">last&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">new&lt;/span> &lt;span class="n">my_node&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">last&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">last&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">length&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="n">my_list&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">sum_sentinel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">my_list&lt;/span> &lt;span class="n">list&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">head&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">cur&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="k">nullptr&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">sum_counter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">my_list&lt;/span> &lt;span class="n">list&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">my_node&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">head&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">list&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">length&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">vector&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">my_list&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">lists&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">lists&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">resize&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">10000000&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">random_device&lt;/span> &lt;span class="n">rd&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">mt19937&lt;/span> &lt;span class="n">gen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">rd&lt;/span>&lt;span class="p">());&lt;/span>
+&lt;span class="n">uniform_int_distribution&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">int&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">10&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nl">list&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">lists&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">node_count&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">gen&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">node_count&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">list&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;sentinel&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">lists&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">list&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">lists&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum_sentinel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">list&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="n">benchmark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;counter&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">lists&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">list&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">lists&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">sum_counter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">list&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>输出结果&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">sentinel avg: 471ms best: 470ms worst: 502ms total: 47178ms
+counter avg: 407ms best: 402ms worst: 512ms total: 40726ms
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>这简直是黑魔法！&lt;code>sum_counter&lt;/code>明显需要执行更多的指令，但执行速度比指令更少的&lt;code>sum_sentinel&lt;/code>平均快70ms！&lt;/p>
+&lt;p>造成慢的原因是一样的，因为分支预测失败，我们以上面的4阶段流水线来分析，假设每个阶段要一个时钟周期，等CPU发现取错了指令（比如译码完了&lt;code>add&lt;/code>，发现&lt;code>cur!=nullptr&lt;/code>是F），于是浪费了两个时钟周期。这被称为 &lt;em>front end bubble&lt;/em> 。参考 cloud flare 的这篇博客，&lt;a class="link" href="https://blog.cloudflare.com/branch-predictor/" target="_blank" rel="noopener"
+>branch predictor&lt;/a> 。这个 &lt;em>front end&lt;/em> 指的是 CPU 微架构中流水线的前端，形象地看，流水线就像是一节一节的水管，指令填满每一节水管，流向下一节。分支预测失败就像是中间一节水管突然空了，后面的指令继续推着空气（预测错误的指令）往前走，就成了水管里的一个泡泡。&lt;/p>
+&lt;p>但 &lt;code>sum_counter&lt;/code> 快的原因更神奇：因为指令排列的顺序，让分支预测依赖的指令更早进入流水线，因此分支指令进入流水线后，分支预测会更快发现预测错误。见下面的汇编代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-asm" data-lang="asm">&lt;span class="err">&amp;lt;&lt;/span>&lt;span class="nf">sum_sentinel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">list_head&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">&amp;gt;&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nf">test&lt;/span> &lt;span class="no">rsi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">rsi&lt;/span>
+&lt;span class="nf">je&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="no">fe&lt;/span> &lt;span class="err">&amp;lt;&lt;/span>&lt;span class="no">sum_sentinel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">list_head&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0x1e&lt;/span>&lt;span class="err">&amp;gt;&lt;/span>
+&lt;span class="nf">xor&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">eax&lt;/span>
+&lt;span class="nl">loop:&lt;/span>
+&lt;span class="nf">add&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">DWORD&lt;/span> &lt;span class="no">PTR&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">rsi&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="c">; --- 1
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="no">rsi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">QWORD&lt;/span> &lt;span class="no">PTR&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">rsi&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0x8&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="c">; --- 2
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">test&lt;/span> &lt;span class="no">rsi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">rsi&lt;/span> &lt;span class="c">; --- 3
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">jne&lt;/span> &lt;span class="no">loop&lt;/span> &lt;span class="c">; --- 4
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">cdqe&lt;/span> &lt;span class="c">; --- 5
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">ret&lt;/span> &lt;span class="c">; --- 6
+&lt;/span>&lt;span class="c">&lt;/span>
+&lt;span class="err">&amp;lt;&lt;/span>&lt;span class="nf">sum_counter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">list_head&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">&amp;gt;&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nf">test&lt;/span> &lt;span class="no">edi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">edi&lt;/span>
+&lt;span class="nf">jle&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="no">d0&lt;/span> &lt;span class="err">&amp;lt;&lt;/span>&lt;span class="no">sum_counter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="no">list_head&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0x20&lt;/span>&lt;span class="err">&amp;gt;&lt;/span>
+&lt;span class="nf">xor&lt;/span> &lt;span class="no">edx&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">edx&lt;/span>
+&lt;span class="nf">xor&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">eax&lt;/span>
+&lt;span class="nl">loop:&lt;/span>
+&lt;span class="nf">add&lt;/span> &lt;span class="no">edx&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">0x1&lt;/span> &lt;span class="c">; --- 1
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">add&lt;/span> &lt;span class="no">eax&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">DWORD&lt;/span> &lt;span class="no">PTR&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">rsi&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="c">; --- 2
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">mov&lt;/span> &lt;span class="no">rsi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">QWORD&lt;/span> &lt;span class="no">PTR&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="no">rsi&lt;/span>&lt;span class="err">+&lt;/span>&lt;span class="mi">0x8&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="c">; --- 3
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">cmp&lt;/span> &lt;span class="no">edi&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="no">edx&lt;/span> &lt;span class="c">; --- 4
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">jne&lt;/span> &lt;span class="no">loop&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="c">; --- 5
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">cdqe&lt;/span> &lt;span class="c">; --- 6
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="no">ret&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>想象有一颗 CPU 有 5 级流水线（&lt;code>IF&lt;/code>、&lt;code>ID&lt;/code>、&lt;code>EX&lt;/code>、&lt;code>MEM&lt;/code>、&lt;code>WB&lt;/code>），如上标注的顺序执行。&lt;/p>
+&lt;p>在 &lt;code>sum_sentinel&lt;/code> 中，开始对 (5) 取指时，(1)才完成写回。对(6)取指时，(2)才写回。等到(3)写回，CPU才发现错误，于是从(4)往后的4级流水线全部作废清空，空泡形成。按每一级1周期算的话，就浪费了4个周期。&lt;/p>
+&lt;p>在&lt;code>sum_counter&lt;/code>中，对(5)取指时，(1)已经写回。(4)依赖的寄存器数据就绪，立刻就能确定分支预测结果正确与否，没有浪费时钟周期。&lt;/p>
+&lt;p>——以上都是想象中的 CPU ，想象中的流水线，实际上的流水线在哪个阶段才能发现分支预测错误，清空流水线，我也不知道。这里能提出的一个论点就是：尽早让分支依赖的数据就绪，尽快让 CPU 发现预测结果不正确，&lt;strong>可能可以&lt;/strong>降低分支预测失败的损失。话不能说满。而且针对分支预测器做优化不值得，Igor Ostrvsky 的博客前车之鉴在那里，过几年新架构 CPU 分支预测器说不定就不是这个规律了也不一定。&lt;/p>
+&lt;h2 id="分支预测对安全的影响">分支预测对安全的影响&lt;/h2>
+&lt;h3 id="spectre">spectre&lt;/h3>
+&lt;p>也许有人会想CPU和安全有什么关系，这不是搞笑吗。但实际上对 CPU 漏洞的利用早已有之，对现代 CPU 高效运行的重要特性：缓存、乱序执行、分支预测进行攻击。近些年最著名的就有 &lt;a class="link" href="https://meltdownattack.com/meltdown.pdf" target="_blank" rel="noopener"
+>Meltdown&lt;/a> 和 &lt;a class="link" href="https://spectreattack.com/spectre.pdf" target="_blank" rel="noopener"
+>Spectre&lt;/a> 。&lt;/p>
+&lt;p>在 &lt;a class="link" href="https://spectreattack.com/spectre.pdf" target="_blank" rel="noopener"
+>Spectre Attacks: Exploiting Speculative Execution&lt;/a> 论文里这样写道：&lt;/p>
+&lt;blockquote>
+&lt;p>Modern processors use branch prediction and speculative execution to maximize performance. For example, if the destination of a branch depends on a memory value that is in the process of being read, CPUs will try to guess the destination and attempt to execute ahead. When the memory value finally arrives, the CPU either discards or commits the speculative computation. Speculative logic is unfaithful in how it executes, can access the victim’s memory and registers, and can perform operations with measurable side effects.&lt;/p>
+&lt;/blockquote>
+&lt;p>现代处理器使用分支预测和推测执行来最大化性能。举例来说，如果确定目标分支依赖于读取内存里的值，CPU会在执行前猜测其目标。当内存里的值抵达CPU，CPU要么抛弃，要么提交推测执行的结果。而推测执行的逻辑是不安全的，可能访问到受害程序的内存和寄存器，执行有明显副作用的操作。&lt;/p>
+&lt;p>Meltdown 和 Spectre 的利用方式很类似，利用乱序执行或分支预测让 CPU 加载一块不属于自己的内存到缓存，而 CPU 发现分支预测失败或乱序执行无效时，并不会抛弃这块缓存。之后再通过瞬态指令创建一个旁路，取得缓存里的数据，就成功利用CPU绕开了隔离机制，非法读取到了任意一块内存。&lt;/p>
+&lt;p>&lt;a class="link" href="https://razorpay.com/blog/meltdown-paper-summary/" target="_blank" rel="noopener"
+>meltdown paper summary&lt;/a> 可以读一下。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>就是聊天，我也不敢说写得有多少对，写博客的过程里东查西找，最后写完有个基本映像就很开心了。&lt;/p>
+&lt;p>分支预测对性能有影响，比起 cache line 的影响更小，而且优化价值不大，特意做优化反而可能在未来砸自己脚趾头。但分支预测又确实在现代cpu里起到了相当重要的作用，流水线造得再长，分支预测次次都错，那再长的流水线也和单周期没啥区别。&lt;/p>
+&lt;p>这篇感觉没啥好总结的，反正写完是对计算机了解更深了一点就对啦。&lt;/p></description></item><item><title>CPU缓存、缺页和伪共享</title><link>https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/</link><pubDate>Tue, 15 Feb 2022 17:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美哉。结合下面的参考文章大概聊一下。&lt;/p>
+&lt;ul>
+&lt;li>&lt;a class="link" href="http://igoro.com/archive/gallery-of-processor-cache-effects/" target="_blank" rel="noopener"
+>Gallery of Processor Cache Effects&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h2 id="缓存行">缓存行&lt;/h2>
+&lt;h3 id="介绍">介绍&lt;/h3>
+&lt;p>首先，缓存行&lt;strong>不是&lt;/strong>“行”，这是对 &lt;em>cache line&lt;/em> 的直译，&lt;em>cache line&lt;/em> 和 &lt;em>cache block&lt;/em> 是同义的，忽略这个“行”字即可。&lt;/p>
+&lt;p>cache line 指的是 CPU 高速缓存（L1~L3）中的一个缓存块，通常大小在 32/64/128 bytes ，现在常见的应该是 64 bytes 。cache line 之所以重要，是因为这是 CPU 访问主存的必经之路，频繁访问主存数据的场合，或者并发编程时，cache line 的影响还是不容忽视的。&lt;/p>
+&lt;h3 id="简单的基准测试">简单的基准测试&lt;/h3>
+&lt;p>光是说 cache line 多重要没有卵用，写个 demo 看看 cache line 的影响更直观。来一个最简单不过的单链表遍历。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;chrono&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;cstddef&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;functional&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iterator&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;ostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;string&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">chrono&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">typedef&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="nc">_data&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">struct&lt;/span> &lt;span class="nc">_data&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="n">mydata&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">string&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">start&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">fn&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">stop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">name&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">milliseconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stop&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">start&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// 一次分配，内存连续
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">list1&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">new&lt;/span> &lt;span class="n">mydata&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">64&lt;/span>&lt;span class="p">];&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">64&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">list1&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">];&lt;/span>
+&lt;span class="n">cur&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">cur&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">list1&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">].&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// 分别分配，内存不连续
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">list2&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">new&lt;/span> &lt;span class="n">mydata&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">cur2&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list2&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">1024&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">64&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">cur2&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">new&lt;/span> &lt;span class="n">mydata&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">cur2&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">cur2&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 遍历连续的链表
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;first&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">*=&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="c1">// 遍历不连续的链表
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;second&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list2&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">*=&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>为了体现出差异，一共遍历了 &lt;code>1024*1024*64&lt;/code>个元素，每个元素 8 个字节，一共是512M数据。&lt;/p>
+&lt;p>结果如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">weakptr  数据结构  ♥ 09:42  clang++.exe -m32 -O2 main.cpp -o main.exe
+weakptr  数据结构  ♥ 09:43  ./main.exe
+first: 2ms
+second: 239ms
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>启用了&lt;code>O2&lt;/code>级别优化的情况下，遍历连续分配和不连续分配的链表时，速度相差达到了惊人的一百多倍。&lt;/p>
+&lt;p>是&lt;code>O2&lt;/code>优化掉了第一种连续分配的链表遍历吗？&lt;code>-O0&lt;/code> 禁止优化看看。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">weakptr  数据结构  ♥ 09:44  clang++.exe -m32 -O0 main.cpp -o main.exe
+weakptr  数据结构  ♥ 09:45  ./main.exe
+first: 3ms
+second: 262ms
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>并没有任何改善。&lt;/p>
+&lt;p>因为考虑是和内存相关，影响内存访问性能的因素可以很自然想到缓存和缺页这两条。&lt;/p>
+&lt;p>缓存指的是 cache line，一般说 false sharing 的时候提加 padding 对齐比较多。另一个情况就是遍历的时候，如果数据比较密集，那从主存刷新 cache line 就会更少，缓存利用更充分。所以像是数组这样的连续内存遍历速度通常远比链表之类的结构快。&lt;/p>
+&lt;p>缺页又是另一个问题，缺页异常发生的几个常见场景包括：第一次访问分配好的内存，访问被交换到硬盘上的内存，&lt;code>mmap&lt;/code> ，以及&lt;code>SIGSEGV&lt;/code>等情况。一般来说的话，连续的内存分配下一次缺页可以得到连续的N个元素，不连续的分配第一次访问N个元素，最坏的情况下可能就要N次缺页异常。&lt;/p>
+&lt;h3 id="缺页异常">缺页异常&lt;/h3>
+&lt;p>先看缺页。这里使用微软的 Process Explorer 来观察 Page Fault 的出现情况。为了有效观察到page fault发生，我修改了一下代码，在 &lt;code>time_it&lt;/code> 函数里添加上了简单的 page fault 观测。&lt;/p>
+&lt;p>&lt;em>提示，也可以用 Process Explorer 等工具观测程序运行时的 Page Fault 数量，但直接在代码里嵌入观测还是最准确的。如果有更好用的性能分析工具的话当然更好。&lt;/em>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="n">DWORD&lt;/span> &lt;span class="nf">getPageFaultCount&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">proc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">GetCurrentProcess&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">PROCESS_MEMORY_COUNTERS&lt;/span> &lt;span class="n">counters&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">GetProcessMemoryInfo&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">proc&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">counters&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">counters&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">FALSE&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">cerr&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;GetProcessMemoryInfo failed, error &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">GetLastError&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">counters&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">PageFaultCount&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">string&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">before&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">getPageFaultCount&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">start&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">fn&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">stop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">after&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">getPageFaultCount&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">name&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">milliseconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stop&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">start&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms, page fault count: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">after&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">before&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后对两个用例进行测试。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">initialization-1: 337ms, page fault count: 131329
+initialization-2: 3591ms, page fault count: 265660
+iteration-1: 3ms, page fault count: 0
+iteration-2: 294ms, page fault count: 0
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以清晰地看到，在链表的初始化阶段，非连续分配的链表产生了连续分配的链表差不多两倍的 page fault，耗时接近十倍——我还得澄清一下这不是在暗示十倍的耗时都是 page fault 造成的，但 page fault 在其中也消耗了一部分资源总归是毫无疑问的。&lt;/p>
+&lt;p>但随后的迭代阶段里并没有新的 page fault 产生，因为 两次 512M 的分配再加上循环new，堆维护指针的开销，差不多1.5G，还没有耗尽可用内存。&lt;/p>
+&lt;p>排除 page fault 的影响后，现在考虑另一个影响因素：缓存。&lt;/p>
+&lt;h3 id="缓存行-1">缓存行&lt;/h3>
+&lt;p>关于缓存的分析这里使用了 Intel VTune Profiler 作为分析工具，来提取缓存命中情况。为了让VTune抓取更多信息来分析，对benchmark代码再次修改，遍历一次改成遍历100次。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;iteration-2&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">list2&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list2&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">ptr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">ptr&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">*=&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>并将连续内存分配和不连续分配分成&lt;code>benchmark1.cpp&lt;/code>和&lt;code>benchmark2.cpp&lt;/code>，分别用&lt;code>-m32 -O0 -g&lt;/code> 参数编译，放进 VTune 分析内存访问性能。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328.png"
+width="507"
+height="332"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328_hu3571708b5c5bc5793cda86111950dfc6_32684_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328_hu3571708b5c5bc5793cda86111950dfc6_32684_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="benchmark1"
+class="gallery-image"
+data-flex-grow="152"
+data-flex-basis="366px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825.png"
+width="551"
+height="340"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825_hu652bea774cd469a5f99b0baeb69059e1_36904_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825_hu652bea774cd469a5f99b0baeb69059e1_36904_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="benchmark2"
+class="gallery-image"
+data-flex-grow="162"
+data-flex-basis="388px"
+>&lt;/p>
+&lt;p>观察图中的 LLC Miss Count 可以发现，Benchmark2 的缓存未命中次数远大于 benchmark1 ，平均时延 Average Latency 高出 13 个cycles 。这如何影响性能呢？继续观察下图 Bottom-up 中的分析。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599.png"
+width="1559"
+height="121"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599_huaeb1369d8df5f047d5d55e74be805100_32485_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599_huaeb1369d8df5f047d5d55e74be805100_32485_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="benchmark1"
+class="gallery-image"
+data-flex-grow="1288"
+data-flex-basis="3092px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956.png"
+width="1562"
+height="91"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956_hu1b3074ff876521e620d7b28b0f9399ed_27911_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956_hu1b3074ff876521e620d7b28b0f9399ed_27911_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="benchmark2"
+class="gallery-image"
+data-flex-grow="1716"
+data-flex-basis="4119px"
+>&lt;/p>
+&lt;p>能发现，在benchmark1（连续分配链表遍历测试）中，初始化耗时和遍历耗时相仿，都在300ms左右。初始化耗时可能主要来自缺页，每次遍历整个链表仅3ms左右，LLC Miss Count 为 0。这说明缓存完美地发挥了作用。&lt;/p>
+&lt;p>在 benchmark2 （循环分配节点，不连续）中，初始化耗时1.4秒，100次遍历耗时26.461秒，而且注意，LLC Miss Count 高达 47,603,332 。将这个数字除以循环次数，大约等于每个节点访问都会产生 0.7 个 LLC Miss 。&lt;/p>
+&lt;p>为什么会发生这种事？&lt;/p>
+&lt;p>benchmark1 一次 new 出连续的 &lt;code>1024 * 1024 * 64&lt;/code> 个元素，每个元素 8 个字节，连续排列，而且构造链表时是按顺序头尾相连的。所以遍历 benchmark1 的链表时，填充好的 cache line (设为 64字节)一共有8个链表元素且连续，预取机制同时拿了下一个 cache line ，因此 CPU 几乎不用傻等主存给数据，只需要不断一个 cache line 接一个 cache line 读写即可，效率极高。&lt;/p>
+&lt;p>而 benchmark2 相反，因为链表中的每个元素都是独立分配的，依据 allocator 算法不同表现会有区别，但比较明确的是元素不大可能是在内存中连续分配。在遍历链表时，取下一个链表元素 &lt;code>cur=cur-&amp;gt;next &lt;/code> 后，&lt;code>cur&lt;/code> 指向的地址大概率并不在已缓存的 cache line 中，因此每次循环里 CPU 都不得不从主存取数。可是主存取数是L1/L2 缓存取数耗时的成百上千倍，效率极低。&lt;/p>
+&lt;h3 id="伪共享">伪共享&lt;/h3>
+&lt;p>继续之前再说说伪共享。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;cstddef&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;thread&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;functional&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;chrono&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="k">namespace&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">chrono&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">string&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">function&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">fn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">start&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">fn&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">stop&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">system_clock&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">now&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">name&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;: &amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">duration_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">milliseconds&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">stop&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">start&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ms&amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">f&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">10000000&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">data&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;iteration&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="n">a&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">b&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">c&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kr">thread&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">threads&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">a&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">b&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">c&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">d&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="p">};&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">t&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">threads&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">t&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">join&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>依然是一个很简单的 benchmark，输出如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">iteration: 172ms
+iteration: 176ms
+iteration: 181ms
+iteration: 177ms
+iteration: 182ms
+iteration: 179ms
+... 略
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>一个非常简单的操作，4线程无锁，无 &lt;code>volatile&lt;/code> 递增不同的四个变量，几乎看不出有什么约束导致性能低下的问题。我们通过 Intel VTune 来看看。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690.png"
+width="1453"
+height="740"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690_hu046c5a587cbc915571865660d4965e46_142205_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690_hu046c5a587cbc915571865660d4965e46_142205_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="false sharing - intel VTune"
+class="gallery-image"
+data-flex-grow="196"
+data-flex-basis="471px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953.png"
+width="1453"
+height="740"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953_hu63d8a1f13a9b918520d7739e38733940_101530_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953_hu63d8a1f13a9b918520d7739e38733940_101530_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="stall"
+class="gallery-image"
+data-flex-grow="196"
+data-flex-basis="471px"
+>&lt;/p>
+&lt;p>可以看到，VTune 提示CPU花费了大量时间在傻等 cache line 写入主存。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789.png"
+width="1101"
+height="62"
+srcset="https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789_hua004026a68d2e492c13f4a22525e40fe_14051_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789_hua004026a68d2e492c13f4a22525e40fe_14051_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="hot spot"
+class="gallery-image"
+data-flex-grow="1775"
+data-flex-basis="4261px"
+>&lt;/p>
+&lt;p>函数 f 出现了海量的 loads/store 操作。&lt;/p>
+&lt;p>在前文中我们聊了 cache line 的作用，这里也能看到 LLC Miss 为 0，那么为什么运行性能会这么差呢？&lt;/p>
+&lt;p>这个问题还得回到 cache line 上。在多核系统中，cache line 还要求 &lt;strong>一致性&lt;/strong> ，一旦写 cache line 中的任意字节，都会让 &lt;strong>整个&lt;/strong> cache line 标记为失效。在基准测试代码里，四个 int 变量被连续分配在栈上，也就是说 cache line 极有可能将这四个变量中的多个保存在同一 cache line 内。任意一个线程修改了其中一个变量，都会导致 cache line 被标为失效，其他线程或核心想要访问这四个变量之一都不得不从主存重新取数。&lt;/p>
+&lt;p>这么做的原因是为了保证数据一致性。CPU0 修改了 cache line 中的数据，还没有写回主存，其他 CPU 都不清楚 CPU0 做了什么修改，只能等待 CPU0 写回主存（或者L3），再重新从主存（或L3）取数。但我们都知道a、b、c、d并不是共享的，每个线程都只访问自己的那个变量。这种问题被称作&lt;strong>伪共享&lt;/strong>。&lt;/p>
+&lt;p>在 VTune 中的表现，就是上图中海量的 Loads/Stores 操作。&lt;/p>
+&lt;p>如何解决呢？&lt;/p>
+&lt;p>很简单，让每个线程要操作的变量填满整个 cache line，防止因为cache line 里混入和其他线程要修改的变量造成伪共享。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">typedef&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">int8_t&lt;/span> &lt;span class="n">_before&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">60&lt;/span>&lt;span class="p">];&lt;/span>
+&lt;span class="kt">int32_t&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">int8_t&lt;/span> &lt;span class="n">_after&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">60&lt;/span>&lt;span class="p">];&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="n">value&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">f&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">data&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">10000000&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">data&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">value&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">100&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">time_it&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;iteration&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">value&lt;/span> &lt;span class="n">a&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">},&lt;/span> &lt;span class="n">b&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">},&lt;/span> &lt;span class="n">c&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">},&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">};&lt;/span>
+&lt;span class="kr">thread&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">threads&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">a&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">b&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">c&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="k">new&lt;/span> &lt;span class="kr">thread&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">d&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="p">};&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">auto&lt;/span> &lt;span class="nl">t&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">threads&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">t&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">join&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>将原本的 int 改成前后各有 60 字节填充的结构（前60字节防止 value 混入别人的 cache line，后60字节防止value后的变量混入cache line，124字节，对齐后128字节）。这个解决方法是典型的 &lt;strong>用空间换时间&lt;/strong> 。再次运行基准测试，可以看到运行时间缩短了数倍。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">iteration: 15ms
+iteration: 21ms
+iteration: 20ms
+iteration: 18ms
+iteration: 20ms
+iteration: 22ms
+iteration: 20ms
+iteration: 19ms
+iteration: 20ms
+iteration: 20ms
+... 略
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="cache-line-原理">cache line 原理&lt;/h3>
+&lt;p>Intel 在 2016 年发表的一篇文章，&lt;a class="link" href="https://www.intel.com/content/www/us/en/developer/articles/technical/how-memory-is-accessed.html" target="_blank" rel="noopener"
+>How Memory Is Accessed&lt;/a>这样写道。&lt;/p>
+&lt;blockquote>
+&lt;p>Programming modern computers rarely requires an understanding of underlying hardware and software; consequently, most programmers do not know how the memory subsystem works.&lt;/p>
+&lt;p>However, such lack of knowledge can ultimately produce a 10x or worse slowdown in application performance – especially since the arrival of &lt;a class="link" href="http://software.intel.com/en-us/articles/what-s-new-about-modern-hardware" target="_blank" rel="noopener"
+>new hardware technologies&lt;/a>.&lt;/p>
+&lt;p>&amp;hellip;&lt;/p>
+&lt;p>The accesses propagating through the memory subsystem are a combination of a specific request and the needed physical addresses and, perhaps, data.&lt;/p>
+&lt;p>Data moves around most of the memory subsystem in 64-byte quantities called &lt;em>cache lines&lt;/em>. A &lt;em>cache entry&lt;/em>, which is some transistors that can store a physical address and a cache line, is filled when a cache line is copied into it. Pages are evenly divided into cache lines – the first 64 bytes of a 4096-byte page is a cache line, with the 64 bytes stored together in a cache entry; the next 64 bytes is the next cache line, etc.&lt;/p>
+&lt;p>Each cache line may:&lt;/p>
+&lt;ul>
+&lt;li>Not be cached&lt;/li>
+&lt;li>Occupy an entry in one cache&lt;/li>
+&lt;li>Be duplicated in several caches&lt;/li>
+&lt;/ul>
+&lt;p>Cores, I/O devices, and other devices send requests to caches to either read or write a cache entry for a physical address. The lowest six bits of the physical address are not sent – they are used by the core to select the bytes within the cache line. The core sends separate requests for each cache line it needs.&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Reads&lt;/strong> – If a cache has the requested physical address in a cache entry, the cache returns the data. If not, the cache requests the data from deeper in the memory subsystem and evicts some cache entry to make room. If the evicted cache entry has been modified, it must be written to the deeper memory subsystem as part of this eviction. This means a stream of reads may slow down because an earlier set of writes must be pushed deeper into the memory subsystem. A small queue of written data buffers the communication from the sender to the receiver.&lt;/li>
+&lt;li>&lt;strong>Writes&lt;/strong> – If the cache does not have the cache line in a cache entry, the cache reads it from deeper in the memory subsystem. It evicts some other physical address from its cache entry to make room for this cache line. The read is necessary to get all the 64 bytes, because the write is probably changing only some of them. The first time a cache entry is written, the cache entries of this physical address in all other caches are invalidated. This action makes the first write on a cache entry more expensive than later writes.&lt;/li>
+&lt;/ul>
+&lt;/blockquote>
+&lt;p>CPU访问主存时并不是直接从主存取数，而是先读入高速缓存，也就是在CPU的规格说明中提到的 L1/L2/L3 缓存。而且，CPU也不会傻乎乎地只从主存取一个字节、4个字节或8个字节，而是取更多数据放入缓存。&lt;/p>
+&lt;p>为什么？因为 &lt;em>局部性原理&lt;/em> 。CPU设计者假设程序访问一个地址，则很快也会访问这个地址附近的其他地址。&lt;/p>
+&lt;p>这儿有个表格 &lt;em>Numbers everyone should know&lt;/em>：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext"> 0.5 ns - CPU L1 dCACHE reference
+1 ns - speed-of-light (a photon) travel a 1 ft (30.5cm) distance
+5 ns - CPU L1 iCACHE Branch mispredict
+7 ns - CPU L2 CACHE reference
+71 ns - CPU cross-QPI/NUMA best case on XEON E5-46*
+100 ns - MUTEX lock/unlock
+100 ns - own DDR MEMORY reference
+135 ns - CPU cross-QPI/NUMA best case on XEON E7-*
+202 ns - CPU cross-QPI/NUMA worst case on XEON E7-*
+325 ns - CPU cross-QPI/NUMA worst case on XEON E5-46*
+10,000 ns - Compress 1K bytes with Zippy PROCESS
+20,000 ns - Send 2K bytes over 1 Gbps NETWORK
+250,000 ns - Read 1 MB sequentially from MEMORY
+500,000 ns - Round trip within a same DataCenter
+10,000,000 ns - DISK seek
+10,000,000 ns - Read 1 MB sequentially from NETWORK
+30,000,000 ns - Read 1 MB sequentially from DISK
+150,000,000 ns - Send a NETWORK packet CA -&amp;gt; Netherlands
+| | | |
+| | | ns|
+| | us|
+| ms|
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>具体数字依赖于具体的硬件平台，这个表格可以对访问速度建立大概的映像。当 L1/L2 缓存未命中，CPU不得不继续向更远、延时更长的设备寻求数据，每个 LLC Miss 都意味着 CPU 不得不花上成百上千倍的时间等待填充 cache line。而 LLC Miss 出现的频率越高，则意味着 CPU 执行的效率越低——绝大部分时间都在等待主存的数据。&lt;/p>
+&lt;p>更糟糕的是，有时候 CPU 真的就是傻等(stall)，不专门分析甚至都不知道程序根本没跑出应有的速度。&lt;/p>
+&lt;blockquote>
+&lt;p>Modern cores use both &lt;a class="link" href="https://en.wikipedia.org/wiki/Out-of-order_execution" target="_blank" rel="noopener"
+>out-of-order execution&lt;/a> and &lt;a class="link" href="https://en.wikipedia.org/wiki/Hyper-threading" target="_blank" rel="noopener"
+>hyperthreading&lt;/a> to find and to do something useful while other instructions wait for data to be fetched.&lt;/p>
+&lt;p>If nothing useful can be done, the core stalls. Unfortunately, the OS is almost unaware of the stall: the application appears to be running, and it is hard to tell if the application is slower than it should be. You need tools to examine &lt;a class="link" href="https://en.wikipedia.org/wiki/Hardware_performance_counter" target="_blank" rel="noopener"
+>hardware performance counters&lt;/a> to see stall details.&lt;/p>
+&lt;/blockquote>
+&lt;p>回顾基准测试代码，仅仅是连续分配内存就可以获得百倍的性能改善，超值。&lt;/p>
+&lt;p>引用前文来给 cache line 小节结尾：&lt;/p>
+&lt;blockquote>
+&lt;p>However, such lack of knowledge can ultimately produce a 10x or worse slowdown in application performance – especially since the arrival of &lt;a class="link" href="http://software.intel.com/en-us/articles/what-s-new-about-modern-hardware" target="_blank" rel="noopener"
+>new hardware technologies&lt;/a>.&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>什么是 cache line？&lt;/p>
+&lt;blockquote>
+&lt;p>Data moves around most of the memory subsystem in 64-byte quantities called &lt;em>cache lines&lt;/em>.&lt;/p>
+&lt;/blockquote>
+&lt;p>cache line 如何影响性能？&lt;/p></description></item><item><title>编译LIEF的各种姿势</title><link>https://nnnewb.github.io/blog/p/how-to-compile-lief-on-windows/</link><pubDate>Fri, 08 Oct 2021 16:25:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/how-to-compile-lief-on-windows/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>惯例得有个前言。&lt;/p>
+&lt;p>LIEF是一个二进制文件分析和操作库，官方推荐的是 Python 版本，确实更好用，就是类型的问题有点多，而且没附送 &lt;code>.pyi&lt;/code> 导致不大好写。而C++版本就没这问题，C++版本有自己的问题=，=&lt;/p>
+&lt;p>一个是官方提供下载的SDK是静态链接的，用到SDK的程序必须指定 &lt;code>/MT&lt;/code> 不然编译器就会抱怨运行库不匹配。虽然看issue里已经有人解决了（&lt;code>-DLIEF_USE_CRT_{DEBUG,RELEASE}=MD/MT&lt;/code>），但CI还是老样子，反正直接下载的SDK用起来就蛋疼，vcpkg 全都是 &lt;code>/MD&lt;/code> 链接的，没法配合用。&lt;/p>
+&lt;p>更别提 MinGW 了，就没官方的SDK。&lt;/p>
+&lt;p>以上就是问题，解决问题的最简单办法就是自己编译了。&lt;/p>
+&lt;h2 id="0x01-visual-c-工具链-msbuild">0x01 Visual C++ 工具链 msbuild&lt;/h2>
+&lt;p>代码下载下来之后，用 CMake 去编译。下面的命令都是 Powershell 下的，注意折行用的是反引号 backquote，就是波浪号那个键，和 bash 用 反斜杠不一样。直接复制到命令行是跑不起来的。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-powershell" data-lang="powershell">&lt;span class="n">cmake&lt;/span> &lt;span class="p">..&lt;/span>
+&lt;span class="n">-G&lt;/span> &lt;span class="s2">&amp;#34;Visual Studio 2019&amp;#34;&lt;/span> &lt;span class="c"># Generator，你的工具链，可以用 cmake --help 来看看有哪些可用的&lt;/span>
+&lt;span class="n">-A&lt;/span> &lt;span class="n">Win32&lt;/span> &lt;span class="c"># 选择 Visual C++ 工具链的情况下可以用 -A Win32 选择编译32位代码，或者 Win64&lt;/span>
+&lt;span class="n">-DCMAKE_BUILD_TYPE&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">Debug&lt;/span> &lt;span class="c"># 常用的 Debug/Release/RelWithDebInfo&lt;/span>
+&lt;span class="n">-DLIEF_PYTHON_API&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">off&lt;/span> &lt;span class="c"># 不编译 Python 模块，这样就不用装 Python 了&lt;/span>
+&lt;span class="n">-DLIEF_USE_CRT_DEBUG&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="nb">MD &lt;/span>&lt;span class="c"># 使用 /MD 链接 msvcrt.dll 而不是 libcmt&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>这儿有个坑，用 Visual Studio 这个 Generator 的时候，虽然指定了 &lt;code>CMAKE_BUILD_TYPE&lt;/code>，但实际没什么卵用，还得在编译的时候给参数 &lt;code>--config Debug&lt;/code> 才会真的按 Debug 编译。&lt;/p>
+&lt;p>然后是编译命令：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-powershell" data-lang="powershell">&lt;span class="n">cmake&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-build&lt;/span> &lt;span class="p">.&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-config&lt;/span> &lt;span class="n">Debug&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-target&lt;/span> &lt;span class="n">LIB_LIEF&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>默认用微软的 msbuild 会花很长时间去编译，不嫌麻烦的话可以用 Ninja。&lt;/p>
+&lt;p>编译完还不能用，还得先“安装”到一个目录里。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-powershell" data-lang="powershell">&lt;span class="n">cmake&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-install&lt;/span> &lt;span class="p">.&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-config&lt;/span> &lt;span class="n">Debug&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-prefix&lt;/span> &lt;span class="nb">LIEF-msvc&lt;/span>&lt;span class="n">-debug&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>这样就会把必要的文件给复制到 &lt;code>LIEF-msvc-debug&lt;/code> 这个文件夹里了，参考 LIEF 官方的集成文档，把 &lt;code>LIEF_DIR&lt;/code> 设置成这个文件夹的路径就可以用啦。&lt;/p>
+&lt;h2 id="0x02-visual-c-工具链-ninja">0x02 Visual C++ 工具链 ninja&lt;/h2>
+&lt;p>使用 CMake + Ninja 的情况下没法用 &lt;code>-A&lt;/code> 去控制编译32位还是64位了，你得先装好 Visual C++ 构建工具，然后打开开发者命令提示符。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/image/how-to-compile-lief-on-windows/image-20211008160449880.png"
+loading="lazy"
+alt="image-20211008160449880"
+>&lt;/p>
+&lt;p>比如想编译32位的就选 &lt;code>x86 native tool command prompt&lt;/code> ，在这个命令提示符里用 cmake 构建。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-powershell" data-lang="powershell">&lt;span class="n">cmake&lt;/span> &lt;span class="p">..&lt;/span> &lt;span class="n">-G&lt;/span> &lt;span class="n">Ninja&lt;/span> &lt;span class="n">-DCMAKE_BUILD_TYPE&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">Debug&lt;/span> &lt;span class="n">-DLIEF_PYTHON_API&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">off&lt;/span> &lt;span class="n">-DLIEF_USE_CRT_DEBUG&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="nb">MD
+&lt;/span>&lt;span class="nb">&lt;/span>&lt;span class="n">cmake&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-build&lt;/span> &lt;span class="p">.&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-target&lt;/span> &lt;span class="n">LIB_LIEF&lt;/span>
+&lt;span class="n">cmake&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-install&lt;/span> &lt;span class="p">.&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-prefix&lt;/span> &lt;span class="nb">LIEF-msvc&lt;/span>&lt;span class="n">-debug&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>其他和直接用 msvc 没啥区别。&lt;/p>
+&lt;h2 id="0x03-mingw-工具链-makefile">0x03 MinGW 工具链 makefile&lt;/h2>
+&lt;p>MinGW 工具链其实和 msvc 差不太大。先装 MinGW，推荐 msys2，msys2装好后跑命令 &lt;code>pacman -Sy mingw-w64-i686-toolchain&lt;/code> 就能装上32位的编译工具链了，包括了 &lt;code>gcc&lt;/code>、&lt;code>g++&lt;/code>、&lt;code>mingw32-make&lt;/code> 这些必要的程序。&lt;/p>
+&lt;p>完事后把 &lt;code>MinGW&lt;/code> 工具链加到 &lt;code>PATH&lt;/code> 里。一般来说，假如你把 msys2 装到 &lt;code>C:\msys64&lt;/code> 下的话，那要加的路径就是 &lt;code>C:\msys64\mingw32\bin&lt;/code>，自己看看要用的 gcc 放在哪儿呗。&lt;/p>
+&lt;p>另外 &lt;code>LIEF_USE_CRT_DEBUG&lt;/code> 这变量也用不到了，&lt;code>MD&lt;/code>还是&lt;code>MT&lt;/code> 这是专供 MSVC 的选择题，MinGW 不管这个。&lt;/p>
+&lt;p>接着就可以用 CMake 了。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-powershell" data-lang="powershell">&lt;span class="n">cmake&lt;/span> &lt;span class="p">..&lt;/span> &lt;span class="n">-G&lt;/span> &lt;span class="s2">&amp;#34;MinGW Makefiles&amp;#34;&lt;/span> &lt;span class="n">-DCMAKE_BUILD_TYPE&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">Debug&lt;/span> &lt;span class="n">-DLIEF_PYTHON_API&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">off&lt;/span> &lt;span class="s1">&amp;#39;-DCMAKE_C_FLAGS:STRING=&amp;#34;-m32&amp;#34;&amp;#39;&lt;/span> &lt;span class="s1">&amp;#39;-DCMAKE_CXX_FLAGS:STRING=&amp;#34;-m32&amp;#34;&amp;#39;&lt;/span>
+&lt;span class="n">cmake&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-build&lt;/span> &lt;span class="p">.&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-target&lt;/span> &lt;span class="n">LIB_LIEF&lt;/span>
+&lt;span class="n">cmake&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-install&lt;/span> &lt;span class="p">.&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-prefix&lt;/span> &lt;span class="nb">LIEF-mingw32&lt;/span>&lt;span class="n">-debug&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>不用担心 CMake 选错工具链，用 &lt;code>MinGW Makefiles&lt;/code> 的情况下会优先考虑 GCC 的。不过还有个老问题：怎么选32位还是64位。答案是设置下 &lt;code>C_FLAGS&lt;/code> 和 &lt;code>CXX_FLAGS&lt;/code> 这两个特殊变量，让编译器加上 &lt;code>-m32&lt;/code> 这个参数，编译出来的就是32位代码了。&lt;/p>
+&lt;h2 id="0x04-mingw-工具链-ninja">0x04 MinGW 工具链 Ninja&lt;/h2>
+&lt;p>和 &lt;code>MinGW Makefiles&lt;/code> 差不太多，但是 &lt;code>Ninja&lt;/code> 没那么聪明，不知道要用什么编译器，得手动指定。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-powershell" data-lang="powershell">&lt;span class="n">cmake&lt;/span> &lt;span class="p">..&lt;/span> &lt;span class="n">-G&lt;/span> &lt;span class="n">Ninja&lt;/span> &lt;span class="n">-DCMAKE_BUILD_TYPE&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">Debug&lt;/span> &lt;span class="n">-DLIEF_PYTHON_API&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">off&lt;/span> &lt;span class="n">-DCMAKE_C_COMPILER&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">gcc&lt;/span> &lt;span class="n">-DCMAKE_CXX_COMPILER&lt;/span>&lt;span class="p">=&lt;/span>&lt;span class="n">g&lt;/span>&lt;span class="p">++&lt;/span> &lt;span class="s1">&amp;#39;-DCMAKE_C_FLAGS:STRING=&amp;#34;-m32&amp;#34;&amp;#39;&lt;/span> &lt;span class="s1">&amp;#39;-DCMAKE_CXX_FLAGS:STRING=&amp;#34;-m32&amp;#34;&amp;#39;&lt;/span>
+&lt;span class="n">cmake&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-build&lt;/span> &lt;span class="p">.&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-target&lt;/span> &lt;span class="n">LIB_LIEF&lt;/span>
+&lt;span class="n">cmake&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-install&lt;/span> &lt;span class="p">.&lt;/span> &lt;span class="p">-&lt;/span>&lt;span class="n">-prefix&lt;/span> &lt;span class="nb">LIEF-mingw32&lt;/span>&lt;span class="n">-debug&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>配置阶段多出来两个参数，&lt;code>-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++&lt;/code>，目的就是告诉 CMake 放机灵点，用 &lt;code>gcc/g++&lt;/code> 编译器，别瞎整。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>也就这么回事吧。&lt;/p></description></item><item><title>在C++中嵌入Python解释器</title><link>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</link><pubDate>Fri, 07 Feb 2020 21:59:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/</guid><description>&lt;p>先不说废话，项目地址：https://github.com/nnnewb/CQPy 。欢迎给个 Star 什么的。&lt;/p>
+&lt;h2 id="背景">背景&lt;/h2>
+&lt;p>想给最近在玩的酷 Q 写个插件，发现没有合适的直接使用 Python 的解决方案。&lt;/p>
+&lt;p>Richard Chien 提供了一个比较通用的插件，&lt;code>CQHttp&lt;/code>。&lt;code>CQHttp&lt;/code>本体是用 C++ 编写的插件，将酷 Q 的回调包装成 HTTP 请求转发至指定的地址，支持&lt;code>http&lt;/code>和&lt;code>websocket&lt;/code>两种协议。&lt;/p>
+&lt;p>不过由于个人想折腾折腾的想法，打算试试把 Python 解释器直接嵌入到 C++ 里得了。&lt;/p>
+&lt;!-- more -->
+&lt;p>整个思路如下。&lt;/p>
+&lt;pre>&lt;code class="language-mermaid" data-lang="mermaid">graph LR;
+CQP[酷Q] --事件回调--&amp;gt; dll[插件DLL];
+dll --事件回调--&amp;gt; python[Python脚本];
+python --调用API--&amp;gt; dll;
+dll --调用API--&amp;gt; CQP;
+&lt;/code>&lt;/pre>&lt;h2 id="依赖">依赖&lt;/h2>
+&lt;p>为了简化操作 Python 接口，我没有使用 Python 自带的 C API，而是&lt;code>pybind11&lt;/code>，使用&lt;code>vcpkg&lt;/code>管理依赖。&lt;/p>
+&lt;p>安装命令：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-batch" data-lang="batch">vcpkg install pybind11:x86-windows
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="0x1-编译-dll">0x1 编译 DLL&lt;/h2>
+&lt;p>我使用 CMake 作为编译系统，因此可以很简单地写一个编译出 DLL 的 &lt;code>CMakeLists.txt&lt;/code>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-cmake" data-lang="cmake">&lt;span class="nb">cmake_minimum_required&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">VERSION&lt;/span> &lt;span class="s">3.15&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">project&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">top.weak-ptr.cqpy&lt;/span> &lt;span class="s">LANGUAGES&lt;/span> &lt;span class="s">CXX&lt;/span> &lt;span class="s">VERSION&lt;/span> &lt;span class="s">0.1.0&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">include_directories&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">src&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">aux_source_directory&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">src&lt;/span> &lt;span class="s">SOURCES&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">CMAKE_CXX_STANDARD&lt;/span> &lt;span class="s">17&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="c"># 引入 pybind11
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="nb">find_package&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">pybind11&lt;/span> &lt;span class="s">CONFIG&lt;/span> &lt;span class="s">REQUIRED&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="c"># 添加 target
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">OUT_NAME&lt;/span> &lt;span class="s2">&amp;#34;app&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">add_library&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">${&lt;/span>&lt;span class="nv">OUT_NAME&lt;/span>&lt;span class="o">}&lt;/span> &lt;span class="s">SHARED&lt;/span> &lt;span class="o">${&lt;/span>&lt;span class="nv">SOURCES&lt;/span>&lt;span class="o">}&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">set_target_properties&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">${&lt;/span>&lt;span class="nv">OUT_NAME&lt;/span>&lt;span class="o">}&lt;/span> &lt;span class="s">PROPERTIES&lt;/span> &lt;span class="s">LINKER_LANGUAGE&lt;/span> &lt;span class="s">CXX&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">target_link_libraries&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">${&lt;/span>&lt;span class="nv">OUT_NAME&lt;/span>&lt;span class="o">}&lt;/span> &lt;span class="s">PRIVATE&lt;/span> &lt;span class="s">pybind11::embed&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>源代码使用 MSVC 和 MinGW 编译，另外再处理下源码编码的问题和宏。&lt;/p>
+&lt;p>主要涉及的几个问题：&lt;/p>
+&lt;ol>
+&lt;li>MSVC 编译时通过&lt;code>/utf-8&lt;/code>编译参数指定源码文件的编码。&lt;/li>
+&lt;li>MSVC 编译&lt;code>pybind11&lt;/code>时需要指定 &lt;code>-DNOMINMAX&lt;/code>，这是&lt;code>pybind11&lt;/code>要求的。&lt;/li>
+&lt;li>因为使用 VCPKG 管理依赖，MSVC 编译时还需要设置链接属性。&lt;/li>
+&lt;li>MinGW 编译时，指定 &lt;code>-static&lt;/code> 避免依赖 &lt;code>libgcc&lt;/code> 之类的 dll，最终编译结果只依赖于 &lt;code>libpython3.7.dll&lt;/code>。&lt;/li>
+&lt;li>MinGW 编译时，指定 &lt;code>-Wl,--kill-at,--enable-stdcall-fixup&lt;/code>，来确保导出的 DLL API 名字没有下划线开头和&lt;code>@&amp;lt;参数大小&amp;gt;&lt;/code>的后缀。&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-cmake" data-lang="cmake">&lt;span class="c"># 添加编译参数
+&lt;/span>&lt;span class="c">&lt;/span>&lt;span class="nb">add_compile_definitions&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">APP_ID=&lt;/span>&lt;span class="s2">&amp;#34;${PROJECT_NAME}&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">add_definitions&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">-DAPP_ID=&lt;/span>&lt;span class="s2">&amp;#34;top.weak-ptr.cqpy&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="s">MSVC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">add_compile_options&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">/utf-8&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">add_definitions&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">-DNOMINMAX&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="c"># 设置静态链接
+&lt;/span>&lt;span class="c">&lt;/span> &lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">VCPKG_CRT_LINKAGE&lt;/span> &lt;span class="s">STATIC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">VCPKG_LIBRARY_LINKAGE&lt;/span> &lt;span class="s">STATIC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">else&lt;/span> &lt;span class="p">()&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="nb">add_link_options&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">-static&lt;/span> &lt;span class="s">-Wl,--kill-at,--enable-stdcall-fixup&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="nb">endif&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="s">MSVC&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="err">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>最后的构建命令：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-batch" data-lang="batch">&lt;span class="k">mkdir&lt;/span> build
+&lt;span class="k">cd&lt;/span> build
+cmake .. \
+&lt;span class="s2">&amp;#34;-GVisual Studio 16 2019&amp;#34;&lt;/span> \
+-AWin32 \
+-DCMAKE_TOOLCHAIN_FILE=/path/to/your/vcpkg/scripts/buildsystems/vcpkg.cmake \
+cmake --build .
+cmake install
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>MinGW 对应改下 Generator，去掉&lt;code>-AWin32&lt;/code>和后面的&lt;code>-DCMAKE_TOOLCHAIN_FILE=/path/to/your/vcpkg/scripts/buildsystems/vcpkg.cmake&lt;/code>即可。&lt;/p>
+&lt;h2 id="0x2-msvc-编译导出-dll-的问题">0x2 MSVC 编译导出 DLL 的问题&lt;/h2>
+&lt;p>参考 MSDN 的文档，使用下面的方式无法正确导出 DLL 接口。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">extern&lt;/span> &lt;span class="s">&amp;#34;C&amp;#34;&lt;/span> &lt;span class="kr">__declspec&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dllexport&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="kr">__stdcall&lt;/span> &lt;span class="n">test&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>最终采用的是&lt;code>__pragma&lt;/code>的方式指定导出名，如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#define DLL_EXPORT extern &amp;#34;C&amp;#34; __declspec(dllexport)
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="cp">#define CQ_EXPORT(ReturnType, FuncName, ParamsSize, ...) \
+&lt;/span>&lt;span class="cp"> __pragma( \
+&lt;/span>&lt;span class="cp"> comment(linker, &amp;#34;/EXPORT:&amp;#34; #FuncName &amp;#34;=_&amp;#34; #FuncName &amp;#34;@&amp;#34; #ParamsSize)) \
+&lt;/span>&lt;span class="cp"> DLL_EXPORT ReturnType __stdcall FuncName(__VA_ARGS__)
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意&lt;code>__pragma&lt;/code>只能在 MSVC 中使用，所以要加上条件判断。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="cp">#define DLL_EXPORT extern &amp;#34;C&amp;#34; __declspec(dllexport)
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="cp">#if defined(_MSC_VER)
+&lt;/span>&lt;span class="cp">#define CQ_EXPORT(ReturnType, FuncName, ParamsSize, ...) \
+&lt;/span>&lt;span class="cp"> __pragma( \
+&lt;/span>&lt;span class="cp"> comment(linker, &amp;#34;/EXPORT:&amp;#34; #FuncName &amp;#34;=_&amp;#34; #FuncName &amp;#34;@&amp;#34; #ParamsSize)) \
+&lt;/span>&lt;span class="cp"> DLL_EXPORT ReturnType __stdcall FuncName(__VA_ARGS__)
+&lt;/span>&lt;span class="cp">#else
+&lt;/span>&lt;span class="cp">#define CQ_EXPORT(ReturnType, FuncName, ParamsSize, ...) \
+&lt;/span>&lt;span class="cp"> DLL_EXPORT ReturnType __stdcall FuncName(__VA_ARGS__)
+&lt;/span>&lt;span class="cp">#endif
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>理论上也能用&lt;code>.def&lt;/code>文件来定义导出表，可以自行尝试下。&lt;/p>
+&lt;h2 id="0x3-导入-cqpdll-的-api-的问题">0x3 导入 CQP.dll 的 API 的问题&lt;/h2>
+&lt;p>首先要知道&lt;code>CQP.dll&lt;/code>也会加载到&lt;code>CQP.exe&lt;/code>中，插件也会加载到&lt;code>CQP.exe&lt;/code>中，所以我们需要的就是使用 Windows API 获取到&lt;code>CQP.dll&lt;/code>的 Handle 再进行操作。&lt;/p>
+&lt;p>大致代码如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">const&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">dll&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">GetModuleHandleW&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">L&lt;/span>&lt;span class="s">&amp;#34;CQP.dll&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">const&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">CQ_addLog&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">reinterpret_cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">int32_t&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kr">__stdcall&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">GetProcAddress&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dll&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;CQ_addLog&amp;#34;&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>通过两个 API 调用即可获得需要的函数指针了。&lt;/p>
+&lt;h2 id="0x4-嵌入-python-解释器">0x4 嵌入 Python 解释器&lt;/h2>
+&lt;p>到了这一步已经非常简单了，&lt;code>pybind11&lt;/code>提供了高度封装的 C++ API。可以直接参考&lt;a class="link" href="https://pybind11.readthedocs.io/en/stable/advanced/embedding.html" target="_blank" rel="noopener"
+>这个文档&lt;/a>。&lt;/p>
+&lt;p>再给个简单的例子代码：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c++" data-lang="c++">&lt;span class="k">template&lt;/span> &lt;span class="o">&amp;lt;&lt;/span>&lt;span class="k">typename&lt;/span>&lt;span class="p">...&lt;/span> &lt;span class="n">Args&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>
+&lt;span class="kr">inline&lt;/span> &lt;span class="kt">int32_t&lt;/span> &lt;span class="n">py_callback&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">string&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">py_func&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">Args&lt;/span>&lt;span class="p">...&lt;/span> &lt;span class="n">args&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">guard&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">lock_guard&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">lock&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">try&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">m&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">module&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">import&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;cqpy._callback&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">py_func&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">c_str&lt;/span>&lt;span class="p">())(&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">...).&lt;/span>&lt;span class="k">template&lt;/span> &lt;span class="n">cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">catch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">error_already_set&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">e&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">logging&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">error&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">e&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">what&lt;/span>&lt;span class="p">());&lt;/span> &lt;span class="c1">// 记录 python 错误到日志
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">return&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 启用插件
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">CQ_EXPORT&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">int32_t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">cq_event_enable&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">initialize_interpreter&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="c1">// 设置 AUTH_CODE，但是暂时还不能使用酷Q的API
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">_embed&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">module&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">import&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;_embed&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">_embed&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;AUTH_CODE&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">AUTH_CODE&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// 初始化 Python 解释器环境，把数据目录加入 python path
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">auto&lt;/span> &lt;span class="n">raw_app_dir&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">string&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">CQ_getAppDirectory&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">AUTH_CODE&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">app_dir&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">bytes&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">raw_app_dir&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;decode&amp;#34;&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="s">&amp;#34;gb18030&amp;#34;&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">cast&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">str&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">sys&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">py&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">module&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">import&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;sys&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">sys&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;path&amp;#34;&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="n">attr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;append&amp;#34;&lt;/span>&lt;span class="p">)(&lt;/span>&lt;span class="n">app_dir&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// 初始化完成
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">logging&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">info&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Python interpreter initialized.&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nf">py_callback&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;on_enable&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>需要注意的是，虽然在前面通过相关参数指定了静态链接，但实际&lt;code>Python3.7.dll&lt;/code>还是动态链接上去的。&lt;/p>
+&lt;p>所以分发这样编译出来的 dll，依然需要用户先安装一个 &lt;code>Python3.7&lt;/code>，或者把 &lt;code>Python3.7.dll&lt;/code> 也一起分发出去。&lt;/p>
+&lt;p>如果要完全的静态链接，可能要自行编译 Python 源代码。实在太麻烦，就懒得弄了。&lt;/p>
+&lt;h2 id="0x5-踩的坑">0x5 踩的坑&lt;/h2>
+&lt;p>通过 Python 调用 C++ 端提供的 API 时，特别注意参数一定要一一对应，特别是数据类型，一旦不匹配或传入数据有误（例如 None），可能造成 C++ 端内存异常，需要挂调试器才能发现原因，非常麻烦。&lt;/p>
+&lt;p>&lt;code>sys&lt;/code>是&lt;code>builtin&lt;/code>的库，和&lt;code>os&lt;/code>不同，如果分发的用户没有安装 Python，只有一个 &lt;code>Python3.7.dll&lt;/code>的话，很多 Python 自带的库是用不了的。例如说&lt;code>json&lt;/code>、&lt;code>logging&lt;/code>、甚至&lt;code>os&lt;/code>。这个应该算是常识，但最好一开始就意识到：你的用户还是要装一个 Python 才行。&lt;/p>
+&lt;p>关于 VirtualEnv 支持，建议直接参考&lt;a class="link" href="https://www.python.org/dev/peps/pep-0405/" target="_blank" rel="noopener"
+>PEP 405&lt;/a>。不多赘述。比较简单的处理就是把&lt;code>VENV\Lib\site-packages&lt;/code>加入到&lt;code>sys.path&lt;/code>里。&lt;/p>
+&lt;p>能不能把所有 Python 代码和 dll 都打包进 dll 里？大致原理就是丢进&lt;code>rc&lt;/code>里，但实际很麻烦，看&lt;code>py2exe&lt;/code>迄今为止还有一大堆坑就知道有多麻烦了。&lt;/p></description></item><item><title>GameHollywood 面试笔记</title><link>https://nnnewb.github.io/blog/p/gamehollywood-%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</link><pubDate>Tue, 26 Jun 2018 17:22:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/gamehollywood-%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</guid><description>&lt;h2 id="intro">Intro&lt;/h2>
+&lt;p>面试的职位是 C++后端开发工程师，主要聊的还是 C++。在过程中自我感觉面得还行，至少没&lt;a class="link" href="https://my.oschina.net/u/3888259/blog/1833040" target="_blank" rel="noopener"
+>上次&lt;/a>那么蠢。&lt;/p>
+&lt;p>聊的内容主要集中在 STL 和线程安全、资源管理的层面。&lt;/p>
+&lt;p>惯例的，填完面试信息表并简历一起上交，然后等面试官来客套完，就开始聊技术了。&lt;/p>
+&lt;blockquote>
+&lt;p>注意，面试官的提问并非原话，有修饰和脑补。&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="0-预热你用哪个版本的-c">0. 预热：你用哪个版本的 C++？&lt;/h2>
+&lt;p>客套话什么的就略了。&lt;/p>
+&lt;blockquote>
+&lt;p>面试官：&amp;hellip;行，那我们就聊聊 C++吧。你常用哪个版本的 C++？&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>我：我比较常用的是 C++11。&lt;/p>
+&lt;/blockquote>
+&lt;p>C++版本这个问题面试里应该不多见，不过作为引入的话题还行，标准之神会瞑目的。&lt;/p>
+&lt;p>对于&lt;strong>C++版本&lt;/strong>这个词，很大概率上大家说的应该就是 C++标准委员会&lt;a class="link" href="http://www.open-std.org/JTC1/SC22/WG21/" target="_blank" rel="noopener"
+>WG21&lt;/a>制定的 C++标准了，最新版本的标准文档是 C++17 定稿&lt;a class="link" href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf" target="_blank" rel="noopener"
+>N4659&lt;/a>，制定中的 C++20 标准文档可以访问&lt;a class="link" href="http://www.open-std.org/JTC1/SC22/WG21/docs/papers/2018/" target="_blank" rel="noopener"
+>WG21/docs/papers/2018&lt;/a>查阅。&lt;/p>
+&lt;p>需要注意的是，如果答成了&lt;strong>我用 VC6&lt;/strong>之类的骚话，很大概率会留下不好的映像——或者对方也是忠实的 VC6 神教教徒的话，达成共识也说不定。&lt;/p>
+&lt;p>闲话少叙。&lt;/p>
+&lt;h2 id="1-起手式stdshared_ptr">1. 起手式：&lt;code>std::shared_ptr&lt;/code>&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：说说&lt;code>std::shared_ptr&lt;/code>是怎么实现的？一般怎么去使用它？&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>答：&lt;code>shared_ptr&lt;/code>是通过&lt;strong>引用计数&lt;/strong>实现的，它可以作为容器元素，在程序里传递 blabal&amp;hellip;..而且&lt;code>shared_ptr&lt;/code>&lt;strong>不是线程安全的&lt;/strong>，它不能跨线程传递，要额外做一层包装 blabla&amp;hellip;&amp;hellip;&lt;/p>
+&lt;/blockquote>
+&lt;p>正巧最近有想写一篇智能指针相关的博客，面试官的第一问就提到了。&lt;/p>
+&lt;p>说到智能指针，就必须提一下 RAII 了。&lt;/p>
+&lt;h3 id="11-异常安全和-raii">1.1 异常安全和 RAII&lt;/h3>
+&lt;p>&lt;code>std::shared_ptr&lt;/code>和其他智能指针类型都在&lt;code>&amp;lt;memory&amp;gt;&lt;/code>头文件里定义，主要的作用是实现自动化的资源管理，基于&lt;strong>RAII&lt;/strong>的理念设计和实现。&lt;/p>
+&lt;p>&lt;strong>RAII&lt;/strong>指的是&lt;strong>获取资源即初始化&lt;/strong>，英文全写是&lt;strong>Resource Acquisition Is Initialization&lt;/strong>，属于一种面向对象编程语言中常见的惯用法。&lt;/p>
+&lt;p>它的思路是这样子的：初始化即获取资源，离开作用域就自动销毁。&lt;/p>
+&lt;p>RAII 解决的问题是，当异常发生时，如何确保资源释放。这是个&lt;strong>异常安全&lt;/strong>的问题。&lt;/p>
+&lt;p>常见的非 RAII 风格代码里，如果要确保资源被正确释放，就要用&lt;code>try {} catch() {} finally {}&lt;/code>块捕获异常，然后执行资源释放的代码，再将异常重新抛出。&lt;/p>
+&lt;p>而 RAII 的理念是，让资源的生命周期和一个栈上的对象严格绑定，确保栈上对象被析构的时候，资源也就被一同释放了。&lt;/p>
+&lt;p>在 C++中，有大量的代码都是以 RAII 风格进行设计的，其中智能指针也是。&lt;/p>
+&lt;h3 id="12-stdshared_ptr的实现">1.2 &lt;code>std::shared_ptr&lt;/code>的实现&lt;/h3>
+&lt;p>引用计数，大概了解过智能指针的人都能回答得出来。&lt;/p>
+&lt;p>虽然说实现方式并没有规定只能是引用计数，但实际上大家都是这么写的，万一哪天有个 GC 实现的&lt;code>std::shared_ptr&lt;/code>也别太震惊。&lt;/p>
+&lt;p>实现思路也挺简单。&lt;/p>
+&lt;p>所有指向同一实例的&lt;code>std::shared_ptr&lt;/code>应当持有同一个引用计数，来保持所有&lt;code>std::shared_ptr&lt;/code>计数同步，所以它们共同拥有一个计数器指针&lt;code>long *p&lt;/code>。&lt;/p>
+&lt;p>在复制时，&lt;code>shared_ptr&lt;/code>管理的对象指针和引用计数器指针被同时复制，然后引用计数器指针保存的引用计数+1——销毁同理，减少引用，直到删除。&lt;/p>
+&lt;h3 id="13-stdshared_ptr和copyassignable">1.3 &lt;code>std::shared_ptr&lt;/code>和&lt;code>CopyAssignable&lt;/code>&lt;/h3>
+&lt;p>&lt;code>std::shared_ptr&lt;/code>满足&lt;code>CopyContructiable&lt;/code>、&lt;code>CopyAssignable&lt;/code>和&lt;code>LessThanComparable&lt;/code>这些标准库的&lt;a class="link" href="https://zh.cppreference.com/w/cpp/named_req" target="_blank" rel="noopener"
+>具名要求&lt;/a>，因此可以作为 STL 容器的元素。&lt;/p>
+&lt;blockquote>
+&lt;p>顺便一提 &lt;code>Concept&lt;/code> 有很大可能出现在 C++20 标准里。&lt;/p>
+&lt;/blockquote>
+&lt;h3 id="14-线程安全性">1.4 线程安全性&lt;/h3>
+&lt;p>&lt;code>std::shared_ptr&lt;/code>不是线程安全的，不然不满足 C++对&lt;code>Zero Cost Abstraction&lt;/code>的要（吹）求（逼）。&lt;/p>
+&lt;p>依据官方说法，多线程访问不同的&lt;code>std::shared_ptr&lt;/code>实例是没问题的（大多容器也是）；多线程访问同一个&lt;code>std::shared_ptr&lt;/code>实例，但是只调用&lt;code>const&lt;/code>方法，那么也是没问题的（多线程读）；多线程访问同一个&lt;code>std::shared_ptr&lt;/code>实例，调用非&lt;code>const&lt;/code>方法，那么会产生数据竞争（多线程读写）。&lt;/p>
+&lt;p>如果希望在线程间传递 &lt;code>std::shared_ptr&lt;/code> 得靠 STL 提供的原子操作库&lt;code>std::atomic&lt;/code>。&lt;/p>
+&lt;p>&lt;code>std::atomic&lt;/code>可以快速帮助包装一个线程安全的对象或者指针，不过这东西对&lt;code>std::shared_ptr&lt;/code>的特化是目前还在制定的&lt;code>C++20&lt;/code>标准的一部分，所以能不用则不用，直到标准制定完成稳定，并且各编译器支持完善后再行考虑。&lt;/p>
+&lt;p>除此之外，如果确实有这方面的考虑，引入&lt;code>boost&lt;/code>是一个不错的选择。&lt;/p>
+&lt;p>无论如何，跨线程使用&lt;code>std::shared_ptr&lt;/code>我不怎么支持。&lt;/p>
+&lt;p>跨线程传递&lt;code>std::shared_ptr&lt;/code>本身就是个非常危险的行为。&lt;code>std::shared_ptr&lt;/code>作为标准库的一员，背负了 C++的历史包袱，它随时可能被取出裸指针使用，或者意外复制了一次或几次，而这些对线程安全几乎就是意味着作死的行为却没有任何管束。&lt;/p>
+&lt;h3 id="15-其他智能指针">1.5 其他智能指针&lt;/h3>
+&lt;ul>
+&lt;li>&lt;code>std::auto_ptr&lt;/code>&lt;/li>
+&lt;li>&lt;code>std::weak_ptr&lt;/code>&lt;/li>
+&lt;li>&lt;code>std::unique_ptr&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>其中&lt;code>std::auto_ptr&lt;/code>已经被扫进历史的垃圾堆了，作为替代者，&lt;code>std::unique_ptr&lt;/code>有更明确的语义和更高的可定制性。&lt;/p>
+&lt;p>&lt;code>std::weak_ptr&lt;/code>是对于&lt;code>std::shared_ptr&lt;/code>的补充，对于希望使用&lt;code>std::shared_ptr&lt;/code>作为使用了指针的数据结构之间的连接方式，又不希望产生循环引用恶劣情况的一个解决方案。弱指针的存在不影响引用计数工作。&lt;/p>
+&lt;p>最后是&lt;code>std::unique_ptr&lt;/code>，它的语义是明确唯一持有某一资源，依照约定，被&lt;code>std::unique_ptr&lt;/code>持有的资源不应该再有第二人持有，&lt;code>std::unique_ptr&lt;/code>是唯一访问该资源的入口。&lt;/p>
+&lt;p>这些智能指针都有一个共同点：为了兼容 C 代码，所以它们随时可以被取出裸指针而不影响自身的工作，但这种使用方式造成的一切后果自负。&lt;/p>
+&lt;h2 id="2-stdvector">2. &lt;code>std::vector&lt;/code>&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：&amp;hellip;知道&lt;code>std::vector&lt;/code>吧？讲讲它是怎么实现的。&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>我：vector 保存了一个一定长度的 buffer，当插入时可以避免插入一次就分配一次空间 blabla&amp;hellip;当插入长度超过了 buffer 长度，buffer 会依照内部算法来重新分配一次内存，扩张长度。&lt;/p>
+&lt;/blockquote>
+&lt;p>回答不全对。其实面试官之后又强调了一次，但面试时没有听出来。&lt;/p>
+&lt;blockquote>
+&lt;p>面试官：那之前分配的 buffer 呢？&lt;/p>
+&lt;p>我：之前分配的 buffer 先复制到新的 buffer 里，然后旧 buffer 会被释放。&lt;/p>
+&lt;/blockquote>
+&lt;p>这里对于释放旧 buffer 的说法其实是有问题的，可以具体看看下面。&lt;/p>
+&lt;h3 id="21-内存布局">2.1 内存布局&lt;/h3>
+&lt;p>&lt;code>std::vector&lt;/code>的&lt;strong>内存布局是连续的&lt;/strong>，这一点除了几乎每个人都有所了解之外（&amp;hellip;），标准给出的要求也可以看出点端倪。&lt;/p>
+&lt;blockquote>
+&lt;p>26.3.11.1 Class template vector overview&lt;/p>
+&lt;p>A vector is a sequence container that supports (amortized) constant time insert and erase operations at the end; insert and erase in the middle take linear time. Storage management is handled automatically, though hints can be given to improve eﬃciency.&lt;/p>
+&lt;/blockquote>
+&lt;p>关键点集中在这里：&lt;/p>
+&lt;blockquote>
+&lt;p>&amp;hellip; constant time insert and erase operations at the end;&lt;/p>
+&lt;/blockquote>
+&lt;p>末端插入和删除是常数时间&lt;/p>
+&lt;blockquote>
+&lt;p>&amp;hellip; insert and erase in the middle take linear time.&lt;/p>
+&lt;/blockquote>
+&lt;p>中间插入和删除需要线性时间（就是 &lt;code>O(n)&lt;/code>）。&lt;/p>
+&lt;p>典型的数组插入和删除的特征，不同的是&lt;code>std::vector&lt;/code>可以变长，所以真正插入大量数据的时候会有多次重新分配内存和复制的操作。&lt;/p>
+&lt;h3 id="22-copyassignable的约定">2.2 &lt;code>CopyAssignable&lt;/code>的约定&lt;/h3>
+&lt;p>&lt;code>std::vector&lt;/code>要求储存的对象满足&lt;code>DefautConstructible&lt;/code>、&lt;code>CopyContructiable&lt;/code>和&lt;code>CopyAssignable&lt;/code>的具名要求，文档参考&lt;code>26.3.11.1&lt;/code>第 2 节。&lt;/p>
+&lt;blockquote>
+&lt;p>26.3.11.1&lt;/p>
+&lt;p>A vector satisﬁes all of the requirements of a container and of a reversible container (given in two tables in 26.2), of a sequence container, including most of the optional sequence container requirements (26.2.3), of an allocator-aware container (Table 86), and, for an element type other than bool, of a contiguous container (26.2.1).&lt;/p>
+&lt;/blockquote>
+&lt;p>其中提到的&lt;code>Table 86&lt;/code>中列出了&lt;code>DefaultConstructible&lt;/code>、&lt;code>CopyAssignable&lt;/code>和&lt;code>CopyConstructiable&lt;/code>。&lt;/p>
+&lt;p>发挥一下脑洞，这些要求完美符合了之前对于重新分配内存的猜测对不对？&lt;/p>
+&lt;p>对象要可以被默认构造，因为&lt;code>vector&lt;/code>的实现可能是&lt;code>new&lt;/code>了一个新的对象数组（更可能是字节数组，到时候再&lt;code>placement new&lt;/code>）；对象要可以被复制构造，因为对象可能被从旧数组移动到新数组；对象要可以被复制构造&amp;hellip;..&lt;/p>
+&lt;p>当然更可能的原因是&lt;code>vector&lt;/code>本身是可复制的，上面的就当我吹逼吧。&lt;/p>
+&lt;p>除此之外还有&lt;code>CopyInsertable&lt;/code>和&lt;code>MoveInsertable&lt;/code>的具名需求，就像其字面意义那样，不多做解释。&lt;/p>
+&lt;h3 id="23-内存重新分配的方式">2.3 内存重新分配的方式&lt;/h3>
+&lt;p>对 C 稍有经验的人应该知道 C 语言有一个 API 叫做&lt;code>realloc&lt;/code>，它做的事情是这样的：&lt;/p>
+&lt;ol>
+&lt;li>如果可能的话，扩张原先分配的内存的长度。&lt;/li>
+&lt;li>否则重新分配一块内存，然后把旧的内存复制过去，释放旧内存，返回新指针。&lt;/li>
+&lt;li>如果找不到足够长度的连续内存，则返回 NULL，不释放旧内存。&lt;/li>
+&lt;/ol>
+&lt;p>C++自然不会少。&lt;/p>
+&lt;p>面试时没有想起来，本来认为是一种优化方案，但 STL 本身就算是优化方案了吧（&amp;hellip;）。正确的解答应该是&lt;/p>
+&lt;blockquote>
+&lt;p>用 realloc 的方式尝试扩展 buffer 长度，如果无法扩展长度，则拷贝旧 buffer 到新 buffer，再释放旧 buffer。&lt;/p>
+&lt;/blockquote>
+&lt;p>还行，失误就是失误，认错复习一遍。&lt;/p>
+&lt;h2 id="3-比较三个容器vectormaplist">3. 比较三个容器：&lt;code>vector&lt;/code>,&lt;code>map&lt;/code>,&lt;code>list&lt;/code>&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：说说看&lt;code>vector&lt;/code>、&lt;code>list&lt;/code>、&lt;code>map&lt;/code>有什么不同，分别在什么样的上下文环境里去使用它们吧。&lt;/p>
+&lt;p>我：vector 可以被随机访问，支持随机访问迭代器，迭代器算法有些不适用在&lt;code>list&lt;/code>和&lt;code>map&lt;/code>上 blabla&amp;hellip;&lt;code>list&lt;/code>通常是链表实现，在插入删除的性能上有优势 blabla&amp;hellip;&amp;hellip;&lt;/p>
+&lt;/blockquote>
+&lt;p>顺便一提还没说到&lt;code>map&lt;/code>，面试官就换话题了。&lt;/p>
+&lt;p>这一题我大概又没有 get 到面试官的 point，单谈论容器的话可说的东西不少，我觉得面试官可能更想了解下我对这些容器的性能和内存方面的认知，可惜我答的有些太浅白了。&lt;/p>
+&lt;h3 id="31-迭代器">3.1 迭代器&lt;/h3>
+&lt;p>先从迭代器的角度比较三个容器。&lt;/p>
+&lt;p>&lt;code>vector&lt;/code>是个典型的随机访问容器，显然支持&lt;code>forward iterator&lt;/code>、&lt;code>reversible iterator&lt;/code>和&lt;code>random access iterator&lt;/code>。典型的实现是&lt;a class="link" href="https://en.wikipedia.org/wiki/Dynamic_array" target="_blank" rel="noopener"
+>&lt;code>dynamic array&lt;/code>&lt;/a>。&lt;/p>
+&lt;p>&lt;code>list&lt;/code>是个线性结构容器，支持&lt;code>forward iterator&lt;/code>、&lt;code>reversible iterator&lt;/code>。典型的实现是链表。&lt;/p>
+&lt;p>&lt;code>map&lt;/code>是个树形容器，支持&lt;code>forward iterator&lt;/code>和&lt;code>reversible iterator&lt;/code>。典型的实现是红黑树。&lt;/p>
+&lt;h3 id="32-内存布局和访问效率">3.2 内存布局和访问效率&lt;/h3>
+&lt;p>讨论常见实现。&lt;/p>
+&lt;p>&lt;code>vector&lt;/code>是连续分配，访问成本低，插入和删除的成本高，会重分配内存。&lt;/p>
+&lt;p>&lt;code>list&lt;/code>是不连续分配，访问成本高，任意位置插入删除成本相对低，插入删除不会导致重新分配整块内存。&lt;/p>
+&lt;p>&lt;code>map&lt;/code>是不连续分配，插入删除访问成本不应和线性容器比较，毕竟它是关联容器。插入删除的成本都比较高，因为需要重新平衡树。访问时间在标准中的要求是对数时间复杂度，插入时间懒得继续翻标准文档了。&lt;/p>
+&lt;h3 id="33-使用上下文">3.3 使用上下文&lt;/h3>
+&lt;p>显而易见&lt;code>vector&lt;/code>适合高频读，而&lt;code>list&lt;/code>适合大量插入删除，&lt;code>map&lt;/code>和前面两个迭代器都搭不上调，在需要复杂索引的地方再合适不过了。&lt;/p>
+&lt;h3 id="34-线程安全性">3.4 线程安全性&lt;/h3>
+&lt;p>这些容器都不是线程安全的。&lt;/p>
+&lt;p>依照标准，多线程访问不同的容器实例一切都安好，访问同一个实例的&lt;code>const&lt;/code>方法也 ok，但是非&lt;code>const&lt;/code>方法就会引起数据竞争。&lt;/p>
+&lt;p>尤其注意迭代器的选择，这玩意儿有时候不比指针好多少。&lt;/p>
+&lt;h2 id="4-如何管理内存资源">4. 如何管理内存资源&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：你在项目里一般是怎么管理内存的呢？&lt;/p>
+&lt;p>我：一个是尽可能用智能指针，然后是需要频繁构造对象的场合下可以用 placement new blabla&amp;hellip;&lt;/p>
+&lt;/blockquote>
+&lt;p>内存管理是一个非常广阔的话题，我的回答太过于浅显了。常见的内存管理策略有很多，智能指针只能算是 RAII 这种常见的范式，placement new 算是内存池/对象池的一种写法大概，还有其他很多策略我并不了解也未能涉及。&lt;/p>
+&lt;h3 id="41-再论-raii">4.1 再论 RAII&lt;/h3>
+&lt;p>RAII 的范式可以确保异常安全，避免手贱忘记回收内存以及底层设计变更抛出的异常无法处理时导致意外的资源泄露。&lt;/p>
+&lt;p>诸如此类等等。&lt;/p>
+&lt;p>有一些约定可以关注一下。&lt;/p>
+&lt;h4 id="411-获取资源失败抛异常">4.1.1 获取资源失败抛异常&lt;/h4>
+&lt;p>首先 RAII 的全写是&lt;strong>获取资源即初始化&lt;/strong>，连资源都没能获取的话，构造理应失败，而不是静默给出一个无效的对象。&lt;/p>
+&lt;h4 id="412-析构绝不抛异常">4.1.2 析构绝不抛异常&lt;/h4>
+&lt;p>很好理解，如果析构又抛个异常出来的话，这个对象还析构不析构？父类还析构不析构？&lt;/p>
+&lt;h4 id="423-常见设计">4.2.3 常见设计&lt;/h4>
+&lt;p>在 STL 里除了智能指针以 RAII 设计以外，还有加锁解锁相关的内容也是：&lt;code>std::lock_guard&lt;/code>。&lt;/p>
+&lt;p>诸如此类的&lt;code>guard&lt;/code>模式也在其他语言中有出现：比如说 C#的&lt;code>using (var file = File.Open(...)) {}&lt;/code>。&lt;/p>
+&lt;h3 id="42-内存池和对象池">4.2 内存池和对象池&lt;/h3>
+&lt;p>内存池和对象池算是常见的设计范式，基本考虑到大量对象的构造删除的情况都会考虑到使用这两个模式，因为真的很好用（&lt;/p>
+&lt;p>内存池的模式主要是预先分配内存，然后在这片内存上构造对象，主要的适用场景是大量频繁构造小对象，构造成本低，生命周期短，内存分配成本居高不下的情况。当然，不仅是这里提到的场景，根据具体业务逻辑可能还会有不同的理由去选择内存池模式。&lt;/p>
+&lt;p>对象池区别于内存池的地方在于，对象池的对象构造成本要更高，频繁构造和析构是无法接受的，这种时候就需要一个候选备用的对象池，对象池实现需要对象本身允许被复用在不同的地方，一般来说性能会比较好。内存池则没这个顾虑：反正你需要就构造一个呗。&lt;/p>
+&lt;p>这两个池都可以用&lt;code>factory&lt;/code>模式来提供构造对象的服务，而工厂的消费者不需要了解对象是怎么构造出来的。结合 RAII 的话，内存池、对象池里的对象还可以用一层 RAII 设计的“智能指针”封装，使其完成使命后能自动返还资源，等待下一个工厂访客。&lt;/p>
+&lt;h2 id="5-玩过哪些游戏对游戏制作流程了解多少">5. 玩过哪些游戏，对游戏制作流程了解多少？&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：喜欢玩游戏吗？都玩过哪些游戏？&lt;/p>
+&lt;p>我：我的话&amp;hellip;主要玩的是音游，和贵公司业务可能并没有太多关联。&lt;/p>
+&lt;p>面试官：除了音乐游戏，有玩过 RPG、ARPG 类型的游戏吗？&lt;/p>
+&lt;p>我：像是辐射啊，老滚啊这些&amp;hellip;开放世界类型的游戏游戏性没那么好，比起来我更喜欢电影式的游戏，比如说最近比较火的《底特律：变人》。&lt;/p>
+&lt;p>面试官：&amp;hellip;&amp;hellip;（你丫来捣乱的是吧）&lt;/p>
+&lt;p>面试官：说说你对游戏行业的看法吧。&lt;/p>
+&lt;p>我：游戏行业前景好啊 blablabla&amp;hellip;娱乐崛起 blabla&amp;hellip;经济增长 blabla&amp;hellip;.&lt;/p>
+&lt;p>面试官：&amp;hellip;&amp;hellip;（？？？？）&lt;/p>
+&lt;p>面试官：你上一家公司也是制作游戏的吧？就是说，你们游戏制作啊，都有哪方面的人在负责做什么东西，大概是怎么个分工合作的样子。（提醒+强调）
+我：哦！哦哦，大概就是一个人负责策划整个游戏的玩法和系统，设计每个细节，然后程序负责去实现，自动测试 blabla&amp;hellip;内部试玩 blabla&amp;hellip;&lt;/p>
+&lt;/blockquote>
+&lt;p>还行，这波操作其实我也是挺佩服自己的。&lt;/p>
+&lt;h3 id="51-陷阱玩过哪些游戏">5.1 陷阱：玩过哪些游戏&lt;/h3>
+&lt;p>我注意到一件事：在多次面试游戏行业的职位时，都提到这这个问题：&lt;/p>
+&lt;blockquote>
+&lt;p>你玩过哪些游戏？&lt;/p>
+&lt;/blockquote>
+&lt;p>也许形式上有所区别：&lt;/p>
+&lt;blockquote>
+&lt;p>你玩过的游戏里，有哪些特别喜欢的？&lt;/p>
+&lt;/blockquote>
+&lt;p>换位思考，如果我是面试官，我为什么要问这个问题？我想知道什么？&lt;/p>
+&lt;blockquote>
+&lt;p>熟悉游戏吗？&lt;/p>
+&lt;p>知道游戏有哪些元素吗？&lt;/p>
+&lt;p>能理解（我们招你进来要做的游戏）要你做什么吗？&lt;/p>
+&lt;/blockquote>
+&lt;p>不必太过刻意地表达出对游戏行业的崇拜或者抬高之类的，这一关主要的目的还是引出下文，聊聊对游戏制作流程的理解。如果对面试的公司出的产品有所了解的话可能算是加分项。&lt;/p>
+&lt;p>但是，从一个游戏玩家的角度出发，表现出不好的情绪容易留下坏映像——&lt;strong>特别是，绝对不要明显地表达出对国产网游、手游、页游的鄙视！！&lt;/strong>&lt;/p>
+&lt;p>从一个玩家的角度出发，我也不喜欢&lt;strong>大部分&lt;/strong>国产的页游手游，但是当着游戏行业公司的面试官的面，表现出&lt;strong>我看不起你&lt;/strong>的态度，知道什么叫作死吗？&lt;/p>
+&lt;p>更何况并不是&lt;strong>所有国产游戏&lt;/strong>都是屎，举例来说我现在超喜欢 MUSE DASH 这款国产音游的，手感比兰空 voze、节奏大师之类的好得多，界面也没有像节奏大师那样糊成屎，要不是我的 Unity3D 水平太差我真想给这家 pero pero game 工作室（公司？）投个简历看看。&lt;/p>
+&lt;p>除此之外还有就是抱着&lt;strong>拯救国产游戏&lt;/strong>的想法或者态度，又或者&lt;strong>劳资教你们什么才是真正的游戏&lt;/strong>这样的想法或者态度，作死无极限啊。&lt;/p>
+&lt;p>比较稳妥的回答方案应该是常见的几个网游，比如说 LOL，DNF，王者荣耀，诸如此类。实际上玩过没玩过&amp;hellip;..咳，不被戳穿就无所谓了。&lt;/p>
+&lt;h3 id="52-游戏行业">5.2 游戏行业&lt;/h3>
+&lt;p>加班是家常便饭，好像所有游戏行业的公司都会这么说。&lt;/p>
+&lt;p>大概了解下几个术语，算是加班界的黑话吧。&lt;/p>
+&lt;p>一个是 996。什么意思呢？上午 9 点上班，晚上 9 点下班，一周上 6 天，加班费不用考虑了，不存在的，最多给调休。&lt;/p>
+&lt;p>再有一个是大小周。一周上 6 天，一周上 5 天，如此循环。同样，大周加班不算加班费，给调休。&lt;/p>
+&lt;p>另外就是调休。如果加班一天，将来某天就可以不扣工资休息一天，直白吧。攒下半年的调休然后一口气给自己放 6 个月假这种事情还是做梦比较好，调休基本上就等于无偿加班了，忙起来的时候劝你别休，不然人手就不够了；那闲下来的时候还能让你一周休 6 天？你敢休公司也不敢让你随便休啊，其他员工怎么看。&lt;/p>
+&lt;p>发薪日。网上有人总结，发薪日越接近月中的，或者超过月中的，大多都是怕员工流失的公司，而这些公司往往都不是什么好公司。听起来还是挺有道理的（&lt;/p>
+&lt;p>当然，最后还是要靠自己的眼睛去确认这一点。&lt;/p>
+&lt;h3 id="53-游戏的制作流程">5.3 游戏的制作流程&lt;/h3>
+&lt;p>之前待得确实是一家小公司，甚至算得上工作室级别的超小初创公司，游戏制作方面的知识储备不算充足，写这篇博客的时候又去补习了一下。&lt;/p>
+&lt;p>主要的工种分为策划、美术、程序。&lt;/p>
+&lt;p>细分的话，策划可能有数值方面的，世界背景人物背景方面的，对话文本方面的，甚至可能有长篇幅的资料啊故事啊这方面的需求。&lt;/p>
+&lt;p>美术有 UI 方面的，人物、场景的原画师，3d 模型制作，动画制作，骨骼制作，特效制作，等等方面的。程序经常需要和美术方面的沟通交流。&lt;/p>
+&lt;p>程序的话主要分前后端和测试，再加上运维和 DBA 之类的角色。&lt;/p>
+&lt;p>细分的话前端根据开发平台不同也有不同的技术栈，图像特效上可能会有更专业的大牛负责，team leader 带队设计架构，分配工作，诸如此类。后端也一样，根据不同的技术抉择，可能整体的人员配置也有所区别，但大家都是程序嘛。&lt;/p>
+&lt;p>测试算是比较独立的，编写测试代码是一件很痛苦的事情（&lt;/p>
+&lt;p>所以这份疼痛有专人负责承受了：）&lt;/p>
+&lt;p>持续集成啊什么的也被承包了，测试或者运维会去负责的。&lt;/p>
+&lt;p>DBA 一般公司也用不到，运维多少会两手 SQL，规模更大的公司可能会设置这个专门职位。&lt;/p>
+&lt;p>流程上来说，策划给出游戏方案，美术可能会配合做个初稿效果图之类的（更可能是策划自己做个简单的效果图之类的方便说明），程序疯狂实现（崩溃-爆发-认命 循环），测试则配合给出反馈，让程序的脱发状况持续恶化，最后发布，项目黄了。&lt;/p>
+&lt;p>哦不是，我是说项目火了，程序们一跃成为 CTO，迎娶白富美，走上人生巅峰。&lt;/p>
+&lt;p>（并没有）&lt;/p>
+&lt;h2 id="6-尾声">6. 尾声&lt;/h2>
+&lt;p>其实这次面试的自我感觉还是不错的，没有犯下太蠢的错误，但是可以改进的地方依然很多，语言组织能力需要进一步提高。&lt;/p>
+&lt;p>这篇博客的目的是自我反省，但是这次自我反省的效果并不算好，因为面试官的问题基本上都戳在我懂，但又没真正去深入挖掘的领域。日常使用自然没有问题，但理解却谈不上了。&lt;/p>
+&lt;p>如果面试官在细节上稍作追究：比如说 placement new 和 user-defined new 之类的话题上深入，异常安全，或者问个 map 用红黑树实现，红黑树什么原理，那么这次我基本又要挂了。&lt;/p>
+&lt;p>关于给出的待遇的问题&amp;hellip;&amp;hellip;我其实很好奇&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>因为我真的才工作一年，不懂啊&amp;hellip;&lt;/p>
+&lt;p>一年工作年限，C++我也不知道算什么水平，不知道怎么去横向对比，要 8k 是要多了么&amp;hellip;&lt;/p>
+&lt;p>初级职位的意思是待遇初级还是能力初级啊&amp;hellip;&lt;/p>
+&lt;p>还有主程一般指的是 team leader 对吗，游戏行业程序是不是干到 team leader 就算到头了&amp;hellip;只能转管理岗了&amp;hellip;&lt;/p></description></item><item><title>可重入和异步安全</title><link>https://nnnewb.github.io/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/</link><pubDate>Sun, 24 Jun 2018 22:48:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/</guid><description>&lt;p>这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。&lt;/p>
+&lt;h2 id="可重入性">可重入性&lt;/h2>
+&lt;p>在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具体定义可能有所不同。这里聊的是 C++语言中的可重入性。&lt;/p>
+&lt;p>所谓可重入性（&lt;code>reetrant&lt;/code>），指的是同时具备&lt;strong>并发安全&lt;/strong>和&lt;strong>中断安全&lt;/strong>的特征，这是目前为止我对可重入性的认识，也是这篇博客在写下时给可重入性下的定义。&lt;/p>
+&lt;p>这个认知可能并不准确，因为在&lt;a class="link" href="https://zh.wikipedia.org/wiki/%E5%8F%AF%E9%87%8D%E5%85%A5" target="_blank" rel="noopener"
+>wiki&lt;/a>上的定义是这样的。&lt;/p>
+&lt;blockquote>
+&lt;p>若一个程序或子程序可以「在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错」，则称其为可重入（reentrant 或 re-entrant）的。即当该子程序正在运行时，执行线程可以再次进入并执行它，仍然获得符合設計時預期的结果。与多线程并发执行的线程安全不同，可重入强调对单个线程执行时重新进入同一个子程序仍然是安全的。&lt;/p>
+&lt;/blockquote>
+&lt;p>但是在很多中文博客里，聊到可重入性的时候往往也会把并发安全混为一谈。实际上来说的话&amp;hellip;&amp;hellip;一个可重入的函数，常常也是并发安全的。&lt;/p>
+&lt;p>那么先从并发安全讲起吧。&lt;/p>
+&lt;h2 id="并发安全性和可重入性">并发安全性和可重入性&lt;/h2>
+&lt;p>所谓并发安全已经是老生常谈了。&lt;/p>
+&lt;p>以一段非常简单的代码为例，我们打算初始化一个对象，这个对象被两个线程共享。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="kt">void&lt;/span> &lt;span class="nf">initialize&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">Something&lt;/span>&lt;span class="o">**&lt;/span> &lt;span class="n">someshit&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">!*&lt;/span>&lt;span class="n">someshit&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">someshit&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">createSomeShit&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>显而易见，如果线程在执行到特定环节时发生了切换&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="kt">void&lt;/span> &lt;span class="nf">initialize&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">Something&lt;/span>&lt;span class="o">**&lt;/span> &lt;span class="n">someshit&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">!*&lt;/span>&lt;span class="n">someshit&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// &amp;lt;-------- 线程切换
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 线程2() {
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// initialize(something);
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// }
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 线程切换 ---------&amp;gt;
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">someshit&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">createSomeShit&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>那么 &lt;code>createSomeShit&lt;/code>这段代码就会被执行两次。&lt;/p>
+&lt;p>显然这和我们预期的行为不符。&lt;/p>
+&lt;p>这里要聊的不是并发，而是&amp;hellip;&amp;hellip;可重入性。所以我们再看看这个函数能否被重入。&lt;/p>
+&lt;p>按照 wiki 提供的定义，函数可重入指的是&lt;/p>
+&lt;blockquote>
+&lt;p>在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错。&lt;/p>
+&lt;/blockquote>
+&lt;p>符合吗？不。为什么？因为同样在那个线程切换的位置上中断，然后再另一段代码里再次执行这个函数，也会触发同样的问题，导致&lt;code>createSomeShit&lt;/code>被执行两次。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="kt">void&lt;/span> &lt;span class="nf">initialize&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">Something&lt;/span>&lt;span class="o">**&lt;/span> &lt;span class="n">someshit&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">!*&lt;/span>&lt;span class="n">someshit&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// &amp;lt;-------- 被中断
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 中断处理函数() {
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// initialize(something);
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// }
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 中断结束 --------
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">someshit&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">createSomeShit&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以看出，那些线程不安全的代码，都是不可重入的。&lt;/p>
+&lt;p>那么，线程安全的代码，就一定是可重入的吗？&lt;/p>
+&lt;h2 id="中断安全性或者叫信号安全性">中断安全性，或者叫信号安全性&lt;/h2>
+&lt;p>中断这个东西对其他编程语言的用户来说可能会少见一些，在 C/C++语言里，中断并不是什么新鲜话题。&lt;/p>
+&lt;p>在 C 标准库中，规定了一系列的信号和信号处理方法。关于信号的定义可以参考&lt;a class="link" href="https://zh.cppreference.com/w/c/program/signal" target="_blank" rel="noopener"
+>这个&lt;/a>。&lt;/p>
+&lt;p>当进程接收到信号的时候，当前正在执行的代码就会被中断——注意了，这回，锁救不了你。&lt;/p>
+&lt;p>在 C/C++中，中断处理是由一个函数进行。在函数里可能会调用到中断时正在执行的函数。那么问题来了——一个线程安全的函数，是中断安全的函数吗？&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="kt">void&lt;/span> &lt;span class="nf">initialize&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">Something&lt;/span>&lt;span class="o">**&lt;/span> &lt;span class="n">someshit&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">mutex&lt;/span>&lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">realshit&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">lock_guard&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">mutex&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">realshit&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">!*&lt;/span>&lt;span class="n">someshit&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">someshit&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">createSomeShit&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>看上去岁月静好~一切线程切换的问题，都被那句&lt;code>std::lock_guard&amp;lt;std::mutex&amp;gt;(realshit)&lt;/code>给挡在了墙的另一边。&lt;/p>
+&lt;p>但是&amp;hellip;&amp;hellip;&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="kt">void&lt;/span> &lt;span class="nf">initialize&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">Something&lt;/span>&lt;span class="o">**&lt;/span> &lt;span class="n">someshit&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">mutex&lt;/span>&lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">realshit&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">lock_guard&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">mutex&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">realshit&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">!*&lt;/span>&lt;span class="n">someshit&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// &amp;lt;----- 调皮的用户按下了 Ctrl-C
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 中断处理函数() {
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// initialize(someshit, realshit);
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// // inside initialize {
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// // std::lock_guard&amp;lt;std::mutex&amp;gt;(realshit); // DEAD LOCK
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// // }
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// }
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">someshit&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">createSomeShit&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>看这里~&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">lock_guard&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">mutex&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">realshit&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="c1">// 进入信号处理
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">lock_guard&lt;/span>&lt;span class="o">&amp;lt;&lt;/span>&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">mutex&lt;/span>&lt;span class="o">&amp;gt;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">realshit&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>好了，GG。死锁在这个时候发生了。&lt;/p>
+&lt;p>经验丰富的大佬可能注意到了，咱还可以用&lt;code>std::recursive_mutex&lt;/code>啊！&lt;/p>
+&lt;p>这里就要提到一个很遗憾的问题了：C/C++的语言标准给了哪些保证。&lt;/p>
+&lt;p>C 对信号处理函数的定义很粗暴，除了&lt;code>abort&lt;/code>、&lt;code>_Exit&lt;/code>、&lt;code>quick_exit&lt;/code>、&lt;code>signal&lt;/code>、&lt;code>stdatomic.h的免锁原子函数&lt;/code>、&lt;code>atomic_is_lock_free与任何类型的原子参数&lt;/code>这些函数以外，任何标准库函数的调用，行为都是未定义的。&lt;/p>
+&lt;p>C++对信号处理函数的定义则更加复杂，限制比之 C 更加严格。毕竟标准库要庞大得多&amp;hellip;&amp;hellip;也不是不能理解。&lt;/p>
+&lt;p>标准中有个一个地方的描述很微妙：&lt;strong>&amp;hellip;&amp;hellip;免锁的&lt;/strong>。&lt;/p>
+&lt;p>换言之，谁又保证了信号处理函数必然和你希望的那个线程是同一个线程呢？&lt;/p>
+&lt;p>&lt;code>std::recursive_mutex&lt;/code>的实现依赖于平台提供的系统 API，反正我没有找到语言标准中相关的规定要求信号处理函数必须和&lt;code>main&lt;/code>函数在同一个线程，所以我认为这是平台相关的问题：这样的代码是&lt;strong>不可移植的&lt;/strong>。&lt;/p>
+&lt;p>按照设计模式原则，我们是面向接口——也就是标准文档编程，而不是面对实现——Visual C++、GCC、MinGW 或者哪个中东土豪在未来某天突发奇想送我一台 MIPS 的超算的话。&lt;/p>
+&lt;p>到业务层面的话会更灵活一些——反正我只在某环境下跑，等公司什么时候全面换平台了，咱再能改则改，改不了就跑路。&lt;/p>
+&lt;h2 id="递归函数和可重入">递归函数和可重入&lt;/h2>
+&lt;p>递归和重入有一定的相似性，但又有所不同。&lt;/p>
+&lt;p>一个递归函数，直觉上来讲，好像应该是可重入的：因为它要调用自己。&lt;/p>
+&lt;p>那么&amp;hellip;&amp;hellip;事实上呢？&lt;/p>
+&lt;p>写个比较骚的递归删除链表节点的例子。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="kt">void&lt;/span> &lt;span class="nf">removeNode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">Node&lt;/span>&lt;span class="o">*&lt;/span> &lt;span class="n">node&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">length&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">Node&lt;/span>&lt;span class="o">*&lt;/span> &lt;span class="n">tmp&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">node&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">prev&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">node&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">prev&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">tmp&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// &amp;lt;------ 出现了！中断兽！
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 不用看了，Node之间的联结已经被破坏了
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 离开了！中断兽！--------&amp;gt;
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">tmp&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">node&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">freeNode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">node&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">removeNode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tmp&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">length&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>轻易地否定了递归函数=可重入函数的直觉想法。&lt;/p>
+&lt;p>深究下去，又到了线程安全——然后是死锁——然后提出了&lt;code>std::recursive_mutex&lt;/code>或者其他类似的操作——最后走到平台相关的 API 和保证——失去可移植性。&lt;/p>
+&lt;p>为什么我一直在提可移植性？&lt;/p>
+&lt;p>emmmm，大概是装逼如风，常伴吾身吧。&lt;/p>
+&lt;h2 id="标准库好烦人啊">标准库好烦人啊&lt;/h2>
+&lt;p>C/C++语言的标准库是出了名的——但不是好的方面，而是他们总在修修补补又一年。&lt;/p>
+&lt;p>C 标准库还好说——毕竟语言本身没啥特性，全靠各种平台提供 API 撑着。标准库改来改去也只是割个双眼皮的程度。&lt;/p>
+&lt;p>C++要更骚气一些，每隔几年就整个容，简直不给人活路。&lt;/p>
+&lt;p>就中断安全来说，虽然不知道内部怎么实现的，但是&amp;hellip;&amp;hellip;printf 这样的函数在信号处理函数里调用的话，也算是未定义行为。&lt;/p>
+&lt;p>认输吧，你是斗不过标准的。该依赖平台行为的时候，就去依赖平台行为吧。&lt;/p>
+&lt;h2 id="文档引用">文档引用&lt;/h2>
+&lt;p>懒得找原文，直接看 cppreference 对 signal 的说法就好。有兴趣的话可以找又臭又长的&lt;a class="link" href="http://www.open-std.org/JTC1/SC22/WG14/www/docs/n1570.pdf" target="_blank" rel="noopener"
+>WG14 - N1570 - C11&lt;/a>，还有&lt;a class="link" href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf" target="_blank" rel="noopener"
+>WG21 - N4659 - C++17&lt;/a>这两本标准文档。&lt;/p>
+&lt;h2 id="尾声">尾声&lt;/h2>
+&lt;p>于是这会儿就到了其他各种语言的用户惯例吐槽的时候：&lt;/p>
+&lt;blockquote>
+&lt;p>&amp;hellip;大佬是公司里唯一用 C++写代码的人。他对人说话，总是满口“目标平台”、“标准”、“可移植性”之类的话，叫人半懂不懂的。因为他总是说“C++天下第一！”，别人便从他说的那些半懂不懂的话里，替他取下个绰号，叫 C++大神。&lt;/p>
+&lt;p>C++大神一到公司里，程序员们便看着他笑，有的叫道：“C++大神，你的代码又编译出错了！”&lt;/p>
+&lt;p>他不回答，对前台说：“倒上特浓的咖啡，今天也要加班到夜里。”便拿出员工卡。程序员们又高声叫嚷道：“你一定又用上新标准了吧？”&lt;/p>
+&lt;p>C++大神睁大眼睛说，“你怎么凭空污人清白！”&lt;/p>
+&lt;p>“什么清白？我前天亲眼看见你的代码编译报了错，整整十几 MB 的日志！”&lt;/p>
+&lt;p>C++大神便涨红了脸，额上的青筋条条绽出，争辩道，“编译器报错怎么能叫错&amp;hellip;&amp;hellip;C++&amp;hellip;&amp;hellip;编译器不支持，那能算错么？”&lt;/p>
+&lt;p>接连便是难懂的话，什么“CONCEPT 还不加入标准”、“未定义行为就该是编译错误”、“SFINAE 就是给编译器开洞”、“boost 大法好，天灭 std::experimental”，引得众人都哄笑起来：店内外充满了快活的空气。&lt;/p>
+&lt;/blockquote></description></item><item><title>鲸鱼游戏面试笔记</title><link>https://nnnewb.github.io/blog/p/%E9%B2%B8%E9%B1%BC%E6%B8%B8%E6%88%8F%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</link><pubDate>Wed, 20 Jun 2018 19:15:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E9%B2%B8%E9%B1%BC%E6%B8%B8%E6%88%8F%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/</guid><description>&lt;h2 id="intro">Intro&lt;/h2>
+&lt;p>简单介绍下面试的前置情况。&lt;/p>
+&lt;p>面试的公司是鲸鱼游戏，职位是后端开发工程师，开发语言 C++。&lt;/p>
+&lt;p>这篇博文主要是为了记录面试中发现的自身不足。&lt;/p>
+&lt;p>这次面试里，因为面试约得比较匆忙，所以基本没做任何准备。讲道理的说我是有点盲目自信了，毕竟 C/C++是我的第一语言来着，本来以为考察语言的部分不会有什么问题，但没想到因为紧张而错漏百出。&lt;/p>
+&lt;p>那么接下来就直接进入正题，以下是对面试中遇到的问题重新思考后的回答和想法。&lt;/p>
+&lt;blockquote>
+&lt;p>下面面试官的提问并非原话，有经过脑补润色。&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="起手式面向对象">起手式：面向对象&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：讲讲面向对象，继承，还有多态。我们都知道程序设计有两种常见的范式，面向过程和面向对象，讲讲面向对象给我们带来了什么好处？&lt;/p>
+&lt;/blockquote>
+&lt;p>实话说第一问就已经有点出乎意料，但想想其实还是在意料之中。初级职位更注重于基础概念和技能，中高级职位可能会在数据结构和并发一类的问题上更深入。&lt;/p>
+&lt;blockquote>
+&lt;p>答：抽象，归类 blabla&amp;hellip;易于维护 blabla&amp;hellip;&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>全错。&lt;/strong>&lt;/p>
+&lt;p>现在回忆起来，面试官想问的其实只有一点，就是那句&lt;strong>封装&lt;/strong>。&lt;/p>
+&lt;p>&lt;strong>封装&lt;/strong>是面向对象的&lt;strong>核心概念之一&lt;/strong>。&lt;/p>
+&lt;p>封装使代码成为一个&lt;strong>黑箱&lt;/strong>，让我们不必关注它的实现，而是关注它的&lt;strong>行为&lt;/strong>和&lt;strong>接口&lt;/strong>。&lt;/p>
+&lt;p>这产生了&lt;strong>面向接口编程&lt;/strong>的概念，我们不再关注封装后的对象内部的逻辑，我们给封装后的对象以输入，然后从封装后的对象里取出数据。&lt;/p>
+&lt;p>&lt;strong>封装&lt;/strong>并不只是一系列接口的集合，更包含了&lt;strong>数据&lt;/strong>和&lt;strong>状态&lt;/strong>，它就是一个微型化的服务，调用者告诉它去做什么事，而不关心它怎么做。&lt;/p>
+&lt;h2 id="第二招继承">第二招：继承&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：讲讲继承。&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>我：代码复用，blabla&amp;hellip;&amp;hellip;&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>代码复用，这是核心。&lt;/strong>&lt;/p>
+&lt;p>代码复用是继承最主要的作用，大家都知道。面试官并没有在这方面继续深入，所以能答出代码复用其实已经差不多了。&lt;/p>
+&lt;p>除非再抠上语言相关的语法细节：&lt;strong>多继承&lt;/strong>和&lt;strong>单继承&lt;/strong>。&lt;/p>
+&lt;h3 id="多继承">多继承&lt;/h3>
+&lt;p>C++ 采用了多继承模型，即一个子类可以有多个父类。&lt;/p>
+&lt;pre>&lt;code>Father ------|
+|====&amp;gt; child
+Mother ------|
+&lt;/code>&lt;/pre>&lt;p>多继承可以允许一些特殊的编程范式。比如说&lt;code>mixin&lt;/code>模式。但是多继承也存在其固有的复杂性，主要表现在运行时多态上。&lt;/p>
+&lt;p>举几个多继承上常见的问题。&lt;/p>
+&lt;ol>
+&lt;li>父类成员冲突&lt;/li>
+&lt;/ol>
+&lt;p>典型场景如下&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="k">class&lt;/span> &lt;span class="nc">ParentA&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">public&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="n">func&lt;/span>&lt;span class="p">(){}&lt;/span>
+&lt;span class="p">};&lt;/span>
+&lt;span class="k">class&lt;/span> &lt;span class="nc">ParentB&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">public&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="n">func&lt;/span>&lt;span class="p">(){}&lt;/span>
+&lt;span class="p">};&lt;/span>
+&lt;span class="k">class&lt;/span> &lt;span class="nc">Child&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="k">public&lt;/span> &lt;span class="n">ParentA&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="n">ParentB&lt;/span> &lt;span class="p">{};&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">Child&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">func&lt;/span>&lt;span class="p">();&lt;/span> &lt;span class="c1">// error
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>解决办法也很简单&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">Child&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">ParentA&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">func&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>之所以如果不调用 &lt;code>func&lt;/code> 就不会出错，是因为 &lt;code>func&lt;/code> 在编译后的 ABI 导出的名字并没有产生冲突。但如果主动调用了&lt;code>func&lt;/code>，编译器则需要插入一个函数调用，但这里的&lt;code>func&lt;/code>语义却是不明确的，所以编译阶段就会报告错误。&lt;/p>
+&lt;ol start="2">
+&lt;li>&lt;code>dynamic_cast&lt;/code>会改变指针&lt;/li>
+&lt;/ol>
+&lt;p>&lt;code>dynamic_cast&lt;/code>是基于 RTTI 的运行时类型安全的标准类型转换，&lt;code>dynamic_cast&lt;/code>本身是一个关键字，这里就说一说&lt;code>dynamic_cast&lt;/code>的行为和多继承。&lt;/p>
+&lt;p>多继承下的&lt;code>dynamic_cast&lt;/code>会修改指针绝非危言耸听。事实上只要稍作思考就能得出这样的结论：多继承下的内存布局应该是什么样子的？&lt;/p>
+&lt;pre>&lt;code>v Pointer to Child
+v Pointer to ParentB
+v Pointer to ParentA
+| ParentA | ParentB | Child |
+[-----------====================&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;&amp;gt;]
+&lt;/code>&lt;/pre>&lt;p>C++ 鼓吹&lt;code>Zero cost abstraction&lt;/code>也不是一天两天的事情了，成果如何不予置评，但显然，专门为多继承下的指针附加类型信息，以允许&lt;code>ParentB*&lt;/code>类型的指针指向的地址和&lt;code>Child*&lt;/code>相同是不可能的。&lt;/p>
+&lt;p>遑论 C++标准里根本没&lt;code>地址&lt;/code>这回事儿了，指针指向的是啥玩意儿都有可能。&lt;/p>
+&lt;h3 id="单继承">单继承&lt;/h3>
+&lt;p>单继承就简单得多，只允许一个父类存在，根据语言设计也可能允许实现多个接口。比如说&lt;code>Java&lt;/code>和&lt;code>C#&lt;/code>。以我比较熟悉的 &lt;code>Rust&lt;/code> 为例（暂不提继承，因为&lt;code>Rust&lt;/code>就没继承这码事儿，全是&lt;code>Trait&lt;/code>），一个&lt;code>struct&lt;/code>可以实现多个&lt;code>Trait&lt;/code>，然后以&lt;code>Trait object&lt;/code>来实现对象多态。&lt;/p>
+&lt;p>单继承更多是在多态、重载、接口等方面的取舍，就不细谈了。&lt;/p>
+&lt;h2 id="第三招多态">第三招：多态&lt;/h2>
+&lt;h2 id="多态和面向接口编程">多态和面向接口编程&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：知道多态吗？多态有什么好处？&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>答：多态就是&amp;hellip;blabla&amp;hellip;不去关注子类细节，归类成 xxx&amp;hellip;&amp;hellip;blabla&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>多态&lt;/strong>算是面向对象基本概念之一了。&lt;/p>
+&lt;p>多态最基本的解释就是&lt;strong>同一个接口的不同实现&lt;/strong>，但我理解中的&lt;strong>多态&lt;/strong>解释则更趋向于&lt;strong>类型擦除&lt;/strong>，即&lt;strong>我不在乎你是什么黑人、白人、黄种人、香蕉人，我只要你能做到某件事&lt;/strong>。本质上来说，多态的主要作用就是&lt;strong>擦除细节&lt;/strong>。&lt;/p>
+&lt;p>举个例子，我打算去面试一家公司，面试官想要的是什么呢？他想要的是&lt;strong>能干活的人&lt;/strong>。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="k">class&lt;/span> &lt;span class="nc">Worker&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">public&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="k">const&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">declarePay&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">const&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="n">declareEfficiency&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">BOOL&lt;/span> &lt;span class="nf">testWorkEfficiency&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">SomeShit&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">virtual&lt;/span> &lt;span class="o">~&lt;/span>&lt;span class="n">Worker&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">};&lt;/span>
+&lt;span class="k">class&lt;/span> &lt;span class="nc">Company&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">public&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="n">BOOL&lt;/span> &lt;span class="n">hire&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">Worker&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="p">...&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>面试者可能是&lt;code>HardWorker&lt;/code>，&lt;code>FxxkWorker&lt;/code>都是&lt;code>Worker&lt;/code>实例，但他们也同时是&lt;code>Human&lt;/code>，可能是&lt;code>Wife&lt;/code>，可能是&lt;code>Husband&lt;/code>，也可能是&lt;code>Father&lt;/code>、&lt;code>Mother&lt;/code>，但是这些我们都不关心。&lt;/p>
+&lt;p>我们不可能为每个&lt;code>People某某某&lt;/code>各自定义一个&lt;code>BOOL hirePeople某某某() {}&lt;/code>，我们关注的是工作能力，所以我们要在类型里擦除掉这些无关的细节，保留关注的部分。&lt;/p>
+&lt;p>多态做的就是这样的一件事：我不在乎你是谁，我在乎你是不是能干好这件事的人。&lt;/p>
+&lt;p>这么说其实有些脱离主题了，因为这是&lt;strong>面向接口编程&lt;/strong>的思想，而不是对&lt;strong>多态&lt;/strong>的学术解释，但这确实就是我对多态的理解，它的主要作用就是&lt;strong>隐藏差异&lt;/strong>，进而发展为&lt;strong>擦除细节&lt;/strong>。&lt;/p>
+&lt;p>我的回答其实根本没到点上，也没 Get 到面试官的 point，所以面试官很快就换了下一个问题。&lt;/p>
+&lt;h2 id="谈谈虚函数">谈谈虚函数&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：虚函数的作用是什么？&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>答：啊？实现多态啊？&amp;hellip;&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>可以说是最差的回答。&lt;/strong>&lt;/p>
+&lt;p>面试中没有反应过来问的啥，知道被拒绝了才突然明白。&lt;/p>
+&lt;p>o(￣ヘ￣ o＃)&lt;/p>
+&lt;p>这已经问到语言细节了，所以咱们就从语言出发来讲。&lt;/p>
+&lt;h3 id="多态">多态&lt;/h3>
+&lt;p>首先虚函数是什么？虚函数是 C++实现多态的手段，这么答没错，学过 C++都知道。不过虚函数不仅仅是这一点。&lt;/p>
+&lt;p>咱先从这一点讲起。&lt;/p>
+&lt;p>虚函数通过一个叫虚函数表的东西来实现多态，这个虚函数表是实现定义的，标准没有对&lt;code>vtable&lt;/code>做什么规定，比如说必须放在类指针的前后几个字节处啊什么的&amp;hellip;&amp;hellip;不存在的。所以也不谈虚表是怎么实现的，这已经是具体到平台和编译器上的差别了，要抠这个的话必须去读编译器和平台相关的各种文档了，PE 格式啊 DLL 啊 SharedObject 啊什么的。&lt;/p>
+&lt;p>如果问起来的话&amp;hellip;&amp;hellip;嗯&amp;hellip;&amp;hellip;这个职位应该很厉害。&lt;/p>
+&lt;p>所以我就跳过了。&lt;/p>
+&lt;p>直接给个虚函数的实例，真的没什么好说的。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">class&lt;/span> &lt;span class="nc">ParentA&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">public&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="k">virtual&lt;/span> &lt;span class="n">vFunc&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;ParentA&amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">};&lt;/span>
+&lt;span class="k">class&lt;/span> &lt;span class="nc">Child&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="k">public&lt;/span> &lt;span class="n">ParentA&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">public&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="k">virtual&lt;/span> &lt;span class="n">vFunc&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="k">override&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;Child&amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// 顺便写调用父类的
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">ParentA&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">vFunc&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">};&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="虚析构函数">虚析构函数&lt;/h3>
+&lt;p>C++虚函数的另一个重要用途就是虚析构函数。&lt;/p>
+&lt;p>因为&amp;hellip;&amp;hellip;C++对象模型中，析构函数的位置十分尴尬。&lt;/p>
+&lt;p>构造函数也就算了，无论如何也要显式调用一次。&lt;/p>
+&lt;p>析构函数则因为多态的存在而十分尴尬：给你一个父类指针列表，你显然不能一个一个检查这些指针指向是什么对象，然后再转回去，最后才 &lt;code>delete&lt;/code> 它。&lt;/p>
+&lt;p>光是听起来就麻烦得要死，更别提有时候根本做不到。C++脆弱的&lt;code>RTTI&lt;/code>和基本不存在的&lt;code>Reflection&lt;/code>可是出了名的。&lt;/p>
+&lt;p>C++对这个问题的解决办法就是虚析构函数。&lt;/p>
+&lt;p>和一般的虚函数不同，一般的虚函数一旦被&lt;code>override&lt;/code>，除非你主动调用指定父类的虚方法，否则调用的必然是继承链最后一个&lt;code>override&lt;/code>了这个虚方法的类的虚方法实现。&lt;/p>
+&lt;p>析构函数的话就稳了，它会链式的调用继承链上每个类的析构方法，多继承的情况下则是按照继承的顺序调用析构方法。&lt;/p>
+&lt;p>&lt;strong>不用主动写&lt;code>ParentA::~ParentA()&lt;/code>，是不是特别爽？&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>还行，这就是个语法糖。&lt;/p>
+&lt;/blockquote>
+&lt;h3 id="纯虚函数和抽象类">纯虚函数和抽象类&lt;/h3>
+&lt;p>最后是纯虚函数。&lt;/p>
+&lt;p>其实这玩意儿我更愿意称他为&lt;strong>接口&lt;/strong>。&lt;/p>
+&lt;p>本质上来说，纯虚函数规定了一个&lt;strong>方法&lt;/strong>，这个方法接收固定的&lt;strong>输入&lt;/strong>，并保证提供一个&lt;strong>输出&lt;/strong>，相应的可能还有&lt;strong>异常声明&lt;/strong>，来说明这个方法可能抛出的异常。&lt;/p>
+&lt;p>怎么样，看起来眼熟不？&lt;/p>
+&lt;p>还没完，纯虚方法没有实现（你开心的话也可以写个实现），强制要求子类必须实现，而定义了纯虚方法的类被称之为&lt;strong>抽象类&lt;/strong>。&lt;/p>
+&lt;p>我想就算是叫它&lt;strong>接口类&lt;/strong>它也不会反对的吧。&lt;/p>
+&lt;p>纯虚函数可以类比于&lt;code>C#&lt;/code>的&lt;code>interface&lt;/code>，或者&lt;code>typescript&lt;/code>的&lt;code>interface&lt;/code>，总之就是各种语言的&lt;code>interface&lt;/code>。这些&lt;code>interface&lt;/code>在具体的规定上可能有所差异，比如说不允许写数据成员啦，数据成员写了不算在实现&lt;code>interface&lt;/code>的类上还要再声明一次啦，&lt;code>interface&lt;/code>的方法可不可以有个默认实现啦，这些都是细节。&lt;/p>
+&lt;p>还记得上面我说&lt;strong>多态&lt;/strong>吗？多态的目的是&lt;strong>擦除类型细节&lt;/strong>，所以这些长得各不相同百花齐放的&lt;code>interface&lt;/code>做的事情其实都是一回事：你能做啥，那么你是啥。&lt;/p>
+&lt;p>这里再说个细节，纯虚函数作为析构函数的时候，析构函数应该有个实现&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>听起来挺奇怪的？不写纯虚析构函数实现的话，会报个链接错误&amp;hellip;至于为什么要这么做，其中的取舍就不得而知了。&lt;/p>
+&lt;p>C++的纯虚函数和抽象类很灵活，没有其他语言&lt;code>interface&lt;/code>种种限制，如果要追问纯虚函数&lt;/p>
+&lt;blockquote>
+&lt;p>when? where? why?&lt;/p>
+&lt;/blockquote>
+&lt;p>那就要看到具体场景了，C++这些灵活的特性一不小心就会变成滥用，反正这么问我应该也就答&lt;code>interface&lt;/code>、&lt;code>mixin&lt;/code>以及其他具体需求的场景这样子了。&lt;/p>
+&lt;h3 id="mixin-模式">Mixin 模式&lt;/h3>
+&lt;p>&lt;code>Mixin&lt;/code>模式在&lt;code>Python&lt;/code>里比较常见，不过 C++也并不是没有。通过定义纯虚析构函数，来给一个对象混入特定功能而又不允许自己被独立构建，算是个常见的范式。&lt;/p>
+&lt;p>举个例子，引用计数，如果发现自己引用归零了就释放资源，线程安全之类的问题先不管，仅仅是展示这个范式。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-C++" data-lang="C++">&lt;span class="cp">#include&lt;/span> &lt;span class="cpf">&amp;lt;iostream&amp;gt;&lt;/span>&lt;span class="cp">
+&lt;/span>&lt;span class="cp">&lt;/span>
+&lt;span class="k">class&lt;/span> &lt;span class="nc">RcMixin&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">private&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="k">using&lt;/span> &lt;span class="n">deleter&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">()&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">_rc&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">nullptr&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">deleter&lt;/span> &lt;span class="n">resDeleter&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">public&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="n">RcMixin&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">deleter&lt;/span> &lt;span class="n">resDeleter&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">:&lt;/span>&lt;span class="n">resDeleter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">resDeleter&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">_rc&lt;/span>&lt;span class="o">+=&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// 线程安全就先放一边
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="p">}&lt;/span>
+&lt;span class="n">RcMixin&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="n">RcMixin&lt;/span>&lt;span class="o">&amp;amp;&lt;/span> &lt;span class="n">other&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">resDeleter&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">other&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">resDeleter&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">_rc&lt;/span>&lt;span class="o">+=&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">virtual&lt;/span> &lt;span class="o">~&lt;/span>&lt;span class="n">RcMixin&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="n">_rc&lt;/span>&lt;span class="o">-=&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">_rc&lt;/span> &lt;span class="o">&amp;lt;=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">resDeleter&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">};&lt;/span>
+&lt;span class="c1">// 虽然是个RcMixin但是外界并不需要知道它是RcMixin
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="k">class&lt;/span> &lt;span class="nc">SomeShit&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="k">private&lt;/span> &lt;span class="n">RcMixin&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">private&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="kt">int&lt;/span>&lt;span class="o">*&lt;/span> &lt;span class="n">res&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">nullptr&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">public&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="n">SomeShit&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="o">:&lt;/span> &lt;span class="n">RcMixin&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="k">this&lt;/span>&lt;span class="p">]()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">cout&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="s">&amp;#34;&amp;#34;&lt;/span> &lt;span class="o">&amp;lt;&amp;lt;&lt;/span> &lt;span class="n">std&lt;/span>&lt;span class="o">::&lt;/span>&lt;span class="n">endl&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">delete&lt;/span> &lt;span class="k">this&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">res&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">})&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">res&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="k">new&lt;/span> &lt;span class="kt">int&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">10&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">virtual&lt;/span> &lt;span class="o">~&lt;/span>&lt;span class="n">SomeShit&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{}&lt;/span>
+&lt;span class="p">};&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">SomeShit&lt;/span> &lt;span class="n">a&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">b&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">a&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">auto&lt;/span> &lt;span class="n">c&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">b&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>代码没测过，反正大概就是这种感觉，将某些功能混入一个现存的类，而不需要做太多的工作。在 C++里没那么方便，强类型下的 Mixin 需要很多变通技巧才能愉快地混入新功能，而鸭子类型&lt;code>Duck typing&lt;/code>的语言则舒爽很多，当然，最好的还是具有完善 &lt;code>Reflection&lt;/code> 和 &lt;code>Attribute&lt;/code> 支持的语言，完全避免了对&lt;code>Mixin&lt;/code>类型的构造和需要利用的数据的绑定一类的不必要的关注。&lt;/p>
+&lt;h3 id="扩展虚继承">扩展：虚继承&lt;/h3>
+&lt;p>同样是 &lt;code>virtual&lt;/code> 关键字，虚继承和虚函数关系就不怎么大了。&lt;/p>
+&lt;p>虚继承面对的问题是&lt;strong>多继承时，多个父类继承自同一个基类&lt;/strong>这一问题。&lt;/p>
+&lt;p>听起来是不是有点奇怪？这些父类继承自同一个基类会有什么问题？&lt;/p>
+&lt;p>事实上，这个问题取决于写出多继承代码的人，也取决于这多个父类是否有对多继承方面做过考虑。&lt;/p>
+&lt;p>举个简单的例子，&lt;code>ParentA&lt;/code>和&lt;code>ParentB&lt;/code>都继承自&lt;code>DataA&lt;/code>，&lt;code>ParentA&lt;/code>修改了&lt;code>DataA&lt;/code>的数据，但&lt;code>ParentB&lt;/code>不知道。如果&lt;code>ParentB&lt;/code>需要根据&lt;code>DataA&lt;/code>的某些数据进行操作——很遗憾，这个行为可能与预期的不同。&lt;/p>
+&lt;p>之所以引入虚继承，是为了解决&lt;strong>要不要共享同一个基类实例&lt;/strong>的问题，选择虚继承，则选择共享基类实例。&lt;/p>
+&lt;p>共享基类实例的优势是，多个父类的功能可以无缝结合。&lt;code>ParentA&lt;/code>和&lt;code>ParentB&lt;/code>可以共享基类定义的&lt;code>Mutex&lt;/code>等状态资源——当然，前提是设计父类的人有过这方面的考虑。&lt;/p>
+&lt;p>不然的话，不共享基类实例是个保守但更安全，不易出现歧义的选择。&lt;/p>
+&lt;h2 id="第四招数组和链表">第四招：数组和链表&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：我们聊一下数据结构方面吧&amp;hellip;..讲一下数组和链表？可以从访问和删除两方面来说。&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>答：数组允许随机访问，只需要一步就能找到对应元素，而链表需要&amp;hellip;&amp;hellip;blabla，数组删除元素如果需要移动后续元素的话，会产生复制操作性能损失，链表只需要修改几个指针&amp;hellip;blabla。&lt;/p>
+&lt;/blockquote>
+&lt;p>实际上答到这里我已经不知道自己在说啥了。&lt;/p>
+&lt;p>数组和链表的区别还是挺大的，我应该算是 Get 到了几个点？下面是重新整理了语言后的回答。&lt;/p>
+&lt;h3 id="数组和链表的内存布局">数组和链表的内存布局&lt;/h3>
+&lt;p>数组和链表两者都是线性数据结构，表现上都是一条有头有尾的有序序列，但是储存方式上有区别。&lt;/p>
+&lt;p>数组的储存方式是一端连续的内存空间，索引只需要进行一次指针运算即可获得目标元素的位置，也可以理解为访问时间始终是&lt;code>O(1)&lt;/code>。&lt;/p>
+&lt;blockquote>
+&lt;p>PS: 还能写出 0[array] 这样的骚写法，不怕被打死的话。&lt;/p>
+&lt;/blockquote>
+&lt;p>链表的内存布局则是分散的，通常的链表实现往往是插入元素时动态分配一个元素的空间，而删除的时候再释放，长此以往对内存是不友好的，容易产生内存碎片，导致分配较大空间时无法寻得足够长的连续内存片段而造成分配失败。&lt;/p>
+&lt;p>&amp;hellip;&amp;hellip;当然，是长期才会产生的问题，而且是切实存在的问题。&lt;/p>
+&lt;h3 id="索引">索引&lt;/h3>
+&lt;p>对于数组来说的话，可以理解成标准库的 &lt;code>std::array&lt;/code>，也可以理解成原始数组，但不变的是索引方式始终是&lt;code>O(1)&lt;/code>复杂度，而且支持随机访问迭代器。&lt;/p>
+&lt;p>对于链表来说，不考虑优化后的变体，索引方式在本质上都是顺序访问迭代器——指针也算是概念上的迭代器。所以对于链表，访问时间的复杂度最坏情况应该是&lt;code>O(n)&lt;/code>，&lt;code>n&lt;/code>是链表长度。不用说，索引性能自然是不如数组的。&lt;/p>
+&lt;h3 id="删除">删除&lt;/h3>
+&lt;p>数组删除元素其实是比较烦的，复杂度应该是&lt;code>O(n)&lt;/code>，&lt;code>n&lt;/code>是数组长度减去删除元素在数组中的位置。最麻烦的是万一数组很长，那么复制元素到上一个位置将会是噩梦。&lt;/p>
+&lt;p>当然也不是不能优化&amp;hellip;&amp;hellip;把移动的操作推迟到插入新元素的时候就好了，用一个占位符表示这里已经被删除，同时记录前面有多少个元素被删除。这样一来索引性能会下降（因为要找到上一个被删除的元素，然后更新索引位置，直到找到正确的元素），删除性能提高（只要找到上一个被删除的元素然后记录自己作为被删除元素的位置就好），整体实现的复杂度提升，索引删除插入都要另外编写实现，感觉得不偿失。&lt;/p>
+&lt;p>链表删除元素很简单，索引到需要删除的元素的时间复杂度是&lt;code>O(n)&lt;/code>，删除操作的时间复杂度是&lt;code>O(1)&lt;/code>，而且实现简单。&lt;/p>
+&lt;h3 id="扩展结合两者">扩展：结合两者？&lt;/h3>
+&lt;p>好吧，这个问题面试官没问到。&lt;/p>
+&lt;p>链表和数组结合一下能解决一部分内存碎片的问题，基本思路的话&amp;hellip;&amp;hellip;咱预先分配 100 个元素，如果插入的元素超过了 100 个，咱再分配 100 个元素的空间，然后索引的时候再去找第二个池？&lt;/p>
+&lt;p>这个思路术语叫什么记不起来了。&lt;/p>
+&lt;h3 id="哦不他到底想问什么">哦不！他到底想问什么？&lt;/h3>
+&lt;p>猜一猜面试官到底想问些什么？&lt;/p>
+&lt;ol>
+&lt;li>动态内存分配：数组定长，而链表变长。我感觉这个特征基本没什么好说的，工作中基本没有机会自己重新实现一个线性容器，除非要定制一些特殊的结构，环形链表之类的东西。其他像是链表，数组，队列，标准库都有相应的实现。也许是考虑自行编写线程安全版本的 STL？&lt;/li>
+&lt;li>&lt;code>std::array&lt;/code>和&lt;code>std::list&lt;/code>。所以问的是啥呢&amp;hellip;？提供的保证和&lt;code>implement specified&lt;/code>还有&lt;code>undefined behavior&lt;/code>吗？STL 现在还没有&lt;code>concept&lt;/code>，但是早早就有了&lt;code>SFINAE&lt;/code>和&lt;code>enable_if&lt;/code>之类的东西，&lt;code>constexpr if&lt;/code> 更是极大地强化了编译期元编程方面的能力。如果是问标准模板库方面的东西的话，我觉得问标准库线程安全啊，迭代器算法之类的东西要合适得多。所以&amp;hellip;&amp;hellip;大概也不是想问这个。&lt;/li>
+&lt;li>迭代器。如果是这个的话我真的希望面试官大人能直接说出迭代器三个字&amp;hellip;&amp;hellip;不过好歹回答出随机访问了，应该不至于吧。&lt;/li>
+&lt;/ol>
+&lt;h2 id="第四招数据库索引">第四招：数据库索引&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：讲一下数据库的索引有什么作用。&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>我：懵逼&amp;hellip;&amp;hellip;&lt;/p>
+&lt;/blockquote>
+&lt;p>还行，直接懵了。&lt;/p>
+&lt;p>因为完全没搞明白面试官的意图：索引指的是啥？面试官是想问数据库索引的方式吗？B+树该怎么实现？&lt;/p>
+&lt;p>回来路上我考虑了一下，这几方面可能可以作为回答的方向。&lt;/p>
+&lt;h3 id="索引的实现">索引的实现&lt;/h3>
+&lt;p>数据库索引的常见实现方式是 B+ 树，我数据结构学的不好，只知道 B+ 树是个很厉害的数据结构&amp;hellip;..所以博文写到这里，不得不开始查资料了。&lt;/p>
+&lt;blockquote>
+&lt;p>B+ 树是一种树数据结构，通常用于数据库和操作系统的文件系统中。B+ 树的特点是能够保持数据稳定有序，其插入与修改拥有较稳定的对数时间复杂度。B+ 树元素自底向上插入，这与二叉树恰好相反。&lt;/p>
+&lt;/blockquote>
+&lt;p>如果问起 B+树实现，或者让手写个 B+树的话，我也只能望而兴叹了。&lt;/p>
+&lt;h3 id="postgres-数据库的索引属性">postgres 数据库的索引属性&lt;/h3>
+&lt;p>对于数据库的实现我了解不多。&lt;/p>
+&lt;p>大概就是建立个独立的 B+ 树索引&amp;hellip;&amp;hellip;吧？&lt;/p>
+&lt;h3 id="emmmmmm">emmmmmm&lt;/h3>
+&lt;p>真想不出了&amp;hellip;&lt;/p>
+&lt;h2 id="第五招primary-key">第五招：Primary key&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：说下主键的作用。&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>我：emmmmmm&amp;hellip;..&lt;/p>
+&lt;/blockquote>
+&lt;p>到这里我基本已经萌的不行了。（无错字）&lt;/p>
+&lt;blockquote>
+&lt;p>内心 OS：我是谁？我在哪？我要干什么？&lt;/p>
+&lt;/blockquote>
+&lt;p>甚至连&lt;strong>zhujian&lt;/strong>都听成了&lt;strong>zujian&lt;/strong>&lt;/p>
+&lt;p>被面试官提醒了一下&lt;/p>
+&lt;blockquote>
+&lt;p>面试官 B：就是那个 &lt;strong>key&lt;/strong>&lt;/p>
+&lt;/blockquote>
+&lt;p>我也没反应过来&amp;hellip;&amp;hellip;&lt;/p>
+&lt;h3 id="有啥用啊天真脸">有啥用啊（天真脸）&lt;/h3>
+&lt;p>主键的话，具有唯一性的索引？&lt;/p>
+&lt;p>emmmmm，不然还有什么作用呢&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>看来数据库必须下功夫学一学才行啊&amp;hellip;&amp;hellip;&lt;/p>
+&lt;h2 id="叮叮叮you-fxxk-up">叮叮叮——You fxxk up&lt;/h2>
+&lt;blockquote>
+&lt;p>面试官：十动然拒。&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>我：理解理解，谢谢谢谢。&lt;/p>
+&lt;/blockquote>
+&lt;p>还行，回顾完整个面试流程，除了 C++部分可能是因为发挥失常之外，数据库方面的确是没有下够功夫，以至于连索引和 PrimaryKey 这两问都在持续懵逼。&lt;/p>
+&lt;p>而且实话说面试，确实有技巧这回事&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>面试官提的问题也存在着范式——网络上面试真题什么的，看起来像是玩笑，但面试官提出这些问题的时候却是认真的。&lt;/p>
+&lt;p>尽管&amp;hellip;&amp;hellip;这种&lt;/p>
+&lt;blockquote>
+&lt;p>聊聊 xxxx（某技术/概念/工具），xxx 的作用是什么&lt;/p>
+&lt;/blockquote>
+&lt;p>的提问确实让人不容易抓住重点&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>考察基础的角度来说，现场白板写一个程序，然后再深入聊聊这么写的用意，有没有优化方案，考察对语言的理解和 api 设计、代码架构能力，比单纯的说说 xxx，问 xxx 作用要实际的多。当然并不是说这么问不好，这些概念的掌握也是非常重要的基础，而且能有效考察面试者语言组织能力和对这方面知识的掌握程度。&lt;/p>
+&lt;p>唯一不好的就是，面试者和面试官聊的过程就像是用&lt;strong>黑话&lt;/strong>交流一样&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>不说了，学这黑话去&amp;hellip;&amp;hellip;&lt;/p></description></item></channel></rss>

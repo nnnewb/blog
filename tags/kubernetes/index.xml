@@ -1,56 +1,1239 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>kubernetes on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/kubernetes/</link><description>Recent content in kubernetes on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 01 Mar 2022 12:30:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/kubernetes/index.xml" rel="self" type="application/rss+xml"/><item><title>go-kit 笔记</title><link>https://nnnewb.github.io/blog/p/go-kit-note/</link><pubDate>Tue, 01 Mar 2022 12:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/go-kit-note/</guid><description>前言 初步看了下 gokit 的案例 stringsvc和apigateway，记录一下对 gokit 的映像。
-gokit定位 Go kit is a programming toolkit for building microservices (or elegant monoliths) in Go. We solve common problems in distributed systems and application architecture so you can focus on delivering business value.
-Go has emerged as the language of the server, but it remains underrepresented in so-called &amp;ldquo;modern enterprise&amp;rdquo; companies like Facebook, Twitter, Netflix, and SoundCloud. Many of these organizations have turned to JVM-based stacks for their business logic, owing in large part to libraries and ecosystems that directly support their microservice architectures.</description></item><item><title>gRPC-Gateway 用作多个 gRPC 服务的网关</title><link>https://nnnewb.github.io/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/</link><pubDate>Wed, 23 Feb 2022 17:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/</guid><description>前言 众所周知，API网关是微服务架构的重要组件，起到一个整流过滤的作用。虽然 gRPC-Gateway 要啥没啥，和 API 网关的模式也扯不上太多关系，但总之先起个高调。
-然后就是真正遇到的问题了。在旧的架构里，gRPC-Gateway 的用法，是对每个需要暴露 HTTP 服务的 gRPC 服务都起一个对应的 gRPC-Gateway 。最早的做法是 gRPC-Gateway 服务单独作为一个 POD ，gRPC 服务实现也单独一个 POD 。后来我改成了 Gateway 和 服务在同一个 POD 内，起两个 container 。
-之前的做法都存在一个问题，就是 gRPC-Gateway 要分配少量的 CPU 和内存配额，虽然每个 gRPC-Gateway 服务分到的内存和CPU都很少，但架不住服务多，内存和 CPU 的配额都占用了不少，实际用到的少得可怜，大部分配额都是浪费。
-下面具体分析下怎么把 gateway 单独提取成一个 POD，给所有 gRPC 服务当网关，同时保持负载均衡发挥作用，提供无缝扩容。
-实现网关 官方demo // Create a client connection to the gRPC server we just started // This is where the gRPC-Gateway proxies the requests conn, err := grpc.DialContext( context.</description></item><item><title>记一次API响应时间优化</title><link>https://nnnewb.github.io/blog/p/an-api-response-time-optimize/</link><pubDate>Fri, 31 Dec 2021 18:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/an-api-response-time-optimize/</guid><description>前言 刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析优化下性能。
-0x01 性能分析 预判 下手前预估下可能存在瓶颈的地方。对于这次下手的接口（get_users），整个实现也没几行代码，只有两三个查询，数据量也不大，但是耗时有80ms+。
-其他接口有快有慢，并没有表现出同时增加耗时，而且开发服务器架在内网，排除网络原因，大概还是服务本身的存在的问题。于是考虑瓶颈在数据库或代码中，但具体肯定是要看代码去分析的。既然判断是代码里的问题，那下一步就是测量下耗时情况了。
-对于go，pprof虽然是个不错的主意，但实话说部署在 kubernetes 里，配 pprof 去拉结果有点麻烦，而且还有点点用不惯。正好这个项目里早就配置了 opentracing+jaeger做分布式跟踪，所以就直接抄一下 opentelemetry 的 otelsql ，把SQL查询的详细耗时情况记录下来，就可以开始分析了。
-opentracing收集数据 otelsql 原理是用 sqlmw 在 sql 驱动层级上进行包装sql ==&amp;gt; sqlmw.Driver{mysql.Driver} 。go的sql调用sqlmw.Driver，sqlmw.Driver调用mysql.Driver，如此而已，具体不解释。
-从otelsql借鉴下思路即可，现在 opentracing 已经和 opencensus 合并成了 opentelemetry，但项目也没法说升级就升级，毕竟项目架构设计稀烂，太多地方和 opentracing、jaeger-client 强耦合了。把otelsql里用sqlmw的部分抄出来，改成opentracing的方式创建span完事。
-func (in *sqlInterceptor) ConnExecContext(ctx context.Context, conn driver.ExecerContext, query string, args []driver.NamedValue) (driver.Result, error) { span, ctx := opentracing.StartSpanFromContext(ctx, &amp;#34;ConnExecContext&amp;#34;) defer span.Finish() span.LogKV(&amp;#34;sql.query&amp;#34;, query) return conn.ExecContext(ctx, query, args) } 如此一来， 当go的sql库访问数据库的时候，就会在jaeger里记录一个span，可以清晰地看到耗时情况。</description></item><item><title>排查一个kubectl无反应的问题</title><link>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</link><pubDate>Mon, 27 Dec 2021 15:21:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</guid><description>懒得分段了，就当做是讲个故事吧。
-背景大概是这样。
-内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。
-今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。
-所以，当当当~当~，整一个持续部署呗，反正是个纯前端项目，不用部署配套的后端代码，写个dockerfile再写个helm chart就差不多了，ci调了调构建镜像就完事，不过因为ci部署需要访问集群，所以又改了下.kube/config，删了之前尝试csr方式添加用户的时候加多的 user 和 context ，复制了一份挂载到 runner 容器里。
-然后&amp;hellip;&amp;hellip;问题就来了。
-同事忽然告诉我办公室的服务挂了，于是下意识地打出kgp，卡住。
-等了一会儿，还是卡住。
-又等了一会儿，坐不住了。试了下kubectl cluster-info，继续卡住。
-开始慌了，想起今天的机器有点卡，先看看 free -h 有没有内存泄漏之类的问题导致阻塞，结果发现并没有，于是继续看 htop，cpu使用率也比较正常。再看df -h | grep -vE 'shm|overlay'，发现硬盘使用率96%（估计硬盘主控想死的心都有了，揪着4%的可用空间想把PE数平均到各个区块恐怕不容易）。
-找到问题后松了口气，十有八九是又出现 evicted 了。二话不说直接 docker system df，看到30多G的 build cache 顿时惊了，肯定不是go的构建缓存（手动挂载优化了），那就是 node_modules 又立奇功了。node_modules=黑洞果然不是吹的。
-清理完使用率恢复到63%，但依然有种不安感萦绕于心，于是再次尝试kgp，卡住。
-等了一会儿，喝口水，继续卡着。
-又等了一会儿，淦。
-想了想，journalctl -r -u k3s看看日志，并没有什么发现，倒是注意到很多linkerd之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。
-6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.</description></item><item><title>简单的ECK部署</title><link>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</link><pubDate>Tue, 30 Nov 2021 11:13:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</guid><description>前言 因为工作需要，得在自己搭建的集群里部署一个 Elasticsearch 。又因为是云端的集群，在 k8s 外用 docker 单独起一个 ES 明显更难维护（但部署更简单），于是选择用 ECK 。
-ECK 就是 Elastic Cloud on Kubernetes 的缩写，可以理解成部署在 Kubernetes 上的 Elasticsearch 。当然不止 ES 。
-部署 ES 的过程遇到几个问题记录下怎么解决的。
-ES 使用自签名证书，导致 HTTP 不能连接。 ECK 需要安装 IK 分词插件。 ECK 默认密码每次部署都重新生成，而且默认用户权限过大。 ECK 默认没配 PVC ，数据没有持久化。 接下来逐个解决。
-0x01 自签名证书 自签名证书解决方法有几个
-改客户端，让客户端用自签名证书连接。很麻烦。 生成一个固定的证书，让ES和客户端都用这个证书，客户端和ES都要改。很麻烦。 禁用 ES 的自签名证书。 考虑到是私有的测试环境，不搞这些烦人的东西，直接禁用。
-修改 YAML 如下。
-apiVersion:elasticsearch.k8s.elastic.co/v1kind:Elasticsearchmetadata:name:elasticsearchspec:http:tls:selfSignedCertificate:disabled:true注意 spec.http.tls.selfSignedCertificate.disabled 这个字段。
-参考文档：Orchestrating Elastic Stack applications - Access Elastic Stack services - TLS certificates</description></item><item><title>kubeadm安装实验集群记录</title><link>https://nnnewb.github.io/blog/p/kubernetes-manually-install-by-kubeadm/</link><pubDate>Thu, 25 Nov 2021 14:31:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/kubernetes-manually-install-by-kubeadm/</guid><description>前言 好吧，如果仔细想想就会发现不管是 k3s 还是 ucloud 上的 k8s ，都没有一个是自己手动配置好的。虽说并不是至关重要的，但手动用 kubeadm 装一次 kubernetes 总不会有什么坏处。顺手做个笔记。参考资料列出如下。
-https://kubernetes.io/zh/docs/setup/production-environment/tools/kubeadm/install-kubeadm/ https://mirrors.tuna.tsinghua.edu.cn/help/kubernetes/ https://computingforgeeks.com/deploy-kubernetes-cluster-on-ubuntu-with-kubeadm/ 系统配置 正式安装之前先确认一些系统级配置。
-swapoff 简单的做法是 sudo swapoff -a 即可。之后改 fstab 把 swap 分区关掉。
-iptables检查桥接流量 用 lsmod | grep bf_netfitler 检查有没有启用 bf_netfilter 模块，如果没有输出的话说明没加载，执行下面的命令。
-cat &amp;lt;&amp;lt;EOF | sudo tee /etc/modules-load.d/k8s.conf br_netfilter EOF 会在 /etc/modules-load.d 下添加一个模块自动加载的配置。
-cat &amp;lt;&amp;lt;EOF | sudo tee /etc/sysctl.d/k8s.conf net.bridge.bridge-nf-call-ip6tables = 1 net.bridge.bridge-nf-call-iptables = 1 EOF 再在 /etc/sysctl.d/ 下添加一个配置，允许 iptables 查看桥接流量。
-然后用 sysctl 重载配置。</description></item><item><title>k3s更新客户端证书的偷懒方法</title><link>https://nnnewb.github.io/blog/p/k3s-renew-client-ca-file-the-lazy-way/</link><pubDate>Mon, 11 Oct 2021 13:58:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/k3s-renew-client-ca-file-the-lazy-way/</guid><description>前言 今天上内网服务器看了眼，准备调试下新代码，结果发现报错 You must logged in to the server (unauthorized) 。翻了半天的 KUBECONFIG 配置，发现啥也没错。换成 /etc/rancher/k3s/k3s.yaml 也不行。于是查了下 journalctl -r -u k3s ，发现日志 x509: certificate has expired or not yet valid: current time ... ，这就明确了是证书过期了。
-于是又找了一圈如何给k3s更新证书，搜 how to renew client-ca-file 查出来的方法不是 kubeadm 就是改时间、换证书，总之&amp;hellip;麻烦，而且搜出来的文章可操作性都有点差，真要实践出真知也不能放公司的机器上，搞出点问题还得劝自己心平气和磨上一整天去解决。
-于是终于找到个看起来能行的办法：重启。
-操作 这个办法可操作性很强——反正情况不会变得更差了。因为办公室的服务器并不能保证24小时不断电，有时候白天上班机器是关机的，重启k3s无论如何不会导致问题变得更差——就算放着不管，过两天说不定也会断电重启下。
-确认没人用服务之后直接上手。
-sudo systemctl restart k3s 等待重启完成，测试下新的 k3s.yaml 能不能正常用。
-export KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl cluster-info Kubernetes control plane is running at https://192.168.2.175:6443 CoreDNS is running at https://192.168.2.175:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy Metrics-server is running at https://192.</description></item><item><title>csr 方式创建 kubernetes 用户出了点差错</title><link>https://nnnewb.github.io/blog/p/csr-%E6%96%B9%E5%BC%8F%E5%88%9B%E5%BB%BA-kubernetes-%E7%94%A8%E6%88%B7%E5%87%BA%E4%BA%86%E7%82%B9%E5%B7%AE%E9%94%99/</link><pubDate>Mon, 19 Jul 2021 09:52:38 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/csr-%E6%96%B9%E5%BC%8F%E5%88%9B%E5%BB%BA-kubernetes-%E7%94%A8%E6%88%B7%E5%87%BA%E4%BA%86%E7%82%B9%E5%B7%AE%E9%94%99/</guid><description>越是在 kubernetes 的浑水里摸索，越是发现这就是个不顺手的锤子。
-网上很多人喜欢把东西用不惯叫做懒，蠢，要是多反驳几句，那就还得搭上个“坏”的帽子。感觉吧，就这帮人看来，大神放个屁也值得学习，从里面“悟”出什么道理。
-这帮人就跟传教士一样，但凡说个不字，就是在亵渎他们的“大神”。可谓人类迷惑行为。
-好吧。技术别饭圈化行吗？
-你说尤大强吗？Richard Stallman 是不是值得尊敬？Google 是不是最好的技术公司？Android 天下无敌？
-然后全摆上神坛，挂上赛博天神的牌匾，插上网线一天 25 小时膜拜？
-这帮人哪天搞个崇拜互联网和计算机的教派，把冯·诺依曼奉为先知我都不奇怪。
-拜托，你们真的好怪欸。
-完整脚本 #!/bin/bash -e # # 创建用户 gitlab 并授予权限 # # reference: # https://kubernetes.io/zh/docs/reference/access-authn-authz/certificate-signing-requests/#normal-user # if `gitlab` does not exists, # create csr and approve if ! kubectl get csr gitlab &amp;gt;/dev/null; then # create credential if [ ! -f gitlab.csr ]; then openssl genrsa -out gitlab.key 2048 openssl req -new -key gitlab.key -out gitlab.csr fi csr=$(cat gitlab.</description></item></channel></rss>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>kubernetes on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/kubernetes/</link><description>Recent content in kubernetes on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 01 Mar 2022 12:30:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/kubernetes/index.xml" rel="self" type="application/rss+xml"/><item><title>go-kit 笔记</title><link>https://nnnewb.github.io/blog/p/go-kit-note/</link><pubDate>Tue, 01 Mar 2022 12:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/go-kit-note/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>初步看了下 gokit 的案例 &lt;code>stringsvc&lt;/code>和&lt;code>apigateway&lt;/code>，记录一下对 gokit 的映像。&lt;/p>
+&lt;h2 id="gokit定位">gokit定位&lt;/h2>
+&lt;blockquote>
+&lt;p>&lt;strong>Go kit&lt;/strong> is a &lt;strong>programming toolkit&lt;/strong> for building microservices (or elegant monoliths) in Go. We solve common problems in distributed systems and application architecture so you can focus on delivering business value.&lt;/p>
+&lt;p>Go has emerged as the language of the server, but it remains underrepresented in so-called &amp;ldquo;modern enterprise&amp;rdquo; companies like Facebook, Twitter, Netflix, and SoundCloud. Many of these organizations have turned to JVM-based stacks for their business logic, owing in large part to libraries and ecosystems that directly support their microservice architectures.&lt;/p>
+&lt;p>To reach its next level of success, Go needs more than simple primitives and idioms. It needs a comprehensive toolkit, for coherent distributed programming in the large. Go kit is a set of packages and best practices, which provide a comprehensive, robust, and trustable way of building microservices for organizations of any size.&lt;/p>
+&lt;/blockquote>
+&lt;p>gokit 大概算是框架，因为和 gokit 打交道基本离不开 gokit 定义的几个接口类型。用 gokit 开发服务的可定制性很强，几乎每个细节都可以控制。&lt;/p>
+&lt;p>而实际上手体验下来，缺点大概就是海量的样板代码，实现一个服务需要大量的适配代码来控制 Endpoint 。又因为 Go 语言表现力不足，也没有运行时元编程的能力，这些样板代码只能靠代码生成来解决。&lt;/p>
+&lt;p>还好 gokit 自己也知道，在仓库首页就提供了很多代码生成器的链接。&lt;/p>
+&lt;p>用 gokit 还有一个好处是一定程度上避免技术栈绑定在某个特定平台或者框架上，毕竟 gokit 比起框架，更像是一个工具箱，组件之间没有特别的依赖关系，顺手就用，不顺手可以换个锤子。&lt;/p>
+&lt;h2 id="框架搭建">框架搭建&lt;/h2>
+&lt;h3 id="鸟瞰">鸟瞰&lt;/h3>
+&lt;p>gokit 编写的服务有几个基本元素，这些基本元素都是围绕 &lt;strong>Endpoint&lt;/strong> 接口转的，gokit 自己把 Endpoint 称为 &lt;em>构建服务器和客户端的基本块&lt;/em> 。&lt;/p>
+&lt;p>几个基本元素是：&lt;/p>
+&lt;ul>
+&lt;li>服务接口定义 &lt;code>type StringService interface { /*...*/ }&lt;/code>&lt;/li>
+&lt;li>应用级中间件定义 &lt;code>type AppMiddleware struct {} // implement StringService&lt;/code>&lt;/li>
+&lt;li>传输层接口定义，包括 &lt;code>Endpoint&lt;/code> 定义、序列化、服务发现等&lt;/li>
+&lt;li>传输层中间件定义，&lt;code>type Middleware func(Endpoint) Endpoint&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>此外还有一些可选的组件：&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>tracing&lt;/code>，分布式跟踪&lt;/li>
+&lt;li>&lt;code>ratelimit&lt;/code>，限流&lt;/li>
+&lt;li>&lt;code>metrics&lt;/code>，指标收集&lt;/li>
+&lt;li>&lt;code>log&lt;/code>，日志收集&lt;/li>
+&lt;li>&lt;code>circuitbreaker&lt;/code>，熔断&lt;/li>
+&lt;li>&lt;code>auth&lt;/code>，身份认证&lt;/li>
+&lt;/ul>
+&lt;p>我自己整的目录结构如下。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228155029310.png"
+width="234"
+height="255"
+srcset="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228155029310_hu1b61ce4442b934d4130680e952a0c52e_9034_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228155029310_hu1b61ce4442b934d4130680e952a0c52e_9034_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="目录结构"
+class="gallery-image"
+data-flex-grow="91"
+data-flex-basis="220px"
+>&lt;/p>
+&lt;p>服务本质是一系列接口的集合，gokit 的 tutorial 中将服务抽象成了一个 &lt;code>interface&lt;/code> ，在这个接口上用户可以提供不同实现。像是服务端、客户端、中间件，不管传输层怎么定义，最终实现的都是这个接口。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">StringService&lt;/span> &lt;span class="kd">interface&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nf">Uppercase&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nf">Count&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">int&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>微服务的开发者提供这个接口的实现。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">StringServiceImpl&lt;/span> &lt;span class="kd">struct&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">StringServiceImpl&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">Uppercase&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">arg&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">arg&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="s">&amp;#34;&amp;#34;&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="s">&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">strings&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ToUpper&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">arg&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">StringServiceImpl&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">Count&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">arg&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">int&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">arg&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后通过某种传输层协议暴露给调用方。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">MakeUppercaseEndpoint&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">svc&lt;/span> &lt;span class="nx">stringsvc1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">StringService&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nx">endpoint&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Endpoint&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">request&lt;/span> &lt;span class="kd">interface&lt;/span>&lt;span class="p">{})&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kd">interface&lt;/span>&lt;span class="p">{},&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">req&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">request&lt;/span>&lt;span class="p">.(&lt;/span>&lt;span class="nx">UppercaseRequest&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">v&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">svc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Uppercase&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">req&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">S&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">UppercaseResponse&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;span class="nx">V&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">v&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="p">},&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// ... 略
+&lt;/span>&lt;span class="c1">&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">logger&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewLogfmtLogger&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stderr&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">svc&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">stringsvc1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">StringServiceImpl&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="nx">uppercase&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">transport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">MakeUppercaseEndpoint&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">svc&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">uppercaseHandler&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">httptransport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">uppercase&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">transport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DecodeUppercaseRequest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">transport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">EncodeResponse&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Handle&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;/uppercase&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">uppercaseHandler&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">count&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">transport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">MakeCountEndpoint&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">svc&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">countHandler&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">httptransport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">count&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">transport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DecodeCountRequest&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">transport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">EncodeResponse&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Handle&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;/count&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">countHandler&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">logger&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;msg&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;HTTP&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;addr&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;:8080&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">logger&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;err&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ListenAndServe&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;:8080&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>一个简单的服务提供方需要做的就是这些。下面具体看看其中涉及的概念。&lt;/p>
+&lt;h3 id="endpoint-解析">endpoint 解析&lt;/h3>
+&lt;p>一个最简单的服务 &lt;code>Endpoint&lt;/code> 定义如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">package&lt;/span> &lt;span class="nx">main&lt;/span>
+&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;context&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;encoding/json&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;net/http&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;os&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;strings&amp;#34;&lt;/span>
+&lt;span class="nx">httptransport&lt;/span> &lt;span class="s">&amp;#34;github.com/go-kit/kit/transport/http&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;github.com/go-kit/log&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">uppercaseRequest&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">S&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="s">`json:&amp;#34;s,omitempty&amp;#34;`&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">uppercaseResponse&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">S&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="s">`json:&amp;#34;s,omitempty&amp;#34;`&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">logger&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewLogfmtLogger&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stderr&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Handle&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;/uppercase&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">httptransport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServer&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;span class="c1">// endpoint 定义
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">request&lt;/span> &lt;span class="kd">interface&lt;/span>&lt;span class="p">{})&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">response&lt;/span> &lt;span class="kd">interface&lt;/span>&lt;span class="p">{},&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">req&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">request&lt;/span>&lt;span class="p">.(&lt;/span>&lt;span class="nx">uppercaseRequest&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">req&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">S&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="s">&amp;#34;&amp;#34;&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">uppercaseResponse&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="s">&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">},&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">uppercaseResponse&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="nx">strings&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ToUpper&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">req&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">S&lt;/span>&lt;span class="p">)},&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">},&lt;/span>
+&lt;span class="c1">// 请求 decoder
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">r&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Request&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kd">interface&lt;/span>&lt;span class="p">{},&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kd">var&lt;/span> &lt;span class="nx">request&lt;/span> &lt;span class="nx">uppercaseRequest&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">json&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewDecoder&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">r&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Body&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="nf">Decode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">request&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">request&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">},&lt;/span>
+&lt;span class="c1">// 响应 encoder
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">w&lt;/span> &lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">ResponseWriter&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">response&lt;/span> &lt;span class="kd">interface&lt;/span>&lt;span class="p">{})&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">json&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewEncoder&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">w&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="nf">Encode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">response&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">},&lt;/span>
+&lt;span class="p">))&lt;/span>
+&lt;span class="nx">logger&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;msg&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;HTTP&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;addr&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;:8080&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">logger&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;err&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ListenAndServe&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;:8080&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>Endpoint&lt;/code> 本质是一个函数，类型签名如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// Endpoint is the fundamental building block of servers and clients.
+&lt;/span>&lt;span class="c1">// It represents a single RPC method.
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kd">type&lt;/span> &lt;span class="nx">Endpoint&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">request&lt;/span> &lt;span class="kd">interface&lt;/span>&lt;span class="p">{})&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">response&lt;/span> &lt;span class="kd">interface&lt;/span>&lt;span class="p">{},&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>Endpoint&lt;/code> 抽象了 RPC 调用，隐藏了调用对象是“本地”还是“远程”的。像是上面的案例里，&lt;code>Endpoint&lt;/code> 背后是本地的代码。而在客户端使用&lt;code>Endpoint&lt;/code>时，&lt;code>Endpoint&lt;/code>的背后往往是传输层代码，发起了一次远程调用。&lt;/p>
+&lt;p>&lt;code>Endpoint&lt;/code> 本身不做请求/响应的编解码工作，进入 &lt;code>Endpoint&lt;/code> 的都是已经准备好的结构化数据。&lt;/p>
+&lt;h3 id="endpointmiddleware-解析">endpoint.Middleware 解析&lt;/h3>
+&lt;p>&lt;code>endpoint.Middleware&lt;/code> 是在 &lt;code>Endpoint&lt;/code> 上包装的中间件，签名如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// Middleware is a chainable behavior modifier for endpoints.
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kd">type&lt;/span> &lt;span class="nx">Middleware&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">Endpoint&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nx">Endpoint&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>和 &lt;code>gin&lt;/code> 之类的框架中间件体系很相似，都是基于高阶函数的方式。一个简单的日志中间件实现如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;context&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;github.com/go-kit/kit/endpoint&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;github.com/go-kit/log&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">LoggingMiddleware&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">logger&lt;/span> &lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Logger&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nx">endpoint&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Middleware&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">next&lt;/span> &lt;span class="nx">endpoint&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Endpoint&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nx">endpoint&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Endpoint&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">request&lt;/span> &lt;span class="kd">interface&lt;/span>&lt;span class="p">{})&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kd">interface&lt;/span>&lt;span class="p">{},&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">logger&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;msg&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;calling endpoint&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">defer&lt;/span> &lt;span class="nx">logger&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;msg&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;called endpoint&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nf">next&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">request&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>像这样定义的中间件用法也很简单，以 &lt;code>Endpoint&lt;/code> 为参数调用即可。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="nf">LoggingMiddleware&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">With&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">logger&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;method&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;method-name&amp;#34;&lt;/span>&lt;span class="p">))(&lt;/span>&lt;span class="nx">endpoint&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>说起这个我就怀念 python 的装饰器。&lt;/p>
+&lt;h3 id="应用中间件">应用中间件&lt;/h3>
+&lt;p>应用中间件不算是 gokit 的一部分，gokit 的示例中给出了&lt;a class="link" href="http://gokit.io/examples/stringsvc.html#application-logging" target="_blank" rel="noopener"
+>应用级中间件的做法&lt;/a>。实话说我不喜欢。&lt;/p>
+&lt;p>所谓的应用中间件做法其实就是再定义一个结构，实现你的服务接口，然后在实现的服务接口里加上需要的中间件代码。&lt;/p>
+&lt;p>如果要说有什么好处的话，就是满足了类型约束，免去了用 &lt;code>reflect&lt;/code>。&lt;code>Endpoint&lt;/code>一级的中间件只能拿到一个 &lt;code>request interface{}&lt;/code> ，但下面这样写的话，参数就是已经填好的了，服务实现里拿到什么参数这个中间件就拿到什么参数。但问题也很明显——为了满足 &lt;code>type Service interface&lt;/code> 的约束，这样的中间件必须把服务的所有接口都写个 stub 。就算是用编辑器的 &lt;code>generate interface stubs&lt;/code> 功能也没法直接帮你填好转发参数的代码啊&amp;hellip;&lt;/p>
+&lt;p>我自己倒是折腾出一个有点怪的解法，利用 go 的 embed 字段和动态分发机制，部分实现了有继承的语言里的 override 。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;play/stringsvc1&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;github.com/go-kit/log&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">LoggingMiddleware&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">stringsvc1&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">StringService&lt;/span> &lt;span class="c1">// LoggingMiddleware 自己没有实现全部的 stringsvc1.StringService 接口，但这个 embed 字段实现了
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nx">Logger&lt;/span> &lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Logger&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 这个实现覆盖掉了结构里的 stringsvc1.StringService.Uppercase 暴露的实现
+&lt;/span>&lt;span class="c1">// 然后内部又使用了 `.StringService.Uppercase` 这种语法来调用结构里的
+&lt;/span>&lt;span class="c1">// stringsvc1.StringService.Uppercase 实现
+&lt;/span>&lt;span class="c1">// 就像是有继承的语言里子类通过 super() 或者 ParentClass::Uppercase 这样的方式调用父类实现一样。
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">m&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">LoggingMiddleware&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">Uppercase&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Logger&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;msg&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;call endpoint&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;arg&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">defer&lt;/span> &lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Logger&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;msg&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;called endpoint&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;arg&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">m&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">StringService&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Uppercase&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>通过这种办法倒是实现了应用级的特定接口中间件。但还要另外定义一个 &lt;code>struct&lt;/code> 也比较麻烦。&lt;/p>
+&lt;p>贴一下示例里的代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// middleware.go
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kd">type&lt;/span> &lt;span class="nx">loggingMiddleware&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">logger&lt;/span> &lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Logger&lt;/span>
+&lt;span class="nx">next&lt;/span> &lt;span class="nx">StringService&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">mw&lt;/span> &lt;span class="nx">loggingMiddleware&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">Uppercase&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">output&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">defer&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">begin&lt;/span> &lt;span class="nx">time&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Time&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">mw&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">logger&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Log&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;method&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;uppercase&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s">&amp;#34;input&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s">&amp;#34;output&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">output&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s">&amp;#34;err&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s">&amp;#34;took&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">time&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Since&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">begin&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="p">}(&lt;/span>&lt;span class="nx">time&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Now&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="nx">output&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">mw&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">next&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Uppercase&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// main.go
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;os&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;github.com/go-kit/kit/log&amp;#34;&lt;/span>
+&lt;span class="nx">httptransport&lt;/span> &lt;span class="s">&amp;#34;github.com/go-kit/kit/transport/http&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">logger&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewLogfmtLogger&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">os&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Stderr&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="kd">var&lt;/span> &lt;span class="nx">svc&lt;/span> &lt;span class="nx">StringService&lt;/span>
+&lt;span class="nx">svc&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">stringService&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="nx">svc&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">loggingMiddleware&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="nx">logger&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">svc&lt;/span>&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// ...
+&lt;/span>&lt;span class="c1">&lt;/span>
+&lt;span class="nx">uppercaseHandler&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">httptransport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServer&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;span class="nf">makeUppercaseEndpoint&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">svc&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="c1">// ...
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="客户端实现">客户端实现&lt;/h3>
+&lt;p>客户端实现可以很简单，同样有很强的扩展性。比如说可以结合服务发现、负载均衡、频率限制、熔断器实现一个功能强大的客户端。&lt;/p>
+&lt;p>先从简单的开始。一般考虑客户端实现的话，会准备一个特殊的结构来保存服务的 &lt;code>Endpoint&lt;/code>，再对这个结构实现服务定义的接口。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// https://github.com/go-kit/examples/blob/master/addsvc/pkg/addendpoint/set.go
+&lt;/span>&lt;span class="c1">&lt;/span>
+&lt;span class="c1">// Set collects all of the endpoints that compose an add service. It&amp;#39;s meant to
+&lt;/span>&lt;span class="c1">// be used as a helper struct, to collect all of the endpoints into a single
+&lt;/span>&lt;span class="c1">// parameter.
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kd">type&lt;/span> &lt;span class="nx">Set&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">SumEndpoint&lt;/span> &lt;span class="nx">endpoint&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Endpoint&lt;/span>
+&lt;span class="nx">ConcatEndpoint&lt;/span> &lt;span class="nx">endpoint&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Endpoint&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// Sum implements the service interface, so Set may be used as a service.
+&lt;/span>&lt;span class="c1">// This is primarily useful in the context of a client library.
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span> &lt;span class="nx">Set&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">Sum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">a&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">b&lt;/span> &lt;span class="kt">int&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">resp&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">SumEndpoint&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">SumRequest&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="nx">A&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">a&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">B&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">b&lt;/span>&lt;span class="p">})&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">response&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">resp&lt;/span>&lt;span class="p">.(&lt;/span>&lt;span class="nx">SumResponse&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">response&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">V&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">response&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// ... 略
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>这么做的好处是可以像是调用 Go 方法一样去调用 RPC 函数，比起 &lt;code>grpc&lt;/code> 一类的调用方式来说更直观了。&lt;/p>
+&lt;p>客户端的 &lt;code>Endpoint&lt;/code> 的构造方式和服务器不一样，隐藏在 &lt;code>Endpoint&lt;/code> 背后的不是本地代码，而是一个网络请求。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// Each individual endpoint is an http/transport.Client (which implements
+&lt;/span>&lt;span class="c1">// endpoint.Endpoint) that gets wrapped with various middlewares. If you
+&lt;/span>&lt;span class="c1">// made your own client library, you&amp;#39;d do this work there, so your server
+&lt;/span>&lt;span class="c1">// could rely on a consistent set of client behavior.
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kd">var&lt;/span> &lt;span class="nx">sumEndpoint&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">httptransport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewClient&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;POST&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="nf">copyURL&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">u&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;/sum&amp;#34;&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="nx">encodeHTTPGenericRequest&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="nx">decodeHTTPSumResponse&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="p">).&lt;/span>&lt;span class="nf">Endpoint&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>github.com/go-kit/kit/transport&lt;/code> 这个包提供了很多有用的助手函数来帮助构造 &lt;code>Endpoint&lt;/code> ，以及黏合服务端的 &lt;code>Endpoint&lt;/code> 到传输层代码。（PS：请回顾前文中使用的 &lt;code>httptransport.NewServer&lt;/code>）&lt;/p>
+&lt;h3 id="服务发现">服务发现&lt;/h3>
+&lt;p>参考 &lt;a class="link" href="https://github.com/go-kit/examples/blob/master/apigateway/main.go" target="_blank" rel="noopener"
+>apigateway&lt;/a> 的代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// Each method gets constructed with a factory. Factories take an
+&lt;/span>&lt;span class="c1">// instance string, and return a specific endpoint. In the factory we
+&lt;/span>&lt;span class="c1">// dial the instance string we get from Consul, and then leverage an
+&lt;/span>&lt;span class="c1">// addsvc client package to construct a complete service. We can then
+&lt;/span>&lt;span class="c1">// leverage the addsvc.Make{Sum,Concat}Endpoint constructors to convert
+&lt;/span>&lt;span class="c1">// the complete service to specific endpoint.
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kd">var&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="nx">tags&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="nx">passingOnly&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="kc">true&lt;/span>
+&lt;span class="nx">endpoints&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">addendpoint&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Set&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="nx">instancer&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">consulsd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewInstancer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">client&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">logger&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;addsvc&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">tags&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">passingOnly&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="nx">factory&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nf">addsvcFactory&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">addendpoint&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">MakeSumEndpoint&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">tracer&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">zipkinTracer&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">logger&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">endpointer&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">sd&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewEndpointer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">instancer&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">factory&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">logger&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">balancer&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">lb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewRoundRobin&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">endpointer&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">retry&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">lb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Retry&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">retryMax&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">retryTimeout&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">balancer&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">endpoints&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">SumEndpoint&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">retry&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228171821569.png"
+width="925"
+height="573"
+srcset="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228171821569_hude2acf9d66679c44454b1c6e5dc1473c_66465_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228171821569_hude2acf9d66679c44454b1c6e5dc1473c_66465_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="示意图"
+class="gallery-image"
+data-flex-grow="161"
+data-flex-basis="387px"
+>&lt;/p>
+&lt;p>总得来说，go kit 的服务发现机制靠客户端以特定的方式构造 &lt;code>Endpoint&lt;/code> ，这和反向代理或者 side-car 代理实现的服务发现不一样。&lt;/p>
+&lt;p>比如说 kubernetes 的 ClusterIP 基于 kube-proxy，后端有多个 POD 的时候 kube-proxy 会自动进行负载均衡，但算法是 kube-proxy 实现决定的，不可依赖。&lt;/p>
+&lt;p>再比如 nginx 也能一定程度实现服务发现和负载均衡。&lt;/p>
+&lt;p>再比如，linkerd 这样的 service mesh，非侵入，提供负载均衡、服务发现、重试这些功能。&lt;/p>
+&lt;p>go kit 的工具箱里提供的是客户端的负载均衡机制。上图里的代码可以用下图表示。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228172730622.png"
+width="574"
+height="626"
+srcset="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228172730622_hu7c2f12e783b3c572c3387446a921feeb_14775_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220228172730622_hu7c2f12e783b3c572c3387446a921feeb_14775_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="负载均衡"
+class="gallery-image"
+data-flex-grow="91"
+data-flex-basis="220px"
+>&lt;/p>
+&lt;h3 id="多传输层实现">多传输层实现&lt;/h3>
+&lt;p>这里尝试实现 &lt;code>http&lt;/code> 和 &lt;code>grpc&lt;/code> 两种 rpc 传输层协议。首先为了保证最大化复用代码，在 &lt;code>http&lt;/code> 实现中定义的结构和 endpoint 肯定是要复用起来的，不然每个传输层都来一次的话没codegen非得手指敲断不可。&lt;/p>
+&lt;p>先提取 &lt;code>makeXXXEndpoint&lt;/code> 代码和 &lt;code>XXXRequest&lt;/code> 这样的结构到单独的文件里。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301115635464.png"
+width="1920"
+height="1040"
+srcset="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301115635464_hu2db5290091178b734e80b60459e1fef9_216608_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301115635464_hu2db5290091178b734e80b60459e1fef9_216608_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="提取定义"
+class="gallery-image"
+data-flex-grow="184"
+data-flex-basis="443px"
+>&lt;/p>
+&lt;p>思路上部分参考的 gokit 案例中 &lt;code>addsvc&lt;/code>，&lt;a class="link" href="https://github.com/go-kit/examples/blob/master/addsvc/README.md" target="_blank" rel="noopener"
+>链接&lt;/a>。&lt;/p>
+&lt;p>proto 文件如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-protobuf" data-lang="protobuf">&lt;span class="c1">// play/stringsvc/transport/pb/stringsvc.proto
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="n">syntax&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s">&amp;#34;proto3&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="k">option&lt;/span> &lt;span class="n">go_package&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s">&amp;#34;play/stringsvc/transport/pb&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="kd">message&lt;/span> &lt;span class="nc">UppercaseRequest&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="n">s&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="p">}&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="kd">message&lt;/span> &lt;span class="nc">UppercaseResponse&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="p">}&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="kd">message&lt;/span> &lt;span class="nc">CountRequest&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="n">s&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="p">}&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="kd">message&lt;/span> &lt;span class="nc">CountResponse&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="kt">int32&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="p">}&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="kd">service&lt;/span> &lt;span class="n">StringService&lt;/span> &lt;span class="p">{&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="k">rpc&lt;/span> &lt;span class="n">Uppercase&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">UppercaseRequest&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">returns&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">UppercaseResponse&lt;/span>&lt;span class="p">);&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span> &lt;span class="k">rpc&lt;/span> &lt;span class="n">Count&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">CountRequest&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">returns&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">CountResponse&lt;/span>&lt;span class="p">);&lt;/span>&lt;span class="err">
+&lt;/span>&lt;span class="err">&lt;/span>&lt;span class="p">}&lt;/span>&lt;span class="err">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后使用 protoc 生成 go 源码，具体参考 &lt;a class="link" href="https://www.grpc.io/docs/languages/go/quickstart/" target="_blank" rel="noopener"
+>gRPC 的官方文档&lt;/a>。继续下一步之前要先了解 go 语言的 gRPC 服务框架在一般情况下怎么实现。同样建议直接看文档。简单说就是写一个结构，实现 protoc 根据你的 proto 文件生成的接口，最后调用注册方法把你的实现注册到 gRPC 服务器上就可以了。&lt;/p>
+&lt;p>再考虑请求进入我们的服务代码要经过的流程，gRPC 接口的实现要做事情其实就是把 proto 定义的结构转换成我们之前定义的结构，再调用之前定义的 &lt;code>Endpoint&lt;/code> 。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301134821969.png"
+width="437"
+height="488"
+srcset="https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301134821969_huf9fd1139fbbfdafdb0f01166b9d50a9e_18354_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/go-kit-note/image-20220301134821969_huf9fd1139fbbfdafdb0f01166b9d50a9e_18354_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="gRPC作为传输层协议的交互流程"
+class="gallery-image"
+data-flex-grow="89"
+data-flex-basis="214px"
+>&lt;/p>
+&lt;p>其中对请求编解码是个很无聊的过程，字段一一赋值即可。endpoint 继续复用先前 http 的版本。gRPC 实现比较取巧，我们把所有 &lt;code>Endpoint&lt;/code> 放到一个结构里保存，然后实现 gRPC 的接口。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;context&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;play/stringsvc&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;play/stringsvc/transport/pb&amp;#34;&lt;/span>
+&lt;span class="nx">grpctransport&lt;/span> &lt;span class="s">&amp;#34;github.com/go-kit/kit/transport/grpc&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">set&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="o">*&lt;/span>&lt;span class="nx">pb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">UnimplementedStringServiceServer&lt;/span>
+&lt;span class="nx">uppercase&lt;/span> &lt;span class="nx">grpctransport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Handler&lt;/span>
+&lt;span class="nx">count&lt;/span> &lt;span class="nx">grpctransport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Handler&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">NewGRPCServer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">svc&lt;/span> &lt;span class="nx">stringsvc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">StringService&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">set&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">set&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;span class="nx">uppercase&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">grpctransport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nf">MakeUppercaseEndpoint&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">svc&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nx">decodeUppercaseRequestGRPC&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">encodeUppercaseResponseGRPC&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="nx">count&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">grpctransport&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nf">MakeCountEndpoint&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">svc&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nx">decodeCountRequestGRPC&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">encodeCountResponseGRPC&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">set&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">Uppercase&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">req&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">pb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">UppercaseRequest&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">pb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">UppercaseResponse&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">resp&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">uppercase&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ServeGRPC&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">req&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">resp&lt;/span>&lt;span class="p">.(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">pb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">UppercaseResponse&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">set&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">Count&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">req&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">pb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CountRequest&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">pb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CountResponse&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">resp&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">count&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ServeGRPC&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">req&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">resp&lt;/span>&lt;span class="p">.(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">pb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CountResponse&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>这里利用了一个 &lt;code>github.com/go-kit/kit/transport/grpc&lt;/code> 的帮助结构，&lt;code>grpctransport.NewServer&lt;/code> 创建的 &lt;code>grpctransport.Server&lt;/code>。这个结构的用途和 &lt;code>httptransport.NewServer&lt;/code>一样，本质上是一个适配器，把 gRPC 的输入适配到我们定义的服务接口。理论上来说不用这玩意儿也没事，但实现代码里就要显式调用 &lt;code>Decode&lt;/code>和&lt;code>Encode&lt;/code>。从解耦的角度来说这种设计会更好。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>之所以说 gokit 大概算是框架，是因为 gokit 提供的这些工具其实有一套自己的最佳实践，但并不强迫遵循。比如 transport 并不是一定要用 gokit 的 transport ，完全可以自己写 &lt;code>http.Handler&lt;/code> ，把 encode/decode 写到一起。也可以把其他方式编写的 RPC 封装成 &lt;code>Endpoint&lt;/code>，获得 gokit 提供的一系列支持。&lt;/p>
+&lt;p>gokit 提供了很多有用的工具，解决一些诸如服务发现、熔断器、分布式跟踪和可观测性这样的问题。gokit 的案例代码示范的实践方式也很有启发性。&lt;/p></description></item><item><title>gRPC-Gateway 用作多个 gRPC 服务的网关</title><link>https://nnnewb.github.io/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/</link><pubDate>Wed, 23 Feb 2022 17:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>众所周知，API网关是微服务架构的重要组件，起到一个整流过滤的作用。虽然 gRPC-Gateway 要啥没啥，和 API 网关的模式也扯不上太多关系，但总之先起个高调。&lt;/p>
+&lt;p>然后就是真正遇到的问题了。在旧的架构里，gRPC-Gateway 的用法，是对每个需要暴露 HTTP 服务的 gRPC 服务都起一个对应的 gRPC-Gateway 。最早的做法是 gRPC-Gateway 服务单独作为一个 POD ，gRPC 服务实现也单独一个 POD 。后来我改成了 Gateway 和 服务在同一个 POD 内，起两个 container 。&lt;/p>
+&lt;p>之前的做法都存在一个问题，就是 gRPC-Gateway 要分配少量的 CPU 和内存配额，虽然每个 gRPC-Gateway 服务分到的内存和CPU都很少，但架不住服务多，内存和 CPU 的配额都占用了不少，实际用到的少得可怜，大部分配额都是浪费。&lt;/p>
+&lt;p>下面具体分析下怎么把 gateway 单独提取成一个 POD，给所有 gRPC 服务当网关，同时保持负载均衡发挥作用，提供无缝扩容。&lt;/p>
+&lt;h2 id="实现网关">实现网关&lt;/h2>
+&lt;h3 id="官方demo">官方demo&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// Create a client connection to the gRPC server we just started
+&lt;/span>&lt;span class="c1">// This is where the gRPC-Gateway proxies the requests
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="nx">conn&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">grpc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">DialContext&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Background&lt;/span>&lt;span class="p">(),&lt;/span>
+&lt;span class="s">&amp;#34;0.0.0.0:8080&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="nx">grpc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">WithBlock&lt;/span>&lt;span class="p">(),&lt;/span>
+&lt;span class="nx">grpc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">WithTransportCredentials&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">insecure&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewCredentials&lt;/span>&lt;span class="p">()),&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalln&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Failed to dial server:&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">gwmux&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">runtime&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServeMux&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="c1">// Register Greeter
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="nx">err&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">helloworldpb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">RegisterGreeterHandler&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Background&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="nx">gwmux&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">conn&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalln&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Failed to register gateway:&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">gwServer&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Server&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;span class="nx">Addr&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s">&amp;#34;:8090&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="nx">Handler&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">gwmux&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Println&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Serving gRPC-Gateway on http://0.0.0.0:8090&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalln&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">gwServer&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ListenAndServe&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>核心逻辑在这两行：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="nx">gwmux&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">runtime&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServeMux&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="c1">// Register Greeter
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="nx">err&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">helloworldpb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">RegisterGreeterHandler&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Background&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="nx">gwmux&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">conn&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalln&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Failed to register gateway:&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>gwmux&lt;/code>是 gRPC-Gateway 的运行时 &lt;code>mux&lt;/code> 实例，可以理解成路由。 标准库的 &lt;code>http&lt;/code> 包也有自己的 &lt;code>mux&lt;/code> ，但 gRPC-Gateway 项目自己实现了一个。看到 &lt;code>gwmux&lt;/code>应该就能想到这肯定是注册路由，理论上来说——如果你有多个 gRPC 服务，而且 url 没有冲突的话，注册多个服务到路由上应该是没有问题的。&lt;/p>
+&lt;p>所以剩下的问题就是这个 &lt;code>RegisterGreeterHandler&lt;/code> 内是不是我们预期的那样，类似 &lt;code>mux&lt;/code> 注册路由的用法？&lt;/p>
+&lt;h3 id="registerxxxhandlerclient-实现">RegisterXXXHandlerClient 实现&lt;/h3>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918.png"
+width="1207"
+height="132"
+srcset="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918_huae7e9726eb83dcb6808b9604bde89ea7_31321_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918_huae7e9726eb83dcb6808b9604bde89ea7_31321_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="RegisterXXXHandlerClient实现"
+class="gallery-image"
+data-flex-grow="914"
+data-flex-basis="2194px"
+>&lt;/p>
+&lt;p>顺着 &lt;code>RegisterXXXHandler&lt;/code>很快就能找到实现，&lt;code>RegisterXXXHandlerClient&lt;/code>。&lt;code>Handle&lt;/code>的用法正如预期的那样，是一个类似 &lt;code>http.ServeMux&lt;/code> 的对象。处理函数里的逻辑很清晰。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463.png"
+width="1167"
+height="420"
+srcset="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463_hu5863f8bc3c05d0c34f00482d4fdc41e8_65629_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463_hu5863f8bc3c05d0c34f00482d4fdc41e8_65629_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="HandleFunc"
+class="gallery-image"
+data-flex-grow="277"
+data-flex-basis="666px"
+>&lt;/p>
+&lt;p>函数体可以简单划分成两部分：&lt;/p>
+&lt;ul>
+&lt;li>构造和发送请求
+&lt;ul>
+&lt;li>根据请求的 &lt;code>Content-Type&lt;/code> 选择 &lt;code>Marshaler&lt;/code> 。&lt;/li>
+&lt;li>构造请求上下文，从HTTP请求里提取&lt;code>grpc-metadata&lt;/code>开头的元数据到 &lt;code>context&lt;/code> 里。&lt;/li>
+&lt;li>&lt;code>request_XXX_0&lt;/code> 反序列化 HTTP 请求体到 protobuf 生成的结构，并发送请求。&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>构造和返回响应
+&lt;ul>
+&lt;li>从响应元数据里构造上下文&lt;/li>
+&lt;li>构造和返回 HTTP 响应&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>整个流程是无状态也和 &lt;code>gwmux&lt;/code> 本身无绑定的。换言之，理论上来说完全可以把所有 gRPC-Gateway 生成的 &lt;code>Register&lt;/code> 函数注册到同一个 &lt;code>gwmux&lt;/code> 上。&lt;/p>
+&lt;h3 id="backend和注册">Backend和注册&lt;/h3>
+&lt;p>出于清晰化的考虑，Gateway 服务的构造过程我写成了 Builder 模式。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">registerHandlerFn&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">mux&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">runtime&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">ServeMux&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">conn&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">grpc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">ClientConn&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">err&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">GRPCBackend&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">RegisterHandlerFunc&lt;/span> &lt;span class="nx">registerHandlerFn&lt;/span>
+&lt;span class="nx">BackendAddr&lt;/span> &lt;span class="kt">string&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">DonviewGRPCGatewayServer&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">Serve&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">mux&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">runtime&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewServeMux&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">muxOptions&lt;/span>&lt;span class="o">...&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">backend&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">backends&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">conn&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">grpc&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">DialContext&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">TODO&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="nx">backend&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">BackendAddr&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">dialOptions&lt;/span>&lt;span class="o">...&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">err&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">backend&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">RegisterHandlerFunc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">TODO&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="nx">mux&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">conn&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">var&lt;/span> &lt;span class="nx">handler&lt;/span> &lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Handler&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">mux&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">_&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">wrapperFn&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="k">range&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">httpHandlerWrappers&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">handler&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nf">wrapperFn&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">handler&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ListenAndServe&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Sprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;0.0.0.0:%d&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">port&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nx">handler&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>所有 gRPC 后端被注册到 &lt;code>s.backends&lt;/code> ，在开始服务的时候调用 &lt;code>Serve&lt;/code> 函数，把 gRPC 服务注册到 &lt;code>mux&lt;/code> 里。因为事前确保了服务路由不会重叠，理论上来说注册完就能用。&lt;/p>
+&lt;h2 id="负载均衡">负载均衡&lt;/h2>
+&lt;p>最初的架构里，一个 gRPC-Gateway 服务对应一个 gRPC 服务，请求进入服务的过程是从云服务提供商的 LB =&amp;gt; kubernetes service (load balancer) =&amp;gt; gateway =&amp;gt; ClusterIP =&amp;gt; gRPC Server 。&lt;/p>
+&lt;p>后来改成一个 POD 包含 gateway 和 gRPC 两个 container 后，gateway 访问 gRPC 服务就不在经过 ClusterIP 这一层代理了，路径变成云服务商的 LB =&amp;gt; kubernetes service (load balancer) =&amp;gt; gateway =&amp;gt; gRPC Server 。&lt;/p>
+&lt;p>最后是现在的版本，网关统一成一个容器，路径和上述一样。&lt;/p>
+&lt;p>三者的区别在于负载均衡的时机。Kubernetes 的 ClusterIP 是同样具备负载均衡能力的，最初架构中负载均衡一共进行了三次，从云服务商的LB到主机端口（kubernetes），kubernetes再次负载均衡，转发到 gateway。gateway再经由 ClusterIP 转发至 gRPC 服务，每一次转发都经历一次负载均衡，分别提供了虚拟主机的扩容能力、gateway服务的扩容能力、gRPC服务的扩容能力。&lt;/p>
+&lt;p>第二版修改去掉了 gateway 到 gRPC 服务的负载均衡，变成了直连，延迟表现上理论上来说会有改善，但我没做过基准测试，所以这个“理论上”也只是凭感觉说。但可以明确的是 gateway 会额外占据资源配额，造成浪费，不好说值不值，个人感觉没太大意义。&lt;/p>
+&lt;p>第三版，统一了 gateway，还是三次负载均衡。不过Gateway对资源配额的使用效率会更好一点，依然保持了主机、gateway、gRPC 服务的可伸缩性。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894.png"
+width="176"
+height="714"
+srcset="https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894_huca7a171cf394f94ea2cc15092e42ada3_10452_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894_huca7a171cf394f94ea2cc15092e42ada3_10452_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="三次LB"
+class="gallery-image"
+data-flex-grow="24"
+data-flex-basis="59px"
+>&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>单从理论上来说这样设计应该是 OK 的，但是 gRPC-Gateway 官方对负载均衡没有说法，对能不能注册多个 gRPC 服务到一个 &lt;code>mux&lt;/code> 上也没有官方的文档说明，很难说这帮人能不能保证向后兼容，万一之后的版本不支持注册到一个 &lt;code>mux&lt;/code> 上了，到时候改起来就麻烦了，比较坏的情况就是你得自己写一个 &lt;code>protoc-gen-gateway&lt;/code> 这样的玩意儿来生成一个自己的网关。&lt;/p>
+&lt;p>此外还有一个缺陷，gRPC-Gateway 到 gRPC Server 的负载均衡由 Kubernetes ClusterIP 提供，但是 &lt;a class="link" href="https://stackoverflow.com/questions/49888133/kubernetes-service-cluster-ip-how-is-this-internally-load-balanced-across-diffe" target="_blank" rel="noopener"
+>ClusterIP 的负载均衡算法是 Round Robin/Random&lt;/a> ，并不支持根据负载或其他维度的测量数据来决定如何均衡负载，未来如果需要根据负载情况分发请求，可能还得在网关到 gRPC 服务之间加个负载均衡组件，再提供一个服务发现/注册中心来帮助调度。&lt;/p></description></item><item><title>记一次API响应时间优化</title><link>https://nnnewb.github.io/blog/p/an-api-response-time-optimize/</link><pubDate>Fri, 31 Dec 2021 18:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/an-api-response-time-optimize/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析优化下性能。&lt;/p>
+&lt;h2 id="0x01-性能分析">0x01 性能分析&lt;/h2>
+&lt;h3 id="预判">预判&lt;/h3>
+&lt;p>下手前预估下可能存在瓶颈的地方。对于这次下手的接口（&lt;code>get_users&lt;/code>），整个实现也没几行代码，只有两三个查询，数据量也不大，但是耗时有80ms+。&lt;/p>
+&lt;p>其他接口有快有慢，并没有表现出同时增加耗时，而且开发服务器架在内网，排除网络原因，大概还是服务本身的存在的问题。于是考虑瓶颈在数据库或代码中，但具体肯定是要看代码去分析的。既然判断是代码里的问题，那下一步就是测量下耗时情况了。&lt;/p>
+&lt;p>对于go，&lt;code>pprof&lt;/code>虽然是个不错的主意，但实话说部署在 kubernetes 里，配 &lt;code>pprof&lt;/code> 去拉结果有点麻烦，而且还有点点用不惯。正好这个项目里早就配置了 &lt;code>opentracing&lt;/code>+&lt;code>jaeger&lt;/code>做分布式跟踪，所以就直接抄一下 opentelemetry 的 &lt;a class="link" href="https://github.com/seslattery/otelsql/blob/master/otelsql.go" target="_blank" rel="noopener"
+>otelsql&lt;/a> ，把SQL查询的详细耗时情况记录下来，就可以开始分析了。&lt;/p>
+&lt;h3 id="opentracing收集数据">opentracing收集数据&lt;/h3>
+&lt;p>&lt;code>otelsql&lt;/code> 原理是用 &lt;a class="link" href="https://github.com/ngrok/sqlmw" target="_blank" rel="noopener"
+>sqlmw&lt;/a> 在 sql 驱动层级上进行包装&lt;code>sql ==&amp;gt; sqlmw.Driver{mysql.Driver}&lt;/code> 。go的&lt;code>sql&lt;/code>调用&lt;code>sqlmw.Driver&lt;/code>，&lt;code>sqlmw.Driver&lt;/code>调用&lt;code>mysql.Driver&lt;/code>，如此而已，具体不解释。&lt;/p>
+&lt;p>从&lt;code>otelsql&lt;/code>借鉴下思路即可，现在 &lt;code>opentracing&lt;/code> 已经和 &lt;code>opencensus&lt;/code> 合并成了 &lt;code>opentelemetry&lt;/code>，但项目也没法说升级就升级，毕竟项目架构设计稀烂，太多地方和 &lt;code>opentracing&lt;/code>、&lt;code>jaeger-client&lt;/code> 强耦合了。把&lt;code>otelsql&lt;/code>里用&lt;code>sqlmw&lt;/code>的部分抄出来，改成&lt;code>opentracing&lt;/code>的方式创建&lt;code>span&lt;/code>完事。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">in&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">sqlInterceptor&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">ConnExecContext&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">conn&lt;/span> &lt;span class="nx">driver&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">ExecerContext&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">query&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">args&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="nx">driver&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">NamedValue&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">driver&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Result&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">span&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ctx&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">opentracing&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">StartSpanFromContext&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;ConnExecContext&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">defer&lt;/span> &lt;span class="nx">span&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Finish&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="nx">span&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">LogKV&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;sql.query&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">query&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">conn&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ExecContext&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">query&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">args&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>如此一来， 当go的&lt;code>sql&lt;/code>库访问数据库的时候，就会在&lt;code>jaeger&lt;/code>里记录一个&lt;code>span&lt;/code>，可以清晰地看到耗时情况。&lt;/p>
+&lt;h3 id="分析">分析&lt;/h3>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728.png"
+width="1166"
+height="563"
+srcset="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20211231103911728"
+class="gallery-image"
+data-flex-grow="207"
+data-flex-basis="497px"
+>&lt;/p>
+&lt;p>收集到耗时情况后开始观察，注意到两个问题：&lt;/p>
+&lt;ol>
+&lt;li>&lt;code>ConnectorConnect&lt;/code> 在每个请求前出现，每次耗时 2ms 左右。但 &lt;code>sql&lt;/code> 是有连接池的，这里每次执行查询都产生一次连接显然不对劲。&lt;/li>
+&lt;li>&lt;code>StmtQueryContext&lt;/code> 出现一个耗时极长的查询，占据接近1/2的请求耗时，这条查询就是主要瓶颈。&lt;/li>
+&lt;/ol>
+&lt;p>慢查询的SQL如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">select&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">count&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">from&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">user&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">where&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">role&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">and&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">create_timestamp&lt;/span>&lt;span class="o">&amp;gt;?&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">and&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">create_timestamp&lt;/span>&lt;span class="o">&amp;lt;?&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>是一个简单的 &lt;code>select count(1)&lt;/code> 查询，初步考虑是 &lt;code>where&lt;/code> 里少了索引。&lt;/p>
+&lt;h2 id="0x02-优化">0x02 优化&lt;/h2>
+&lt;h3 id="索引优化">索引优化&lt;/h3>
+&lt;p>既然少索引，那就考虑下加索引。看了下数据库，&lt;code>role&lt;/code>和&lt;code>create_timestamp&lt;/code>字段都没有索引，于是先分别加上了索引，再 &lt;code>explain&lt;/code> ，发现查询类型已经变成了 &lt;code>ref&lt;/code> 。再运行查询，发现耗时依然有 20ms+。&lt;/p>
+&lt;p>参考 &lt;a class="link" href="https://dev.mysql.com/doc/refman/5.7/en/multiple-column-indexes.html" target="_blank" rel="noopener"
+>multiple-column index&lt;/a> 中的话：&lt;/p>
+&lt;blockquote>
+&lt;p>MySQL can use multiple-column indexes for queries that test all the columns in the index, or queries that test just the first column, the first two columns, the first three columns, and so on. If you specify the columns in the right order in the index definition, a single composite index can speed up several kinds of queries on the same table.&lt;/p>
+&lt;/blockquote>
+&lt;p>文档中还说：&lt;/p>
+&lt;blockquote>
+&lt;p>If a multiple-column index exists on &lt;code>col1&lt;/code> and &lt;code>col2&lt;/code>, the appropriate rows can be fetched directly. If separate single-column indexes exist on &lt;code>col1&lt;/code> and &lt;code>col2&lt;/code>, the optimizer attempts to use the Index Merge optimization (see &lt;a class="link" href="https://dev.mysql.com/doc/refman/5.7/en/index-merge-optimization.html" target="_blank" rel="noopener"
+>Section 8.2.1.3, “Index Merge Optimization”&lt;/a>), or attempts to find the most restrictive index by deciding which index excludes more rows and using that index to fetch the rows.&lt;/p>
+&lt;/blockquote>
+&lt;p>也就是说，如果&lt;code>role&lt;/code>和&lt;code>create_timestamp&lt;/code>分别有索引，&lt;code>mysql&lt;/code>会尝试用 &lt;em>Index Merge Optimization&lt;/em> 算法来优化查询。但如果有多列索引的话，就能直接获取（文档里的场景能直接获取，但上文的 &lt;code>count(1)&lt;/code> 查询应该不行）。&lt;/p>
+&lt;p>于是加上多列索引，再&lt;code>explain&lt;/code>，发现查询类型变成了&lt;code>range&lt;/code>，实际执行发现查询耗时降低至 5ms 左右。&lt;/p>
+&lt;h3 id="连接池优化">连接池优化&lt;/h3>
+&lt;p>go的&lt;code>sql&lt;/code>包自带连接池应该是比较清楚的。原本怀疑是不是对&lt;code>sql.DB&lt;/code>这个结构的用法有问题，但翻了下源码，发现&lt;code>sql.DB.ExecContext&lt;/code>之类的接口都会通过连接池取连接，完成后返回连接池。所以理论上来说都应该走连接池的连接，而不是每次查询都创建——除非连接池里没有可用的连接了。另外也谷歌了一圈，&lt;code>sql.DB&lt;/code> 似乎也没有什么特别的最佳实践，并没有人提到要手动&lt;code>DB.Conn&lt;/code>取连接后自己处理。&lt;/p>
+&lt;p>于是初步怀疑下是不是哪里设置了连接池属性出了问题。通过排查源码中设置连接池属性的地方，发现一个自己埋下的坑。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="k">if&lt;/span> &lt;span class="nx">env&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DEBUG&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">mysqldb&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">SetMaxIdleConns&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">cfg&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">mysql&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ParseDSN&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">host&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">cfg&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">mysql&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Config&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nf">StartObverseSQLConnPool&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">cfg&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DBName&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">mysqlDB&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">time&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Duration&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">time&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Second&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>因为我司这个项目没有配置 metrics 收集和分析，自然也没收集服务的连接池情况。所以当初入职后遇到一个奇怪的连接池耗尽，服务假死，调用栈全部卡在连接池上的问题时，为了判断是不是出现连接泄露，写了个goroutine去监测连接池里连接获取和释放的情况&amp;hellip;&lt;/p>
+&lt;p>为了调试方便，还把&lt;code>SetMaxIdleConns&lt;/code>设置为了0。&lt;/p>
+&lt;p>于是初步怀疑就是这个原因导致连接池罢工，将整段调试代码注释掉之后，再次访问接口，响应时间降低至9.8ms。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407.png"
+width="212"
+height="111"
+srcset="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20211231110219407"
+class="gallery-image"
+data-flex-grow="190"
+data-flex-basis="458px"
+>&lt;/p>
+&lt;p>最大头的耗时依然是&lt;code>count(1)&lt;/code>查询。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414.png"
+width="1559"
+height="438"
+srcset="https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20211231110316414"
+class="gallery-image"
+data-flex-grow="355"
+data-flex-basis="854px"
+>&lt;/p>
+&lt;p>默认情况下 IdleConn 只有 2，超时也比较短。实际参数应该根据业务访问情况来安排。我这也没什么好的计算公式。连接池参数有问题会影响单条SQL的基本耗时，请求里三四条查询，每条加上几个ms，整个请求时间就拖长了十几ms。在微服务系统里影响还可能放大，别的服务要是多次调用，积累的时延可能就要上百ms了。&lt;/p>
+&lt;h3 id="缓存优化">缓存优化&lt;/h3>
+&lt;p>进一步的优化思路就是做缓存。是为了提高服务响应速度，也是为了提高负载能力、减轻查询压力，保护 MySQL 服务。过去年轻无知犯过错，就是考虑性能的时候只关注到了自己写的代码，认为代码跑得快重要——比如把 C 的执行性能吹上天。但事情从来不是这么简单——辩证法说实事求是，要具体问题具体分析。后端从来不是“我的代码”这么简单，如果不能从整个系统的角度出发发现问题，那就算是 CPU 成精了也没辙。&lt;/p>
+&lt;p>对于实时性要求不高的接口，将数据缓存一段时间是绝对没问题的。不过因为做缓存是个系统性的事情——要考虑缓存更新的嘛，也不是每个接口都适合缓存，实时性有要求或者查询太复杂的话宁可考虑换成 ES 一类的分布式系统，把压力分摊到更多机器上。当然也意味着要花更多的钱，更难维护。&lt;/p>
+&lt;p>我司项目就是个很沙雕的例子，因为最初就没设计缓存，连SQL都在用手工拼接，现在干脆变成了混用 &lt;code>xorm&lt;/code> 和 &lt;code>sql&lt;/code>。虽然也可以考虑下用 &lt;code>sqlmw&lt;/code> 插个缓存，但毕竟没验证过，做第一个吃螃蟹的也意味着要第一个背锅。&lt;/p>
+&lt;p>总之，要做那可简单了，直接调 &lt;code>redis&lt;/code> 客户端（已经包装过一个 &lt;code>cachetools&lt;/code>）设置下缓存，给个时限就完了。缓存过期的时候加个 &lt;code>redlock&lt;/code>，让其他客户端先返回旧数据，更新完解锁，所有客户端都返回新数据。&lt;/p>
+&lt;p>更系统化的处理，就要考虑下怎么做一个或多个更通用（对业务场景而言更通用，而不是真的对 &lt;em>所有&lt;/em> 场景都通用）的缓存层——在SQL驱动层做缓存？ORM层缓存？在请求/响应中做缓存？业务/数据访问层（如&lt;code>DAO&lt;/code>）做缓存？缓存用什么键？怎么覆盖尽可能多的查询场景？整个重构的工程量如何把握？值不值得？&lt;/p>
+&lt;h2 id="结论">结论&lt;/h2>
+&lt;p>收集性能数据的主要方式：&lt;/p>
+&lt;ul>
+&lt;li>metrics&lt;/li>
+&lt;li>pprof&lt;/li>
+&lt;li>opentracing/opentelemetry&lt;/li>
+&lt;/ul>
+&lt;p>优化手段：&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>explain&lt;/code> 分析查询、优化和建立索引&lt;/li>
+&lt;li>优化连接池参数&lt;/li>
+&lt;li>加缓存&lt;/li>
+&lt;/ul>
+&lt;p>还有最重要的，&lt;strong>具体问题具体分析&lt;/strong>。&lt;/p></description></item><item><title>排查一个kubectl无反应的问题</title><link>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</link><pubDate>Mon, 27 Dec 2021 15:21:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</guid><description>&lt;p>懒得分段了，就当做是讲个故事吧。&lt;/p>
+&lt;p>背景大概是这样。&lt;/p>
+&lt;p>内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。&lt;/p>
+&lt;p>今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。&lt;/p>
+&lt;p>所以，当当当~当~，整一个持续部署呗，反正是个纯前端项目，不用部署配套的后端代码，写个dockerfile再写个helm chart就差不多了，ci调了调构建镜像就完事，不过因为ci部署需要访问集群，所以又改了下&lt;code>.kube/config&lt;/code>，删了之前尝试&lt;code>csr&lt;/code>方式添加用户的时候加多的 user 和 context ，复制了一份挂载到 runner 容器里。&lt;/p>
+&lt;p>然后&amp;hellip;&amp;hellip;问题就来了。&lt;/p>
+&lt;p>同事忽然告诉我办公室的服务挂了，于是下意识地打出&lt;code>kgp&lt;/code>，卡住。&lt;/p>
+&lt;p>等了一会儿，还是卡住。&lt;/p>
+&lt;p>又等了一会儿，坐不住了。试了下&lt;code>kubectl cluster-info&lt;/code>，继续卡住。&lt;/p>
+&lt;p>开始慌了，想起今天的机器有点卡，先看看 &lt;code>free -h&lt;/code> 有没有内存泄漏之类的问题导致阻塞，结果发现并没有，于是继续看 &lt;code>htop&lt;/code>，cpu使用率也比较正常。再看&lt;code>df -h | grep -vE 'shm|overlay'&lt;/code>，发现硬盘使用率96%（估计硬盘主控想死的心都有了，揪着4%的可用空间想把PE数平均到各个区块恐怕不容易）。&lt;/p>
+&lt;p>找到问题后松了口气，十有八九是又出现 evicted 了。二话不说直接 &lt;code>docker system df&lt;/code>，看到30多G的 build cache 顿时惊了，肯定不是go的构建缓存（手动挂载优化了），那就是 node_modules 又立奇功了。node_modules=黑洞果然不是吹的。&lt;/p>
+&lt;p>清理完使用率恢复到63%，但依然有种不安感萦绕于心，于是再次尝试&lt;code>kgp&lt;/code>，卡住。&lt;/p>
+&lt;p>等了一会儿，喝口水，继续卡着。&lt;/p>
+&lt;p>又等了一会儿，淦。&lt;/p>
+&lt;p>想了想，&lt;code>journalctl -r -u k3s&lt;/code>看看日志，并没有什么发现，倒是注意到很多&lt;code>linkerd&lt;/code>之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。&lt;/p>
+&lt;pre>&lt;code class="language-log" data-lang="log"> 6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.685149 794 container_gc.go:85] attempting to delete unused containers
+7 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.687723 794 image_gc_manager.go:321] attempting to delete unused images
+8 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.782390 794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
+9 12月 25 21:16:17 office k3s[794]: W1225 13:16:17.939242 794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
+10 12月 25 21:16:17 office k3s[794]: I1225 13:16:17.939267 794 container_gc.go:85] attempting to delete unused containers
+11 12月 25 21:16:17 office k3s[794]: I1225 13:16:17.941771 794 image_gc_manager.go:321] attempting to delete unused images
+12 12月 25 21:16:18 office k3s[794]: I1225 13:16:18.033724 794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
+13 12月 25 21:16:28 office k3s[794]: W1225 13:16:28.214032 794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
+&lt;/code>&lt;/pre>&lt;p>这个是老问题了，一直没去研究怎么解决。&lt;/p>
+&lt;pre>&lt;code class="language-log" data-lang="log"> 154 12月 25 21:21:55 office k3s[794]: I1225 13:21:55.021937 794 image_gc_manager.go:304] [imageGCManager]: Disk usage on image filesystem is at 95% which is over the high threshold (85%). Trying to free 182 155 12月 25 21:21:55 office k3s[794]: E1225 13:21:55.025140 794 kubelet.go:1292] Image garbage collection failed multiple times in a row: failed to garbage collect required amount of images. Wanted to free
+&lt;/code>&lt;/pre>&lt;p>这次搜了下，应该是 &lt;code>docker system prune&lt;/code> 造成 &lt;code>kubelet&lt;/code> 找不到可回收的镜像才报错（猜测），不过依然不能解释为啥 &lt;code>kubectl&lt;/code> 没反应。于是继续翻了会儿日志，搜索错误，但始终没有什么结果。&lt;/p>
+&lt;p>但是同事还要干活，没辙了，先重启下服务器吧。群里说了一声要重启了，等了一会儿跑&lt;code>sudo reboot&lt;/code>，重启完连接，继续&lt;code>kgp&lt;/code>，卡住。&lt;/p>
+&lt;p>嗯&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>早有预料。&lt;/p>
+&lt;p>&lt;code>journalctl -r -u k3s --boot&lt;/code> 看看重启后的日志，发现还是老一套的问题，&lt;code>docker&lt;/code> 手动处理镜像和容器造成的和 kubernetes 的管理机制的冲突，各种找不到镜像或者容器的警告，还有一些错误和trace，但没有一个能解释为什么&lt;code>kubectl&lt;/code>没有反应。。。&lt;/p>
+&lt;p>直到在&lt;code>kubectl&lt;/code>的终端里按下了ctrl+c，在顺手&lt;code>clear&lt;/code>之前看到了一行请输入用户名（eng）&amp;hellip;&lt;/p>
+&lt;p>警觉。&lt;/p>
+&lt;p>忽然想起来，因为 &lt;code>kubectl&lt;/code> 这破玩意儿是没有颜色输出的，用习惯了各种彩色输出的命令行工具，&lt;code>kubectl&lt;/code>就格外不顺眼。所以在发现&lt;code>kubecolors&lt;/code>后，我就直接把&lt;code>kubectl&lt;/code>配置成了&lt;code>kubecolor&lt;/code>的别名。&lt;/p>
+&lt;p>所以&amp;hellip;&amp;hellip;难道是&lt;code>kubecolor&lt;/code>的问题？&lt;/p>
+&lt;p>&lt;code>whereis kubectl&lt;/code>找到&lt;code>kubectl&lt;/code>的绝对路径之后，尝试手动运行&lt;code>/usr/local/bin/kubectl cluster-info&lt;/code>，再次出现了那个输入用户名的提示，顿时开始怀疑起&lt;code>.kube/config&lt;/code>配置有问题，正好在出现问题之前改过了&lt;code>.kube/config&lt;/code>，这里出问题的嫌疑就很吉尔大。&lt;/p>
+&lt;p>于是打开&lt;code>.kube/config&lt;/code>，检查了一下集群的用户配置，发现果然，是我手欠把办公室集群的用户给删了。草。&lt;/p>
+&lt;p>急忙从&lt;code>/etc/rancher/k3s/k3s.yaml&lt;/code>复制下用户证书配置，贴进去，再运行&lt;code>kgp&lt;/code>果然屁事没有了。&lt;/p>
+&lt;p>所以总结如下。&lt;/p>
+&lt;ol>
+&lt;li>别被表面的问题迷惑。&lt;/li>
+&lt;li>自己犯傻的几率大于基础设施/常用工具犯傻的几率。&lt;/li>
+&lt;li>遇到问题解决步骤很重要，准确的方向可以省很多时间。
+&lt;ol>
+&lt;li>先确定故障表现和复现条件&lt;/li>
+&lt;li>确定故障点（出现在网络、网关还是应用、数据库），弄清楚是不是新问题&lt;/li>
+&lt;li>再排查相关配置是否正确，回忆是否有做过相关修改变更&lt;/li>
+&lt;li>再排查故障点日志，必要的时候参考下代码，毕竟有的时候日志没写清楚错误的上下文&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;/ol></description></item><item><title>简单的ECK部署</title><link>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</link><pubDate>Tue, 30 Nov 2021 11:13:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>因为工作需要，得在自己搭建的集群里部署一个 Elasticsearch 。又因为是云端的集群，在 k8s 外用 docker 单独起一个 ES 明显更难维护（但部署更简单），于是选择用 ECK 。&lt;/p>
+&lt;p>ECK 就是 Elastic Cloud on Kubernetes 的缩写，可以理解成部署在 Kubernetes 上的 Elasticsearch 。当然不止 ES 。&lt;/p>
+&lt;p>部署 ES 的过程遇到几个问题记录下怎么解决的。&lt;/p>
+&lt;ol>
+&lt;li>ES 使用自签名证书，导致 HTTP 不能连接。&lt;/li>
+&lt;li>ECK 需要安装 IK 分词插件。&lt;/li>
+&lt;li>ECK 默认密码每次部署都重新生成，而且默认用户权限过大。&lt;/li>
+&lt;li>ECK 默认没配 PVC ，数据没有持久化。&lt;/li>
+&lt;/ol>
+&lt;p>接下来逐个解决。&lt;/p>
+&lt;h2 id="0x01-自签名证书">0x01 自签名证书&lt;/h2>
+&lt;p>自签名证书解决方法有几个&lt;/p>
+&lt;ol>
+&lt;li>改客户端，让客户端用自签名证书连接。很麻烦。&lt;/li>
+&lt;li>生成一个固定的证书，让ES和客户端都用这个证书，客户端和ES都要改。很麻烦。&lt;/li>
+&lt;li>禁用 ES 的自签名证书。&lt;/li>
+&lt;/ol>
+&lt;p>考虑到是私有的测试环境，不搞这些烦人的东西，直接禁用。&lt;/p>
+&lt;p>修改 YAML 如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">apiVersion&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">elasticsearch.k8s.elastic.co/v1&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">kind&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">Elasticsearch&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">metadata&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">elasticsearch&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">http&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">tls&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">selfSignedCertificate&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">disabled&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="kc">true&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意 &lt;code>spec.http.tls.selfSignedCertificate.disabled&lt;/code> 这个字段。&lt;/p>
+&lt;p>参考文档：&lt;a class="link" href="https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-tls-certificates.html" target="_blank" rel="noopener"
+>Orchestrating Elastic Stack applications - Access Elastic Stack services - TLS certificates&lt;/a>&lt;/p>
+&lt;h2 id="0x02-安装-ik-分词组件">0x02 安装 IK 分词组件&lt;/h2>
+&lt;p>官方文档提供的安装插件思路是利用 initContainer 。参考文档：&lt;a class="link" href="https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-init-containers-plugin-downloads.html" target="_blank" rel="noopener"
+>init containers for plugin downloads&lt;/a> 。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">nodeSets&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">default&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">count&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">3&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">podTemplate&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">initContainers&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">install-plugins&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">command&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">sh&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- -&lt;span class="l">c&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="p">|&lt;/span>&lt;span class="sd">
+&lt;/span>&lt;span class="sd"> &lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">bin/elasticsearch-plugin install --batch repository-gcs&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>initContainer 容器默认会继承自下面的内容：&lt;/p>
+&lt;ul>
+&lt;li>没有另外指定的情况下，继承主容器的镜像(我的例子中，就是 &lt;code>Elasticsearch:7.9.1&lt;/code>)&lt;/li>
+&lt;li>主容器的 volume 挂载，如果 initContainer 有同名同路径的 volume 则优先用 initContainer 的。&lt;/li>
+&lt;li>POD 名称和 IP 。&lt;/li>
+&lt;/ul>
+&lt;h2 id="0x03-添加自定义用户">0x03 添加自定义用户&lt;/h2>
+&lt;p>有好几种方式：&lt;/p>
+&lt;ol>
+&lt;li>官方文档中的方法：&lt;a class="link" href="https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-users-and-roles.html" target="_blank" rel="noopener"
+>k8s users and roles&lt;/a>，比较稳定，但还是挺麻烦的。&lt;/li>
+&lt;li>修改 &lt;code>[es-cluster-name]-es-elastic-user&lt;/code> 这个 &lt;code>secret&lt;/code>，好处是简单，但要求必须先创建 secret 再创建 ES ，单个 YAML 去 &lt;code>create -f&lt;/code> 的情况下不友好。&lt;/li>
+&lt;li>基于第2节中利用 initContainer 的做法和官方文档里提到的 &lt;code>elasticsearch-users&lt;/code> 命令行工具，直接在 initContainer 里创建指定用户名密码的用户。不确定这个做法会不会在多节点 ECK 里出问题，毕竟这等于是每个节点都创建了一次用户。不过我只需要单节点，所以也还过得去。&lt;/li>
+&lt;/ol>
+&lt;p>最终决定用第 3 种方法，因为做一个单节点集群简单不费事，多节点的话，目前开的服务器配置也吃不消。（其实是搞完才仔细读文档，第 1 种方法其实也不算太麻烦&amp;hellip;）&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">nodeSets&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">default&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">count&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">3&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">podTemplate&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">initContainers&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">donviewclass-initialize&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">command&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">sh&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- -&lt;span class="l">c&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="p">|&lt;/span>&lt;span class="sd">
+&lt;/span>&lt;span class="sd"> ./bin/elasticsearch-plugin install -batch https://ghproxy.com/https://github.com/medcl/elasticsearch-analysis-ik/releases/download/v7.9.1/elasticsearch-analysis-ik-7.9.1.zip
+&lt;/span>&lt;span class="sd"> ./bin/elasticsearch-users useradd tsdonviewclass -p tsdonviewclass -r superuser&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>./bin/elasticsearch-users useradd tsdonviewclass -p tsdonviewclass -r superuser&lt;/code> 主要就是增加这一句。同样是因为懒，权限直接给了 superuser 。&lt;/p>
+&lt;p>参考文档：&lt;a class="link" href="https://www.elastic.co/guide/en/elasticsearch/reference/current/users-command.html" target="_blank" rel="noopener"
+>elasticsearch-users&lt;/a> 。&lt;/p>
+&lt;h2 id="0x04-配置pvc">0x04 配置PVC&lt;/h2>
+&lt;p>依然是参考官方文档来：&lt;a class="link" href="https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-volume-claim-templates.html" target="_blank" rel="noopener"
+>k8s-volume-claim-templates&lt;/a>。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">nodeSets&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">default&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">count&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">1&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">config&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">node.store.allow_mmap&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="kc">false&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">volumeClaimTemplates&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">metadata&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">elasticsearch-data&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="c"># Do not change this name unless you set up a volume mount for the data path.&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">accessModes&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">ReadWriteOnce&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">resources&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">requests&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">storage&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">5Gi&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">storageClassName&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">local-path&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意 &lt;code>volumeClaimTemplates&lt;/code> 下 &lt;code>metadata.name&lt;/code> 不要变，除非你自己在 &lt;code>podTemplate&lt;/code> 里覆写挂载字段。&lt;/p>
+&lt;p>其他的 &lt;code>spec&lt;/code> 下内容和通常的 PVC 一样，可以参考 &lt;a class="link" href="https://kubernetes.io/zh/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims" target="_blank" rel="noopener"
+>Kubernetes - PersistentVolumeClaims&lt;/a> 。&lt;/p>
+&lt;p>值得注意的是 ECK 默认在集群节点数量 scaled down 时删除 PVC ，对应的 PV 可能保留，具体看&lt;a class="link" href="https://kubernetes.io/docs/concepts/storage/storage-classes/#reclaim-policy" target="_blank" rel="noopener"
+>存储类的回收策略&lt;/a>。ECK 的 CRD 里也给了相关的配置项。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">apiVersion&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">elasticsearch.k8s.elastic.co/v1&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">kind&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">Elasticsearch&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">metadata&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">es&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">spec&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">version&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">7.15.2&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">volumeClaimDeletePolicy&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">DeleteOnScaledownOnly&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">nodeSets&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">default&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">count&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">3&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意 &lt;code>volumeClaimDeletePolicy: DeleteOnScaledownOnly&lt;/code> 。可选的策略包括：&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>DeleteOnScaledownAndClusterDeletion&lt;/code>&lt;/li>
+&lt;li>&lt;code>DeleteOnScaledownOnly&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>默认策略是 &lt;code>DeleteOnScaledownAndClusterDeletion&lt;/code> ，集群删除和 scaled down 时删除 PVC。&lt;/p>
+&lt;p>如果是一次性的部署，可以直接用 &lt;code>emptyDir&lt;/code> 作为存储类，不用管数据丢不丢。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>这几步配置下来，一个开发用的 ES 集群就算是配完了，资源给够就能开始玩了。&lt;/p>
+&lt;p>讲道理我不太会运维 ES 啊，ES 这东西实在有点重量级，现阶段的能力也就只能看文档这里那里配一下，在上面开发什么的。真要遇到大问题还得抓瞎。&lt;/p>
+&lt;p>就先这样吧。&lt;/p></description></item><item><title>kubeadm安装实验集群记录</title><link>https://nnnewb.github.io/blog/p/kubernetes-manually-install-by-kubeadm/</link><pubDate>Thu, 25 Nov 2021 14:31:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/kubernetes-manually-install-by-kubeadm/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>好吧，如果仔细想想就会发现不管是 k3s 还是 ucloud 上的 k8s ，都没有一个是自己手动配置好的。虽说并不是至关重要的，但手动用 kubeadm 装一次 kubernetes 总不会有什么坏处。顺手做个笔记。参考资料列出如下。&lt;/p>
+&lt;ul>
+&lt;li>&lt;a class="link" href="https://kubernetes.io/zh/docs/setup/production-environment/tools/kubeadm/install-kubeadm/" target="_blank" rel="noopener"
+>https://kubernetes.io/zh/docs/setup/production-environment/tools/kubeadm/install-kubeadm/&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://mirrors.tuna.tsinghua.edu.cn/help/kubernetes/" target="_blank" rel="noopener"
+>https://mirrors.tuna.tsinghua.edu.cn/help/kubernetes/&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://computingforgeeks.com/deploy-kubernetes-cluster-on-ubuntu-with-kubeadm/" target="_blank" rel="noopener"
+>https://computingforgeeks.com/deploy-kubernetes-cluster-on-ubuntu-with-kubeadm/&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h2 id="系统配置">系统配置&lt;/h2>
+&lt;p>正式安装之前先确认一些系统级配置。&lt;/p>
+&lt;h3 id="swapoff">swapoff&lt;/h3>
+&lt;p>简单的做法是 &lt;code>sudo swapoff -a&lt;/code> 即可。之后改 &lt;code>fstab&lt;/code> 把 &lt;code>swap&lt;/code> 分区关掉。&lt;/p>
+&lt;h3 id="iptables检查桥接流量">iptables检查桥接流量&lt;/h3>
+&lt;p>用 &lt;code>lsmod | grep bf_netfitler&lt;/code> 检查有没有启用 &lt;code>bf_netfilter&lt;/code> 模块，如果没有输出的话说明没加载，执行下面的命令。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">cat &lt;span class="s">&amp;lt;&amp;lt;EOF | sudo tee /etc/modules-load.d/k8s.conf
+&lt;/span>&lt;span class="s">br_netfilter
+&lt;/span>&lt;span class="s">EOF&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>会在 &lt;code>/etc/modules-load.d&lt;/code> 下添加一个模块自动加载的配置。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">cat &lt;span class="s">&amp;lt;&amp;lt;EOF | sudo tee /etc/sysctl.d/k8s.conf
+&lt;/span>&lt;span class="s">net.bridge.bridge-nf-call-ip6tables = 1
+&lt;/span>&lt;span class="s">net.bridge.bridge-nf-call-iptables = 1
+&lt;/span>&lt;span class="s">EOF&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>再在 &lt;code>/etc/sysctl.d/&lt;/code> 下添加一个配置，允许 &lt;code>iptables&lt;/code> 查看桥接流量。&lt;/p>
+&lt;p>然后用 &lt;code>sysctl&lt;/code> 重载配置。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">sudo sysctl --system
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="端口">端口&lt;/h3>
+&lt;p>控制平面节点的端口清单，如果有本机防火墙的话需要开放下面的端口。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>协议&lt;/th>
+&lt;th>方向&lt;/th>
+&lt;th>端口范围&lt;/th>
+&lt;th>作用&lt;/th>
+&lt;th>使用者&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>TCP&lt;/td>
+&lt;td>入站&lt;/td>
+&lt;td>6443&lt;/td>
+&lt;td>Kubernetes API 服务器&lt;/td>
+&lt;td>所有组件&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TCP&lt;/td>
+&lt;td>入站&lt;/td>
+&lt;td>2379-2380&lt;/td>
+&lt;td>etcd 服务器客户端 API&lt;/td>
+&lt;td>kube-apiserver, etcd&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TCP&lt;/td>
+&lt;td>入站&lt;/td>
+&lt;td>10250&lt;/td>
+&lt;td>Kubelet API&lt;/td>
+&lt;td>kubelet 自身、控制平面组件&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TCP&lt;/td>
+&lt;td>入站&lt;/td>
+&lt;td>10251&lt;/td>
+&lt;td>kube-scheduler&lt;/td>
+&lt;td>kube-scheduler 自身&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TCP&lt;/td>
+&lt;td>入站&lt;/td>
+&lt;td>10252&lt;/td>
+&lt;td>kube-controller-manager&lt;/td>
+&lt;td>kube-controller-manager 自身&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>工作节点的端口清单，如果有本机防火墙的话需要开放下面的端口。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>协议&lt;/th>
+&lt;th>方向&lt;/th>
+&lt;th>端口范围&lt;/th>
+&lt;th>作用&lt;/th>
+&lt;th>使用者&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>TCP&lt;/td>
+&lt;td>入站&lt;/td>
+&lt;td>10250&lt;/td>
+&lt;td>Kubelet API&lt;/td>
+&lt;td>kubelet 自身、控制平面组件&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TCP&lt;/td>
+&lt;td>入站&lt;/td>
+&lt;td>30000-32767&lt;/td>
+&lt;td>NodePort 服务†&lt;/td>
+&lt;td>所有组件&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="容器运行时">容器运行时&lt;/h3>
+&lt;p>参考 &lt;a class="link" href="https://mirrors.tuna.tsinghua.edu.cn/help/docker-ce/" target="_blank" rel="noopener"
+>清华大学开源软件镜像站 Docker Community Edition 镜像使用帮助&lt;/a>。&lt;/p>
+&lt;h3 id="安装kubeadm">安装kubeadm&lt;/h3>
+&lt;p>先信任软件仓库的证书，要注意的是证书托管在谷歌，所以基本不用考虑直接执行命令能成功了。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg &lt;span class="p">|&lt;/span> sudo apt-key add -
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>作为代替，可以先手动魔法上网下载到证书，再变通一下完成证书添加。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">cat apt-key.gpg &lt;span class="p">|&lt;/span> sudo apt-key add -
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>之后添加源，源的版本并不能直接对应到发行版的版本，目前 ubuntu server 只支持到 16.04 LTS ，或者 Debian 9 Stretch 。更高版本也可以装，但我比较怀疑官方的包到底有没有在新发行版里测试过，支持力度行不行。&lt;/p>
+&lt;p>总之，如果宿主机不拿来当开发环境使的话，上个 Ubuntu server 16.04 LTS 也没事，只要还没有完全停止支持就好。总之这个问题上我保留意见吧。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">&lt;span class="nb">echo&lt;/span> &lt;span class="s1">&amp;#39;deb https://mirrors.tuna.tsinghua.edu.cn/kubernetes/apt kubernetes-xenial main&amp;#39;&lt;/span> &lt;span class="p">|&lt;/span> sudo tee /etc/apt/sources.list.d/kubernetes.list
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>添加软件源之后更新软件包清单并安装 &lt;code>kubelet&lt;/code>、&lt;code>kubeadm&lt;/code>、&lt;code>kubectl&lt;/code> 。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">sudo apt update
+sudo apt install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="检查">检查&lt;/h3>
+&lt;p>首先确认所有 &lt;code>kubelet&lt;/code>、&lt;code>kubeadm&lt;/code>、&lt;code>kubectl&lt;/code> 命令都已经可用，如果命令不存在则说明安装有问题，根据具体情况处理。&lt;/p>
+&lt;p>然后检查&lt;code>kubelet&lt;/code>服务的状态（注意用了&lt;code>systemd&lt;/code>，不确定有没有用 &lt;code>upstart&lt;/code> 或别的 Unix 风格的服务管理的）。&lt;/p>
+&lt;p>运行命令 &lt;code>sudo systemctl status kubelet&lt;/code> 得到下面的输出。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">● kubelet.service - kubelet: The Kubernetes Node Agent
+Loaded: loaded (/lib/systemd/system/kubelet.service; enabled; vendor preset: enabled)
+Drop-In: /etc/systemd/system/kubelet.service.d
+└─10-kubeadm.conf
+Active: activating (auto-restart) (Result: exit-code) since Fri 2021-11-19 02:32:29 UTC; 9s ago
+Docs: https://kubernetes.io/docs/home/
+Process: 6767 ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS (code=exited, status=1/FAILURE)
+Main PID: 6767 (code=exited, status=1/FAILURE)
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>此时的 &lt;code>kubelet&lt;/code> 服务还是失败的状态，再检查 &lt;code>kubelet&lt;/code> 的日志，通过 &lt;code>sudo journalctl -u kubelet&lt;/code> 。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">-- Logs begin at Thu 2021-11-18 07:40:58 UTC, end at Fri 2021-11-19 02:34:19 UTC. --
+Nov 19 02:27:41 vm systemd[1]: Started kubelet: The Kubernetes Node Agent.
+Nov 19 02:27:42 vm systemd[1]: kubelet.service: Current command vanished from the unit file, execution of the command list won&amp;#39;t be resumed.
+Nov 19 02:27:42 vm systemd[1]: Stopping kubelet: The Kubernetes Node Agent...
+Nov 19 02:27:42 vm systemd[1]: kubelet.service: Succeeded.
+Nov 19 02:27:42 vm systemd[1]: Stopped kubelet: The Kubernetes Node Agent.
+Nov 19 02:27:42 vm systemd[1]: Started kubelet: The Kubernetes Node Agent.
+Nov 19 02:27:42 vm kubelet[5944]: E1119 02:27:42.559949 5944 server.go:206] &amp;#34;Failed to load kubelet config file&amp;#34; err=&amp;#34;failed to load Kubelet config file /var/lib/kubelet/config.yaml, error failed to read kube&amp;gt;
+Nov 19 02:27:42 vm systemd[1]: kubelet.service: Main process exited, code=exited, status=1/FAILURE
+Nov 19 02:27:42 vm systemd[1]: kubelet.service: Failed with result &amp;#39;exit-code&amp;#39;.
+Nov 19 02:27:52 vm systemd[1]: kubelet.service: Scheduled restart job, restart counter is at 1.
+Nov 19 02:27:52 vm systemd[1]: Stopped kubelet: The Kubernetes Node Agent.
+Nov 19 02:27:52 vm systemd[1]: Started kubelet: The Kubernetes Node Agent.
+Nov 19 02:27:52 vm kubelet[6119]: E1119 02:27:52.804723 6119 server.go:206] &amp;#34;Failed to load kubelet config file&amp;#34; err=&amp;#34;failed to load Kubelet config file /var/lib/kubelet/config.yaml, error failed to read kube&amp;gt;
+Nov 19 02:27:52 vm systemd[1]: kubelet.service: Main process exited, code=exited, status=1/FAILURE
+Nov 19 02:27:52 vm systemd[1]: kubelet.service: Failed with result &amp;#39;exit-code&amp;#39;.
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>失败的原因是 &lt;code>Failed to load kubelet config file&amp;quot; err=&amp;quot;failed to load Kubelet config file /var/lib/kubelet/config.yaml, error failed to read kube&amp;gt;&lt;/code>。&lt;/p>
+&lt;h2 id="创建集群">创建集群&lt;/h2>
+&lt;p>目标是创建一个单节点的集群。&lt;/p>
+&lt;h3 id="拉取镜像">拉取镜像&lt;/h3>
+&lt;p>众所周知的原因，&lt;code>kubernetes&lt;/code> 的镜像托管在谷歌服务器上，麻瓜是访问不到的，所以就连拉取镜像也值得用几十个字来说。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">sudo kubeadm config images pull --image-repository registry.cn-hangzhou.aliyuncs.com/google_containers
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="初始化主节点">初始化主节点&lt;/h3>
+&lt;p>注意使用 &lt;code>kubeadm config images pull&lt;/code> 拉取了镜像的话，在 &lt;code>init&lt;/code> 阶段除非你把镜像 tag 给改了，不然也要传个 &lt;code>--image-repository&lt;/code> 参数。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">sudo kubeadm init --image-repository registry.cn-hangzhou.aliyuncs.com/google_containers
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>完整输出如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">[init] Using Kubernetes version: v1.22.4
+[preflight] Running pre-flight checks
+[preflight] Pulling images required for setting up a Kubernetes cluster
+[preflight] This might take a minute or two, depending on the speed of your internet connection
+[preflight] You can also perform this action in beforehand using &amp;#39;kubeadm config images pull&amp;#39;
+[certs] Using certificateDir folder &amp;#34;/etc/kubernetes/pki&amp;#34;
+[certs] Generating &amp;#34;ca&amp;#34; certificate and key
+[certs] Generating &amp;#34;apiserver&amp;#34; certificate and key
+[certs] apiserver serving cert is signed for DNS names [kubernetes kubernetes.default kubernetes.default.svc kubernetes.default.svc.cluster.local vm] and IPs [10.96.0.1 10.0.2.15]
+[certs] Generating &amp;#34;apiserver-kubelet-client&amp;#34; certificate and key
+[certs] Generating &amp;#34;front-proxy-ca&amp;#34; certificate and key
+[certs] Generating &amp;#34;front-proxy-client&amp;#34; certificate and key
+[certs] Generating &amp;#34;etcd/ca&amp;#34; certificate and key
+[certs] Generating &amp;#34;etcd/server&amp;#34; certificate and key
+[certs] etcd/server serving cert is signed for DNS names [localhost vm] and IPs [10.0.2.15 127.0.0.1 ::1]
+[certs] Generating &amp;#34;etcd/peer&amp;#34; certificate and key
+[certs] etcd/peer serving cert is signed for DNS names [localhost vm] and IPs [10.0.2.15 127.0.0.1 ::1]
+[certs] Generating &amp;#34;etcd/healthcheck-client&amp;#34; certificate and key
+[certs] Generating &amp;#34;apiserver-etcd-client&amp;#34; certificate and key
+[certs] Generating &amp;#34;sa&amp;#34; key and public key
+[kubeconfig] Using kubeconfig folder &amp;#34;/etc/kubernetes&amp;#34;
+[kubeconfig] Writing &amp;#34;admin.conf&amp;#34; kubeconfig file
+[kubeconfig] Writing &amp;#34;kubelet.conf&amp;#34; kubeconfig file
+[kubeconfig] Writing &amp;#34;controller-manager.conf&amp;#34; kubeconfig file
+[kubeconfig] Writing &amp;#34;scheduler.conf&amp;#34; kubeconfig file
+[kubelet-start] Writing kubelet environment file with flags to file &amp;#34;/var/lib/kubelet/kubeadm-flags.env&amp;#34;
+[kubelet-start] Writing kubelet configuration to file &amp;#34;/var/lib/kubelet/config.yaml&amp;#34;
+[kubelet-start] Starting the kubelet
+[control-plane] Using manifest folder &amp;#34;/etc/kubernetes/manifests&amp;#34;
+[control-plane] Creating static Pod manifest for &amp;#34;kube-apiserver&amp;#34;
+[control-plane] Creating static Pod manifest for &amp;#34;kube-controller-manager&amp;#34;
+[control-plane] Creating static Pod manifest for &amp;#34;kube-scheduler&amp;#34;
+[etcd] Creating static Pod manifest for local etcd in &amp;#34;/etc/kubernetes/manifests&amp;#34;
+[wait-control-plane] Waiting for the kubelet to boot up the control plane as static Pods from directory &amp;#34;/etc/kubernetes/manifests&amp;#34;. This can take up to 4m0s
+sudo kubeadm init --image-repository registry.cn-hangzhou.aliyuncs.com/google_containers[apiclient] All control plane components are healthy after 9.003038 seconds
+[upload-config] Storing the configuration used in ConfigMap &amp;#34;kubeadm-config&amp;#34; in the &amp;#34;kube-system&amp;#34; Namespace
+[kubelet] Creating a ConfigMap &amp;#34;kubelet-config-1.22&amp;#34; in namespace kube-system with the configuration for the kubelets in the cluster
+[upload-certs] Skipping phase. Please see --upload-certs
+[mark-control-plane] Marking the node vm as control-plane by adding the labels: [node-role.kubernetes.io/master(deprecated) node-role.kubernetes.io/control-plane node.kubernetes.io/exclude-from-external-load-balancers]
+[mark-control-plane] Marking the node vm as control-plane by adding the taints [node-role.kubernetes.io/master:NoSchedule]
+[bootstrap-token] Using token: jfhacg.2ahc3yqndiwct9vk
+[bootstrap-token] Configuring bootstrap tokens, cluster-info ConfigMap, RBAC Roles
+[bootstrap-token] configured RBAC rules to allow Node Bootstrap tokens to get nodes
+[bootstrap-token] configured RBAC rules to allow Node Bootstrap tokens to post CSRs in order for nodes to get long term certificate credentials
+[bootstrap-token] configured RBAC rules to allow the csrapprover controller automatically approve CSRs from a Node Bootstrap Token
+[bootstrap-token] configured RBAC rules to allow certificate rotation for all node client certificates in the cluster
+[bootstrap-token] Creating the &amp;#34;cluster-info&amp;#34; ConfigMap in the &amp;#34;kube-public&amp;#34; namespace
+[kubelet-finalize] Updating &amp;#34;/etc/kubernetes/kubelet.conf&amp;#34; to point to a rotatable kubelet client certificate and key
+[addons] Applied essential addon: CoreDNS
+[addons] Applied essential addon: kube-proxy
+Your Kubernetes control-plane has initialized successfully!
+To start using your cluster, you need to run the following as a regular user:
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+Alternatively, if you are the root user, you can run:
+export KUBECONFIG=/etc/kubernetes/admin.conf
+You should now deploy a pod network to the cluster.
+Run &amp;#34;kubectl apply -f [podnetwork].yaml&amp;#34; with one of the options listed at:
+https://kubernetes.io/docs/concepts/cluster-administration/addons/
+Then you can join any number of worker nodes by running the following on each as root:
+kubeadm join 10.0.2.15:6443 --token jfhacg.2ahc3yqndiwct9vk \
+--discovery-token-ca-cert-hash sha256:377d6ead2bde8373000333d883c9bd9449233686fe277814ccade0b55fc362a1
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>因为是虚拟机里的集群，也没打算给任何人访问，关键信息懒得打码了。&lt;/p>
+&lt;p>几个值得关注的内容：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">&lt;span class="c1"># Your Kubernetes control-plane has initialized successfully!&lt;/span>
+&lt;span class="c1"># To start using your cluster, you need to run the following as a regular user:&lt;/span>
+mkdir -p &lt;span class="nv">$HOME&lt;/span>/.kube
+sudo cp -i /etc/kubernetes/admin.conf &lt;span class="nv">$HOME&lt;/span>/.kube/config
+sudo chown &lt;span class="k">$(&lt;/span>id -u&lt;span class="k">)&lt;/span>:&lt;span class="k">$(&lt;/span>id -g&lt;span class="k">)&lt;/span> &lt;span class="nv">$HOME&lt;/span>/.kube/config
+&lt;span class="c1"># Alternatively, if you are the root user, you can run:&lt;/span>
+&lt;span class="nb">export&lt;/span> &lt;span class="nv">KUBECONFIG&lt;/span>&lt;span class="o">=&lt;/span>/etc/kubernetes/admin.conf
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>首先，集群控制平面已经初始化成功了，说明命令执行基本 OK，没有致命错误。&lt;/p>
+&lt;p>后面就是教你怎么配置 &lt;code>kubectl&lt;/code> 来访问控制平面，集群的管理员配置放在 &lt;code>/etc/kubernetes/admin.conf&lt;/code> ，可以用 &lt;code>KUBECONFIG&lt;/code> 环境变量来使用，或者把配置文件复制到家目录下的路径 &lt;code>~/.kube/config&lt;/code> 。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">You should now deploy a pod network to the cluster.
+Run &amp;#34;kubectl apply -f [podnetwork].yaml&amp;#34; with one of the options listed at:
+https://kubernetes.io/docs/concepts/cluster-administration/addons/
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>提示你应该部署一个 POD 网络到集群，也就是一般说的 CNI 插件，以便 POD 之间可以互相通信。安装插件之前，集群的 DNS （&lt;code>CoreDNS&lt;/code>） 不会启动。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">Then you can join any number of worker nodes by running the following on each as root:
+kubeadm join 10.0.2.15:6443 --token jfhacg.2ahc3yqndiwct9vk \
+--discovery-token-ca-cert-hash sha256:377d6ead2bde8373000333d883c9bd9449233686fe277814ccade0b55fc362a1
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>一旦搞定了网络插件，就可以用 &lt;code>kubeadm&lt;/code> 继续添加新的节点到集群里了。&lt;/p>
+&lt;h3 id="安装网络插件">安装网络插件&lt;/h3>
+&lt;p>看起来大家都在用 &lt;code>calico&lt;/code> 做 POD 网络，所以我也用 &lt;code>calico&lt;/code> 好了。步骤参考 &lt;code>calico&lt;/code> 的&lt;a class="link" href="https://docs.projectcalico.org/getting-started/kubernetes/self-managed-onprem/onpremises" target="_blank" rel="noopener"
+>官方文档&lt;/a> 和 &lt;a class="link" href="https://docs.projectcalico.org/getting-started/kubernetes/quickstart" target="_blank" rel="noopener"
+>官方的快速开始&lt;/a> 来配置一个单节点集群的 POD 。&lt;/p>
+&lt;p>正式开始前，参考上面的内容配置好 &lt;code>kubectl&lt;/code> ，以便无需 root 权限运行 &lt;code>kubectl&lt;/code> 命令。&lt;/p>
+&lt;p>先下载 &lt;code>calico&lt;/code> 的 k8s 资源。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">curl https://docs.projectcalico.org/manifests/calico-typha.yaml -o calico.yaml
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>按照说明，判断下 POD 的 CIDR（POD的网段），用 &lt;code>sudo kubectl --kubeconfig /etc/kubernetes/admin.conf get cm kubeadm-config -n kube-system -o yaml&lt;/code> 获取 &lt;code>kubeadm-config&lt;/code> 这个 &lt;code>configmap&lt;/code>，检查其中的 &lt;code>networking.podSubnet&lt;/code> 值。在我这里的输出如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">apiVersion&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">v1&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">data&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">ClusterConfiguration&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="p">|&lt;/span>&lt;span class="sd">
+&lt;/span>&lt;span class="sd"> apiServer:
+&lt;/span>&lt;span class="sd"> extraArgs:
+&lt;/span>&lt;span class="sd"> authorization-mode: Node,RBAC
+&lt;/span>&lt;span class="sd"> timeoutForControlPlane: 4m0s
+&lt;/span>&lt;span class="sd"> apiVersion: kubeadm.k8s.io/v1beta3
+&lt;/span>&lt;span class="sd"> certificatesDir: /etc/kubernetes/pki
+&lt;/span>&lt;span class="sd"> clusterName: kubernetes
+&lt;/span>&lt;span class="sd"> controllerManager: {}
+&lt;/span>&lt;span class="sd"> dns: {}
+&lt;/span>&lt;span class="sd"> etcd:
+&lt;/span>&lt;span class="sd"> local:
+&lt;/span>&lt;span class="sd"> dataDir: /var/lib/etcd
+&lt;/span>&lt;span class="sd"> imageRepository: registry.cn-hangzhou.aliyuncs.com/google_containers
+&lt;/span>&lt;span class="sd"> kind: ClusterConfiguration
+&lt;/span>&lt;span class="sd"> kubernetesVersion: v1.22.4
+&lt;/span>&lt;span class="sd"> networking:
+&lt;/span>&lt;span class="sd"> dnsDomain: cluster.local
+&lt;/span>&lt;span class="sd"> serviceSubnet: 10.96.0.0/12
+&lt;/span>&lt;span class="sd"> scheduler: {}&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">kind&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">ConfigMap&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">metadata&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">creationTimestamp&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s2">&amp;#34;2021-11-19T02:54:04Z&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">name&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">kubeadm-config&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">namespace&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">kube-system&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">resourceVersion&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s2">&amp;#34;210&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">uid&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">2567d366-2257-4114-8709-12b016cd1fe8&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以发现没有 &lt;code>podSubnet&lt;/code>，那就当是默认，按照 &lt;code>calico&lt;/code> 文档说明不用改 &lt;code>yaml&lt;/code>，正常应用。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">sudo kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f calico.yaml
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>输出如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">configmap/calico-config created
+customresourcedefinition.apiextensions.k8s.io/bgpconfigurations.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/bgppeers.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/blockaffinities.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/caliconodestatuses.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/clusterinformations.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/felixconfigurations.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/globalnetworkpolicies.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/globalnetworksets.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/hostendpoints.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/ipamblocks.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/ipamconfigs.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/ipamhandles.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/ippools.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/ipreservations.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/kubecontrollersconfigurations.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/networkpolicies.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/networksets.crd.projectcalico.org created
+clusterrole.rbac.authorization.k8s.io/calico-kube-controllers created
+clusterrolebinding.rbac.authorization.k8s.io/calico-kube-controllers created
+clusterrole.rbac.authorization.k8s.io/calico-node created
+clusterrolebinding.rbac.authorization.k8s.io/calico-node created
+service/calico-typha created
+deployment.apps/calico-typha created
+Warning: policy/v1beta1 PodDisruptionBudget is deprecated in v1.21+, unavailable in v1.25+; use policy/v1 PodDisruptionBudget
+poddisruptionbudget.policy/calico-typha created
+daemonset.apps/calico-node created
+serviceaccount/calico-node created
+deployment.apps/calico-kube-controllers created
+serviceaccount/calico-kube-controllers created
+poddisruptionbudget.policy/calico-kube-controllers created
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>出现了一个弃用警告，无视之，反正是 &lt;code>calico&lt;/code> 的问题。再检查下相关的 &lt;code>POD&lt;/code> 创建是否成功，用命令 &lt;code>kubectl get pod -n kube-system&lt;/code>，输出如下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">NAMESPACE NAME READY STATUS RESTARTS AGE
+kube-system calico-kube-controllers-5d995d45d6-gwwrw 1/1 Running 0 5m29s
+kube-system calico-node-sgb2x 0/1 Running 2 (49s ago) 5m29s
+kube-system calico-typha-7df55cc78b-hpfkx 0/1 Pending 0 5m29s
+kube-system coredns-7d89d9b6b8-c7sxl 1/1 Running 0 32m
+kube-system coredns-7d89d9b6b8-tjsj8 1/1 Running 0 32m
+kube-system etcd-vm 1/1 Running 0 32m
+kube-system kube-apiserver-vm 1/1 Running 0 32m
+kube-system kube-controller-manager-vm 1/1 Running 0 32m
+kube-system kube-proxy-d64kh 1/1 Running 0 32m
+kube-system kube-scheduler-vm 1/1 Running 0 32m
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以看到至少镜像是拉到了。&lt;/p>
+&lt;p>&lt;code>calico-typha-7df55cc78b-hpfkx&lt;/code> 这个 POD 的 &lt;code>describe&lt;/code> 显示不能运行在 &lt;code>master&lt;/code> 节点。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">Events:
+Type Reason Age From Message
+---- ------ ---- ---- -------
+Warning FailedScheduling 56s (x9 over 8m57s) default-scheduler 0/1 nodes are available: 1 node(s) had taint {node-role.kubernetes.io/master: }, that the pod didn&amp;#39;t tolerate.
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>而 &lt;code>calico-node-sgb2x&lt;/code> 的日志显示需要 &lt;code>calico-typha&lt;/code> 才能运行。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">2021-11-19 03:27:46.413 [ERROR][1674] confd/discovery.go 153: Didn&amp;#39;t find any ready Typha instances.
+2021-11-19 03:27:46.413 [FATAL][1674] confd/startsyncerclient.go 48: Typha discovery enabled but discovery failed. error=Kubernetes service missing IP or port
+bird: Unable to open configuration file /etc/calico/confd/config/bird6.cfg: No such file or directory
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>因为想要的是一个单节点集群，所以接下来把本节点的污点 &lt;code>node-role.kubernetes.io/master-&lt;/code> 给去掉。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">sudo kubectl --kubeconfig /etc/kubernetes/admin.conf taint nodes --all node-role.kubernetes.io/master-
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>输出&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">node/vm untainted
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>再观察 &lt;code>kube-system&lt;/code> 里的 POD 状态。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">NAME READY STATUS RESTARTS AGE
+calico-kube-controllers-5d995d45d6-gwwrw 1/1 Running 0 11m
+calico-node-sgb2x 1/1 Running 7 (38s ago) 11m
+calico-typha-7df55cc78b-hpfkx 1/1 Running 0 11m
+coredns-7d89d9b6b8-c7sxl 1/1 Running 0 38m
+coredns-7d89d9b6b8-tjsj8 1/1 Running 0 38m
+etcd-vm 1/1 Running 0 38m
+kube-apiserver-vm 1/1 Running 0 38m
+kube-controller-manager-vm 1/1 Running 0 38m
+kube-proxy-d64kh 1/1 Running 0 38m
+kube-scheduler-vm 1/1 Running 0 38m
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以看到所有的POD都已经进入&lt;code>Ready&lt;/code>状态。&lt;/p>
+&lt;p>最后通过 &lt;code>kubectl get nodes -o wide&lt;/code> 检查节点状态。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">NAME STATUS ROLES AGE VERSION INTERNAL-IP EXTERNAL-IP OS-IMAGE KERNEL-VERSION CONTAINER-RUNTIME
+vm Ready control-plane,master 39m v1.22.4 10.0.2.15 &amp;lt;none&amp;gt; Ubuntu 20.04.3 LTS 5.4.0-90-generic docker://20.10.11
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>到这里单节点集群就成功部署了。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>之后还可以部署 dashboard 之类的应用验证，不想写了，浪费时间。&lt;/p>
+&lt;p>写了一大堆又删掉了。&lt;/p>
+&lt;p>如果一定要总结的话，k8s，学了进小厂吧，小厂不用；学了进大厂吧，大厂也不要你。&lt;/p></description></item><item><title>k3s更新客户端证书的偷懒方法</title><link>https://nnnewb.github.io/blog/p/k3s-renew-client-ca-file-the-lazy-way/</link><pubDate>Mon, 11 Oct 2021 13:58:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/k3s-renew-client-ca-file-the-lazy-way/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>今天上内网服务器看了眼，准备调试下新代码，结果发现报错 &lt;code>You must logged in to the server (unauthorized)&lt;/code> 。翻了半天的 &lt;em>KUBECONFIG&lt;/em> 配置，发现啥也没错。换成 &lt;code>/etc/rancher/k3s/k3s.yaml&lt;/code> 也不行。于是查了下 &lt;code>journalctl -r -u k3s&lt;/code> ，发现日志 &lt;code>x509: certificate has expired or not yet valid: current time ...&lt;/code> ，这就明确了是证书过期了。&lt;/p>
+&lt;p>于是又找了一圈如何给k3s更新证书，搜 &lt;code>how to renew client-ca-file&lt;/code> 查出来的方法不是 &lt;code>kubeadm&lt;/code> 就是改时间、换证书，总之&amp;hellip;麻烦，而且搜出来的文章可操作性都有点差，真要实践出真知也不能放公司的机器上，搞出点问题还得劝自己心平气和磨上一整天去解决。&lt;/p>
+&lt;p>于是终于找到个看起来能行的办法：重启。&lt;/p>
+&lt;h2 id="操作">操作&lt;/h2>
+&lt;p>这个办法可操作性很强——反正情况不会变得更差了。因为办公室的服务器并不能保证24小时不断电，有时候白天上班机器是关机的，重启k3s无论如何不会导致问题变得更差——就算放着不管，过两天说不定也会断电重启下。&lt;/p>
+&lt;p>确认没人用服务之后直接上手。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">sudo systemctl restart k3s
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>等待重启完成，测试下新的 &lt;code>k3s.yaml&lt;/code> 能不能正常用。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">&lt;span class="nb">export&lt;/span> &lt;span class="nv">KUBECONFIG&lt;/span>&lt;span class="o">=&lt;/span>/etc/rancher/k3s/k3s.yaml
+kubectl cluster-info
+&lt;/code>&lt;/pre>&lt;/div>&lt;pre>&lt;code>Kubernetes control plane is running at https://192.168.2.175:6443
+CoreDNS is running at https://192.168.2.175:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+Metrics-server is running at https://192.168.2.175:6443/api/v1/namespaces/kube-system/services/https:metrics-server:/proxy
+To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
+&lt;/code>&lt;/pre>&lt;p>其他 &lt;code>get nodes&lt;/code> 之类的命令也顺利完成，剩下就是把新的客户端证书合并到个人的配置里了（对，并不是直接用 &lt;code>/etc/rancher/k3s/k3s.yaml&lt;/code>，我知道有人会这么用）。办法也简单，&lt;code>vim /etc/rancher/k3s/k3s.yaml&lt;/code>，把里面的 &lt;code>users&lt;/code> 键下，&lt;code>default&lt;/code> 用户的信息复制出来，粘贴到个人的 &lt;code>~/.kube/config&lt;/code> 相应位置就好。以前复制过的话，就覆盖掉。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>没啥好总结的，重启大法解决一切问题。不过手动轮换证书的办法也得记录一下，这里留相关的摘要链接。&lt;/p>
+&lt;ul>
+&lt;li>&lt;a class="link" href="https://kubernetes.io/zh/docs/tasks/administer-cluster/kubeadm/kubeadm-certs/" target="_blank" rel="noopener"
+>kubernetes.io/使用 kubeadm 进行证书管理&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://www.ibm.com/docs/en/fci/1.1.0?topic=kubernetes-renewing-cluster-certificates" target="_blank" rel="noopener"
+>ibm.com/renewing kubernetes cluster certificates&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://forums.rancher.com/t/how-to-renew-cert-manually/20022" target="_blank" rel="noopener"
+>forum.rancher.com/how to renew cert manually?&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;p>比较好奇的有多个master节点的集群，能通过逐个重启master节点来实现自动更新证书吗？&lt;/p></description></item><item><title>csr 方式创建 kubernetes 用户出了点差错</title><link>https://nnnewb.github.io/blog/p/csr-%E6%96%B9%E5%BC%8F%E5%88%9B%E5%BB%BA-kubernetes-%E7%94%A8%E6%88%B7%E5%87%BA%E4%BA%86%E7%82%B9%E5%B7%AE%E9%94%99/</link><pubDate>Mon, 19 Jul 2021 09:52:38 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/csr-%E6%96%B9%E5%BC%8F%E5%88%9B%E5%BB%BA-kubernetes-%E7%94%A8%E6%88%B7%E5%87%BA%E4%BA%86%E7%82%B9%E5%B7%AE%E9%94%99/</guid><description>&lt;p>越是在 kubernetes 的浑水里摸索，越是发现这就是个不顺手的锤子。&lt;/p>
+&lt;p>网上很多人喜欢把东西用不惯叫做懒，蠢，要是多反驳几句，那就还得搭上个“坏”的帽子。感觉吧，就这帮人看来，大神放个屁也值得学习，从里面“悟”出什么道理。&lt;/p>
+&lt;p>这帮人就跟传教士一样，但凡说个不字，就是在亵渎他们的“大神”。可谓人类迷惑行为。&lt;/p>
+&lt;p>好吧。技术别饭圈化行吗？&lt;/p>
+&lt;p>你说尤大强吗？Richard Stallman 是不是值得尊敬？Google 是不是最好的技术公司？Android 天下无敌？&lt;/p>
+&lt;p>然后全摆上神坛，挂上赛博天神的牌匾，插上网线一天 25 小时膜拜？&lt;/p>
+&lt;p>这帮人哪天搞个崇拜互联网和计算机的教派，把冯·诺依曼奉为先知我都不奇怪。&lt;/p>
+&lt;p>拜托，你们真的好怪欸。&lt;/p>
+&lt;!-- more -->
+&lt;h2 id="完整脚本">完整脚本&lt;/h2>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="cp">#!/bin/bash -e
+&lt;/span>&lt;span class="cp">&lt;/span>&lt;span class="c1">#&lt;/span>
+&lt;span class="c1"># 创建用户 gitlab 并授予权限&lt;/span>
+&lt;span class="c1">#&lt;/span>
+&lt;span class="c1"># reference:&lt;/span>
+&lt;span class="c1"># https://kubernetes.io/zh/docs/reference/access-authn-authz/certificate-signing-requests/#normal-user&lt;/span>
+&lt;span class="c1"># if `gitlab` does not exists,&lt;/span>
+&lt;span class="c1"># create csr and approve&lt;/span>
+&lt;span class="k">if&lt;/span> ! kubectl get csr gitlab &amp;gt;/dev/null&lt;span class="p">;&lt;/span> &lt;span class="k">then&lt;/span>
+&lt;span class="c1"># create credential&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="o">[&lt;/span> ! -f gitlab.csr &lt;span class="o">]&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="k">then&lt;/span>
+openssl genrsa -out gitlab.key &lt;span class="m">2048&lt;/span>
+openssl req -new -key gitlab.key -out gitlab.csr
+&lt;span class="k">fi&lt;/span>
+&lt;span class="nv">csr&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="k">$(&lt;/span>cat gitlab.csr &lt;span class="p">|&lt;/span> base64 &lt;span class="p">|&lt;/span> tr -d &lt;span class="s2">&amp;#34;\n&amp;#34;&lt;/span>&lt;span class="k">)&lt;/span>
+cat &lt;span class="s">&amp;lt;&amp;lt;EOF | tee gitlab-csr.yaml
+&lt;/span>&lt;span class="s">apiVersion: certificates.k8s.io/v1beta1
+&lt;/span>&lt;span class="s">kind: CertificateSigningRequest
+&lt;/span>&lt;span class="s">metadata:
+&lt;/span>&lt;span class="s"> name: gitlab
+&lt;/span>&lt;span class="s">spec:
+&lt;/span>&lt;span class="s"> groups:
+&lt;/span>&lt;span class="s"> - system:authenticated
+&lt;/span>&lt;span class="s"> request: $csr
+&lt;/span>&lt;span class="s"> signerName: kubernetes.io/kube-apiserver-client
+&lt;/span>&lt;span class="s"> usages:
+&lt;/span>&lt;span class="s"> - client auth
+&lt;/span>&lt;span class="s">EOF&lt;/span>
+kubectl create -f gitlab-csr.yaml
+kubectl certificate approve gitlab
+&lt;span class="k">fi&lt;/span>
+&lt;span class="c1"># get signed credential&lt;/span>
+kubectl get csr gitlab -o &lt;span class="nv">jsonpath&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s1">&amp;#39;{.status.certificate}&amp;#39;&lt;/span>&lt;span class="p">|&lt;/span> base64 -d &amp;gt; gitlab.crt
+&lt;span class="c1"># create role and rolebinding&lt;/span>
+kubectl create role gitlab-ci &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --verb&lt;span class="o">=&lt;/span>create &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --verb&lt;span class="o">=&lt;/span>git &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --verb&lt;span class="o">=&lt;/span>list &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --verb&lt;span class="o">=&lt;/span>update &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --verb&lt;span class="o">=&lt;/span>delete &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --resource&lt;span class="o">=&lt;/span>pods &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --resource&lt;span class="o">=&lt;/span>deployment &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --resource&lt;span class="o">=&lt;/span>statefulset &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --resource&lt;span class="o">=&lt;/span>service &lt;span class="se">\
+&lt;/span>&lt;span class="se">&lt;/span> --resource&lt;span class="o">=&lt;/span>configmap
+kubectl create rolebinding gitlab-ci-binding-gitlab --role&lt;span class="o">=&lt;/span>gitlab-ci --user&lt;span class="o">=&lt;/span>gitlab
+kubectl config set-credentials gitlab --client-key&lt;span class="o">=&lt;/span>gitlab.key --client-certificate&lt;span class="o">=&lt;/span>gitlab.crt --embed-certs&lt;span class="o">=&lt;/span>&lt;span class="nb">true&lt;/span>
+kubectl config set-context ci --cluster&lt;span class="o">=&lt;/span>office --user&lt;span class="o">=&lt;/span>gitlab --namespace&lt;span class="o">=&lt;/span>version4
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="存在的问题">存在的问题&lt;/h2>
+&lt;p>脚本跑完后发现还不能使用 &lt;code>kubectl get pods&lt;/code>，错误 Unauthorized。&lt;/p>
+&lt;p>再看了一遍文档，发现有这么一句。&lt;/p>
+&lt;blockquote>
+&lt;p>下面的脚本展示了如何生成 PKI 私钥和 CSR。 设置 CSR 的 CN 和 O 属性很重要。CN 是用户名，O 是该用户归属的组。 你可以参考 RBAC 了解标准组的信息。&lt;/p>
+&lt;/blockquote>
+&lt;p>顺着链接去看了下 RBAC，结果也没找到什么“标准组”。&lt;/p>
+&lt;p>对于文中说的两个“很重要”的字段，CN 我猜测是 Common Name，O 就是 Organization。现在就不知道怎么填 O，行吧。&lt;/p>
+&lt;p>等啥时候搞清楚了再补一篇。&lt;/p></description></item></channel></rss>
