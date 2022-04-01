@@ -1,0 +1,617 @@
+<!doctype html><html lang=zh-cn dir=ltr>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 重构发生的背景是这样的。
+我手里的项目因为一系列管理上的混乱和不作为导致接手的时候非常糟，总之理解成那种写了一两年代码第一次接触Go没人review代码的半吊子还从单体beego一路跨到非常考验架构能力到编程能力各方面能力的微服务架构结果留下烂摊子跑路了的情况就对啦。
+没看懂写的什么鬼？对，我接手项目的时候也是这个感觉。
+细看也能读懂，业务逻辑不复杂，但读起来的感觉就像是shit里淘金。
+其中有几个特别困扰我的问题：
+ 事务管理凌乱，混用 xorm 和database/sql，各种拼 sql 和手动管理 sql.Tx，分布式事务的问题零关注。 配置极其杂乱，几百条配置项不分用途场景全写成环境变量，结果就是海量的全局变量和极乱的 func init。  还有些和主题无关的问题，比如完全没有考虑缓存，现在在屎山上建缓存就非常头疼了；API 设计完全没考虑如何演进，不说 BFF 什么的设计模式，这 API 就完全是毫无设计，到处滥用 protobuf 生成的结构，结果严重耦合，等等种种。这些这里先不提。
+对于事务管理和配置管理的问题可以再细细分析。
+事务管理重构 痛点 先看一段重构前的事务代码。
+tx, err := DB.Begin() if err != nil { return nil, err } rollBack := true defer func() { if rollBack { err := tx.Rollback() if nil != err { log.Error(&amp;#34;rollback failed&amp;#34;) } } }() // ...  rollBack = false if err := tx."><title>记一次重构事务管理和配置管理</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/refactoring-transaction-and-config-management-note/>
+<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="记一次重构事务管理和配置管理">
+<meta property="og:description" content="前言 重构发生的背景是这样的。
+我手里的项目因为一系列管理上的混乱和不作为导致接手的时候非常糟，总之理解成那种写了一两年代码第一次接触Go没人review代码的半吊子还从单体beego一路跨到非常考验架构能力到编程能力各方面能力的微服务架构结果留下烂摊子跑路了的情况就对啦。
+没看懂写的什么鬼？对，我接手项目的时候也是这个感觉。
+细看也能读懂，业务逻辑不复杂，但读起来的感觉就像是shit里淘金。
+其中有几个特别困扰我的问题：
+ 事务管理凌乱，混用 xorm 和database/sql，各种拼 sql 和手动管理 sql.Tx，分布式事务的问题零关注。 配置极其杂乱，几百条配置项不分用途场景全写成环境变量，结果就是海量的全局变量和极乱的 func init。  还有些和主题无关的问题，比如完全没有考虑缓存，现在在屎山上建缓存就非常头疼了；API 设计完全没考虑如何演进，不说 BFF 什么的设计模式，这 API 就完全是毫无设计，到处滥用 protobuf 生成的结构，结果严重耦合，等等种种。这些这里先不提。
+对于事务管理和配置管理的问题可以再细细分析。
+事务管理重构 痛点 先看一段重构前的事务代码。
+tx, err := DB.Begin() if err != nil { return nil, err } rollBack := true defer func() { if rollBack { err := tx.Rollback() if nil != err { log.Error(&amp;#34;rollback failed&amp;#34;) } } }() // ...  rollBack = false if err := tx.">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/refactoring-transaction-and-config-management-note/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="重构"><meta property="article:published_time" content="2022-04-01T12:30:00+08:00"><meta property="article:modified_time" content="2022-04-01T12:30:00+08:00">
+<meta name=twitter:title content="记一次重构事务管理和配置管理">
+<meta name=twitter:description content="前言 重构发生的背景是这样的。
+我手里的项目因为一系列管理上的混乱和不作为导致接手的时候非常糟，总之理解成那种写了一两年代码第一次接触Go没人review代码的半吊子还从单体beego一路跨到非常考验架构能力到编程能力各方面能力的微服务架构结果留下烂摊子跑路了的情况就对啦。
+没看懂写的什么鬼？对，我接手项目的时候也是这个感觉。
+细看也能读懂，业务逻辑不复杂，但读起来的感觉就像是shit里淘金。
+其中有几个特别困扰我的问题：
+ 事务管理凌乱，混用 xorm 和database/sql，各种拼 sql 和手动管理 sql.Tx，分布式事务的问题零关注。 配置极其杂乱，几百条配置项不分用途场景全写成环境变量，结果就是海量的全局变量和极乱的 func init。  还有些和主题无关的问题，比如完全没有考虑缓存，现在在屎山上建缓存就非常头疼了；API 设计完全没考虑如何演进，不说 BFF 什么的设计模式，这 API 就完全是毫无设计，到处滥用 protobuf 生成的结构，结果严重耦合，等等种种。这些这里先不提。
+对于事务管理和配置管理的问题可以再细细分析。
+事务管理重构 痛点 先看一段重构前的事务代码。
+tx, err := DB.Begin() if err != nil { return nil, err } rollBack := true defer func() { if rollBack { err := tx.Rollback() if nil != err { log.Error(&amp;#34;rollback failed&amp;#34;) } } }() // ...  rollBack = false if err := tx.">
+</head>
+<body class=article-page>
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
+</div>
+</header><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+<li id=dark-mode-toggle><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span>
+</li>
+</div>
+</ol>
+</aside>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/golang/>
+golang
+</a>
+</header>
+<div class=article-title-wrapper>
+<h2 class=article-title>
+<a href=/blog/p/refactoring-transaction-and-config-management-note/>记一次重构事务管理和配置管理</a>
+</h2>
+</div>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2022年 4月 1日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 5 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>重构发生的背景是这样的。</p>
+<p>我手里的项目因为一系列管理上的混乱和不作为导致接手的时候非常糟，总之理解成那种写了一两年代码第一次接触Go没人review代码的半吊子还从单体beego一路跨到非常考验架构能力到编程能力各方面能力的微服务架构结果留下烂摊子跑路了的情况就对啦。</p>
+<p>没看懂写的什么鬼？对，我接手项目的时候也是这个感觉。</p>
+<p>细看也能读懂，业务逻辑不复杂，但读起来的感觉就像是shit里淘金。</p>
+<p>其中有几个特别困扰我的问题：</p>
+<ol>
+<li>事务管理凌乱，混用 <code>xorm</code> 和<code>database/sql</code>，各种拼 sql 和手动管理 <code>sql.Tx</code>，分布式事务的问题零关注。</li>
+<li>配置极其杂乱，几百条配置项不分用途场景全写成环境变量，结果就是海量的全局变量和极乱的 <code>func init</code>。</li>
+</ol>
+<p>还有些和主题无关的问题，比如完全没有考虑缓存，现在在屎山上建缓存就非常头疼了；API 设计完全没考虑如何演进，不说 BFF 什么的设计模式，这 API 就完全是毫无设计，到处滥用 protobuf 生成的结构，结果严重耦合，等等种种。这些这里先不提。</p>
+<p>对于事务管理和配置管理的问题可以再细细分析。</p>
+<h2 id=事务管理重构>事务管理重构</h2>
+<h3 id=痛点>痛点</h3>
+<p>先看一段重构前的事务代码。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=nx>tx</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>DB</span><span class=p>.</span><span class=nf>Begin</span><span class=p>()</span>
+<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+    <span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>err</span>
+<span class=p>}</span>
+<span class=nx>rollBack</span> <span class=o>:=</span> <span class=kc>true</span>
+<span class=k>defer</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+    <span class=k>if</span> <span class=nx>rollBack</span> <span class=p>{</span>
+        <span class=nx>err</span> <span class=o>:=</span> <span class=nx>tx</span><span class=p>.</span><span class=nf>Rollback</span><span class=p>()</span>
+        <span class=k>if</span> <span class=kc>nil</span> <span class=o>!=</span> <span class=nx>err</span> <span class=p>{</span>
+            <span class=nx>log</span><span class=p>.</span><span class=nf>Error</span><span class=p>(</span><span class=s>&#34;rollback failed&#34;</span><span class=p>)</span>
+        <span class=p>}</span>
+    <span class=p>}</span>
+<span class=p>}()</span>
+
+<span class=c1>// ...
+</span><span class=c1></span>
+<span class=nx>rollBack</span> <span class=p>=</span> <span class=kc>false</span>
+<span class=k>if</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>tx</span><span class=p>.</span><span class=nf>Commit</span><span class=p>();</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+    <span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>err</span>
+<span class=p>}</span>
+</code></pre></div><p>还有第二种写法：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>var</span> <span class=p>(</span>
+    <span class=nx>sqlStmts</span> <span class=p>=</span> <span class=nb>make</span><span class=p>([]</span><span class=kt>string</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=nb>len</span><span class=p>(</span><span class=nx>req</span><span class=p>.</span><span class=nx>UserId</span><span class=p>))</span>
+    <span class=nx>params</span>   <span class=p>=</span> <span class=nb>make</span><span class=p>([][]</span><span class=kd>interface</span><span class=p>{},</span> <span class=mi>0</span><span class=p>,</span> <span class=nb>len</span><span class=p>(</span><span class=nx>req</span><span class=p>.</span><span class=nx>UserId</span><span class=p>))</span>
+<span class=p>)</span>
+
+<span class=c1>// for ... {
+</span><span class=c1>// ...
+</span><span class=c1>//     sqlStmts = append(sqlStmts, &#34;update task_answer set is_eva=?,is_excellent=?,eva_text=?,eva_expression=? where task_id=? and user_id=?&#34;)
+</span><span class=c1>//     params = append(params, []interface{}{constants.True, req.IsExcellent, req.TaskEva.Text, req.TaskEva.Expression, req.TaskId, v})
+</span><span class=c1>// }
+</span><span class=c1></span>
+<span class=k>if</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>DB</span><span class=p>.</span><span class=nf>ExecSqlInTxAndCommit</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=nx>sqlStmts</span><span class=p>,</span> <span class=nx>params</span><span class=p>);</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+    <span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>err</span>
+<span class=p>}</span>
+</code></pre></div><p>事务管理上最大的痛点有几个：</p>
+<ul>
+<li>手工<code>Commit/Rollback</code>逻辑较复杂，需要辅助变量或命名返回值，还要处理 <code>recover</code>。</li>
+<li>手工<code>Commit/Rollback</code>样板代码多。</li>
+<li>已有的事务封装效果不佳，拼凑 <code>sqlStmts []string</code> 有损可读性，写起来也麻烦。</li>
+<li>由于上面的原因，很大部分的 CURD 接口都没有事务化处理，存在隐患。</li>
+<li>显而易见，分布式事务完全没有考虑过。</li>
+</ul>
+<h3 id=目标>目标</h3>
+<p>重构的时间成本是很高的，因为重构花的精力不能直接变现成业务价值，对不做编码和架构工作的管理层来说虚无缥缈的“可维护”、“灵活”、“隐患”这样的说辞并不容易被认可。</p>
+<p>一般来说，主动提重构要时间（要不到），提方案（大刀阔斧被否），执行（同事觉得你多管闲事），review（长不看），最后背锅（线上crash怎么想都是你的错啦！），这一路闯关下来可不容易。但是&mldr;我司管理混乱，我比较闲。</p>
+<p>所以能大方地掏出时间搞个没什么业务价值的重构，看看能不能消灭一些隐患，也方便将来我或者下一个接盘侠需要二次开发的时候少吃点苦头。</p>
+<p>重构的目标是解决上面的痛点1234，但分布式事务不太好即刻引入。原因也简单，要考虑下用什么框架，<code>coordinator</code> 选型，和现有的事务管理体系对接，做线上升级方案，这一系列事情最好等事务管理统一后再做，才可能事半功倍。</p>
+<h3 id=调研>调研</h3>
+<p>古人云：</p>
+<blockquote>
+<p>它山之石可以攻玉。</p>
+</blockquote>
+<p>所以先看看别的知名框架怎么处理的事务是个好主意。</p>
+<h4 id=beego>beego</h4>
+<p><code>beego</code>有两种事务管理方法，第一种是利用闭包：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=c1>// Beego will manage the transaction&#39;s lifecycle
+</span><span class=c1>// if the @param task return error, the transaction will be rollback
+</span><span class=c1>// or the transaction will be committed
+</span><span class=c1></span><span class=nx>err</span> <span class=o>:=</span> <span class=nx>o</span><span class=p>.</span><span class=nf>DoTx</span><span class=p>(</span><span class=kd>func</span><span class=p>(</span><span class=nx>ctx</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span> <span class=nx>txOrm</span> <span class=nx>orm</span><span class=p>.</span><span class=nx>TxOrmer</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span>
+	<span class=c1>// data
+</span><span class=c1></span>	<span class=nx>user</span> <span class=o>:=</span> <span class=nb>new</span><span class=p>(</span><span class=nx>User</span><span class=p>)</span>
+	<span class=nx>user</span><span class=p>.</span><span class=nx>Name</span> <span class=p>=</span> <span class=s>&#34;test_transaction&#34;</span>
+
+	<span class=c1>// insert data
+</span><span class=c1></span>	<span class=c1>// Using txOrm to execute SQL
+</span><span class=c1></span>	<span class=nx>_</span><span class=p>,</span> <span class=nx>e</span> <span class=o>:=</span> <span class=nx>txOrm</span><span class=p>.</span><span class=nf>Insert</span><span class=p>(</span><span class=nx>user</span><span class=p>)</span>
+	<span class=c1>// if e != nil the transaction will be rollback
+</span><span class=c1></span>	<span class=c1>// or it will be committed
+</span><span class=c1></span>	<span class=k>return</span> <span class=nx>e</span>
+<span class=p>})</span>
+</code></pre></div><p>具体实现是很好猜的，<code>DoTx</code>里<code>defer func(){}()</code>处理下返回值和<code>recover</code>，没有错误就提交。这种写法很灵活，也能有效避免忘记<code>defer</code>或者<code>defer</code>考虑不够全面之类的问题。</p>
+<p><code>beego</code>的另一种事务管理方法就是手动<code>Commit/Rollback</code>了，和直接用 <code>sql.Tx</code> 差别不大，不细说了。</p>
+<h4 id=gin>gin</h4>
+<p><code>gin</code>没有官方的事务方案，不过我找到一个社区方案：利用中间件在 <code>context</code> 里注入事务对象，业务代码里可以 <code>GetTransactionFromContext(ctx)</code> 获取，后续处理没有错误就提交，和 <code>beego</code> 的闭包法类似，不过就是把事务从业务代码提到了全局，进一步减少了侵入。</p>
+<h4 id=django>django</h4>
+<p><code>django</code> 是 python 的 web 框架，也有一定参考意义。</p>
+<p><code>django</code>的事务主要是靠装饰器实现的：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=kn>from</span> <span class=nn>django.db</span> <span class=kn>import</span> <span class=n>transaction</span>
+
+<span class=nd>@transaction</span><span class=o>.</span><span class=n>atomic</span>
+<span class=k>def</span> <span class=nf>viewfunc</span><span class=p>(</span><span class=n>request</span><span class=p>):</span>
+    <span class=c1># This code executes inside a transaction.</span>
+    <span class=n>do_stuff</span><span class=p>()</span>
+</code></pre></div><p>也可以用上下文管理器：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=kn>from</span> <span class=nn>django.db</span> <span class=kn>import</span> <span class=n>transaction</span>
+
+<span class=k>def</span> <span class=nf>viewfunc</span><span class=p>(</span><span class=n>request</span><span class=p>):</span>
+    <span class=c1># This code executes in autocommit mode (Django&#39;s default).</span>
+    <span class=n>do_stuff</span><span class=p>()</span>
+
+    <span class=k>with</span> <span class=n>transaction</span><span class=o>.</span><span class=n>atomic</span><span class=p>():</span>
+        <span class=c1># This code executes inside a transaction.</span>
+        <span class=n>do_more_stuff</span><span class=p>()</span>
+</code></pre></div><p>关于Python的装饰器和上下文管理器，我简要解释下：</p>
+<p>装饰器：高阶函数，接受被装饰函数作为输入，返回新函数。比如</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=k>def</span> <span class=nf>decorator</span><span class=p>(</span><span class=n>f</span><span class=p>):</span>
+    <span class=k>def</span> <span class=nf>wrapped</span><span class=p>(</span><span class=o>*</span><span class=n>args</span><span class=p>,</span><span class=o>**</span><span class=n>kwargs</span><span class=p>):</span>
+        <span class=k>return</span> <span class=n>f</span><span class=p>(</span><span class=o>*</span><span class=n>args</span><span class=p>,</span><span class=o>**</span><span class=n>kwargs</span><span class=p>)</span>
+   	<span class=k>return</span> <span class=n>wrapped</span>
+
+<span class=nd>@decorator</span>
+<span class=k>def</span> <span class=nf>fun</span><span class=p>():</span>
+    <span class=k>pass</span>
+</code></pre></div><p>本质上就是</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=k>def</span> <span class=nf>decorator</span><span class=p>(</span><span class=n>f</span><span class=p>):</span>
+    <span class=k>def</span> <span class=nf>wrapped</span><span class=p>(</span><span class=o>*</span><span class=n>args</span><span class=p>,</span><span class=o>**</span><span class=n>kwargs</span><span class=p>):</span>
+        <span class=k>return</span> <span class=n>f</span><span class=p>(</span><span class=o>*</span><span class=n>args</span><span class=p>,</span><span class=o>**</span><span class=n>kwargs</span><span class=p>)</span>
+   	<span class=k>return</span> <span class=n>wrapped</span>
+
+<span class=k>def</span> <span class=nf>fun</span><span class=p>():</span>
+    <span class=k>pass</span>
+
+<span class=n>fun</span> <span class=o>=</span> <span class=n>decorator</span><span class=p>(</span><span class=n>fun</span><span class=p>)</span>
+</code></pre></div><p>至于上下文管理器，可以简单理解成 <code>try {} finally {}</code>。</p>
+<p><code>django</code>的思路和<code>beego</code>、<code>gin</code>是很相似的，因为<code>python</code>的装饰器语法存在使得事务管理可以更灵活地在函数级作用域里使用，而不用侵入业务代码。</p>
+<h4 id=springboot>springboot</h4>
+<p><code>springboot</code>主要利用注解和一系列我也不懂的JVM机制添加事务，具体还是不说了，多说多错。随手搜的一篇参考文章：<a class=link href=https://juejin.cn/post/7003614270877335560 target=_blank rel=noopener>Springboot之@Transactional事务注解原理详解</a></p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-java data-lang=java><span class=kd>public</span> <span class=n>Object</span> <span class=nf>invoke</span><span class=o>(</span><span class=n>MethodInvocation</span> <span class=n>invocation</span><span class=o>)</span> <span class=kd>throws</span> <span class=n>Throwable</span> <span class=o>{</span>
+    <span class=n>Class</span><span class=o>&lt;?&gt;</span> <span class=n>targetClass</span> <span class=o>=</span> <span class=n>invocation</span><span class=o>.</span><span class=na>getThis</span><span class=o>()</span> <span class=o>!=</span> <span class=kc>null</span> <span class=o>?</span> <span class=n>AopUtils</span><span class=o>.</span><span class=na>getTargetClass</span><span class=o>(</span><span class=n>invocation</span><span class=o>.</span><span class=na>getThis</span><span class=o>())</span> <span class=o>:</span> <span class=kc>null</span><span class=o>;</span>
+    <span class=n>Method</span> <span class=n>var10001</span> <span class=o>=</span> <span class=n>invocation</span><span class=o>.</span><span class=na>getMethod</span><span class=o>();</span>
+    <span class=n>invocation</span><span class=o>.</span><span class=na>getClass</span><span class=o>();</span>
+    <span class=c1>// 调用事务逻辑
+</span><span class=c1></span>    <span class=k>return</span> <span class=k>this</span><span class=o>.</span><span class=na>invokeWithinTransaction</span><span class=o>(</span><span class=n>var10001</span><span class=o>,</span> <span class=n>targetClass</span><span class=o>,</span> <span class=n>invocation</span><span class=o>::</span><span class=n>proceed</span><span class=o>);</span>
+<span class=o>}</span>
+
+<span class=nd>@Nullable</span>
+<span class=kd>protected</span> <span class=n>Object</span> <span class=nf>invokeWithinTransaction</span><span class=o>(</span><span class=n>Method</span> <span class=n>method</span><span class=o>,</span> <span class=nd>@Nullable</span> <span class=n>Class</span><span class=o>&lt;?&gt;</span> <span class=n>targetClass</span><span class=o>,</span> <span class=n>TransactionAspectSupport</span><span class=o>.</span><span class=na>InvocationCallback</span> <span class=n>invocation</span><span class=o>)</span> <span class=kd>throws</span> <span class=n>Throwable</span> <span class=o>{</span>
+  <span class=n>TransactionAttributeSource</span> <span class=n>tas</span> <span class=o>=</span> <span class=k>this</span><span class=o>.</span><span class=na>getTransactionAttributeSource</span><span class=o>();</span>
+  <span class=c1>// 获取改方法上的事务配置，包括传播级别、异常信息等配置
+</span><span class=c1></span>  <span class=n>TransactionAttribute</span> <span class=n>txAttr</span> <span class=o>=</span> <span class=n>tas</span> <span class=o>!=</span> <span class=kc>null</span> <span class=o>?</span> <span class=n>tas</span><span class=o>.</span><span class=na>getTransactionAttribute</span><span class=o>(</span><span class=n>method</span><span class=o>,</span> <span class=n>targetClass</span><span class=o>)</span> <span class=o>:</span> <span class=kc>null</span><span class=o>;</span>
+  <span class=c1>// 事务管理器，负责生成事务上下文信息，比如开启事务、获取数据库链接等逻辑
+</span><span class=c1></span>  <span class=n>TransactionManager</span> <span class=n>tm</span> <span class=o>=</span> <span class=k>this</span><span class=o>.</span><span class=na>determineTransactionManager</span><span class=o>(</span><span class=n>txAttr</span><span class=o>);</span>
+  <span class=o>...</span>
+  <span class=n>PlatformTransactionManager</span> <span class=n>ptm</span> <span class=o>=</span> <span class=k>this</span><span class=o>.</span><span class=na>asPlatformTransactionManager</span><span class=o>(</span><span class=n>tm</span><span class=o>);</span>
+  <span class=n>String</span> <span class=n>joinpointIdentification</span> <span class=o>=</span> <span class=k>this</span><span class=o>.</span><span class=na>methodIdentification</span><span class=o>(</span><span class=n>method</span><span class=o>,</span> <span class=n>targetClass</span><span class=o>,</span> <span class=n>txAttr</span><span class=o>);</span>
+  <span class=c1>// 根据传播级别配置，看是否需要新建事务
+</span><span class=c1></span>  <span class=n>TransactionAspectSupport</span><span class=o>.</span><span class=na>TransactionInfo</span> <span class=n>txInfo</span> <span class=o>=</span> <span class=k>this</span><span class=o>.</span><span class=na>createTransactionIfNecessary</span><span class=o>(</span><span class=n>ptm</span><span class=o>,</span> <span class=n>txAttr</span><span class=o>,</span> <span class=n>joinpointIdentification</span><span class=o>);</span>
+
+  <span class=n>Object</span> <span class=n>retVal</span><span class=o>;</span>
+  <span class=c1>// 通过try catch捕获异常来实现回滚逻辑
+</span><span class=c1></span>  <span class=k>try</span> <span class=o>{</span>
+  <span class=c1>// 调用真正的dao层逻辑
+</span><span class=c1></span>      <span class=n>retVal</span> <span class=o>=</span> <span class=n>invocation</span><span class=o>.</span><span class=na>proceedWithInvocation</span><span class=o>();</span>
+  <span class=o>}</span> <span class=k>catch</span> <span class=o>(</span><span class=n>Throwable</span> <span class=n>var18</span><span class=o>)</span> <span class=o>{</span>
+  <span class=c1>// 根据@Transactional配置的异常来决定是否回滚
+</span><span class=c1></span>      <span class=k>this</span><span class=o>.</span><span class=na>completeTransactionAfterThrowing</span><span class=o>(</span><span class=n>txInfo</span><span class=o>,</span> <span class=n>var18</span><span class=o>);</span>
+      <span class=k>throw</span> <span class=n>var18</span><span class=o>;</span>
+  <span class=o>}</span> <span class=k>finally</span> <span class=o>{</span>
+  <span class=c1>// 结束当前的事务，信息是保存在ThreadLocal里
+</span><span class=c1></span>      <span class=k>this</span><span class=o>.</span><span class=na>cleanupTransactionInfo</span><span class=o>(</span><span class=n>txInfo</span><span class=o>);</span>
+  <span class=o>}</span>
+
+  <span class=k>if</span> <span class=o>(</span><span class=n>retVal</span> <span class=o>!=</span> <span class=kc>null</span> <span class=o>&amp;&amp;</span> <span class=n>vavrPresent</span> <span class=o>&amp;&amp;</span> <span class=n>TransactionAspectSupport</span><span class=o>.</span><span class=na>VavrDelegate</span><span class=o>.</span><span class=na>isVavrTry</span><span class=o>(</span><span class=n>retVal</span><span class=o>))</span> <span class=o>{</span>
+      <span class=n>TransactionStatus</span> <span class=n>status</span> <span class=o>=</span> <span class=n>txInfo</span><span class=o>.</span><span class=na>getTransactionStatus</span><span class=o>();</span>
+      <span class=k>if</span> <span class=o>(</span><span class=n>status</span> <span class=o>!=</span> <span class=kc>null</span> <span class=o>&amp;&amp;</span> <span class=n>txAttr</span> <span class=o>!=</span> <span class=kc>null</span><span class=o>)</span> <span class=o>{</span>
+          <span class=n>retVal</span> <span class=o>=</span> <span class=n>TransactionAspectSupport</span><span class=o>.</span><span class=na>VavrDelegate</span><span class=o>.</span><span class=na>evaluateTryFailure</span><span class=o>(</span><span class=n>retVal</span><span class=o>,</span> <span class=n>txAttr</span><span class=o>,</span> <span class=n>status</span><span class=o>);</span>
+      <span class=o>}</span>
+  <span class=o>}</span>
+  <span class=c1>// 没有异常时，执行commit操作
+</span><span class=c1></span>  <span class=k>this</span><span class=o>.</span><span class=na>commitTransactionAfterReturning</span><span class=o>(</span><span class=n>txInfo</span><span class=o>);</span>
+  <span class=k>return</span> <span class=n>retVal</span><span class=o>;</span>
+  <span class=o>...</span>
+  
+<span class=o>}</span>
+</code></pre></div><p>可以看到排除 springboot 的机制外，思路依然是清晰易懂的：进入业务逻辑前准备好事务，业务逻辑后没有错误则提交，否则回滚。</p>
+<p>上述4种框架的处理方法都是在使用各种语言机制来应用 AOP 思想。</p>
+<h3 id=方案>方案</h3>
+<p>考虑到旧代码范围广，闭包模式需要对旧的用法做侵入式修改，工作量大；针对特定业务函数应用装饰器模式在go语言环境下水土不服；唯一可能的选择就是中间件了。</p>
+<p>而中间件又有几个选择：</p>
+<ul>
+<li>针对服务接口封装中间件，优点是可以实现接口级按需注入事务，缺点是写起来啰嗦</li>
+<li>全局中间件，优点是实现简单，缺点是所有业务接口都会注入事务</li>
+</ul>
+<p>更进一步的抽象，比如 <code>gokit</code> 架构设计中的对单个业务接口抽出 <code>Endpoint</code> ，彻底把业务层和传输层分离，所需的工作量更是离谱。</p>
+<p>最终出于review友好也对我的手指友好考虑，还是选择全局中间件，但加改变，同时注入<code>sql.DB</code>，并且让事务懒启动，尽量避免多余的<code>Begin/Commit/Rollback</code>拖长接口耗时。</p>
+<p>这一方案落地为一个<code>txmanager</code>包和一个 gRPC Interceptor ，<code>txmanager</code> 定义数据库接口、事务接口，以及注册事务等工具函数；Interceptor 在<code>context</code>注入数据库和事务，在业务执行完成后，<code>defer</code>里 <code>recover</code>并检查返回值，决定提交或回滚。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=k>defer</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+    <span class=nx>txSet</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nx>ctx</span><span class=p>.</span><span class=nf>Value</span><span class=p>(</span><span class=nx>txSetKey</span><span class=p>).(</span><span class=nx>mapset</span><span class=p>.</span><span class=nx>Set</span><span class=p>)</span>
+    <span class=k>if</span> <span class=p>!</span><span class=nx>ok</span> <span class=p>{</span>
+        <span class=k>return</span>
+    <span class=p>}</span>
+    <span class=k>defer</span> <span class=nx>txSet</span><span class=p>.</span><span class=nf>Clear</span><span class=p>()</span>
+
+    <span class=k>if</span> <span class=nx>e</span> <span class=o>:=</span> <span class=nb>recover</span><span class=p>();</span> <span class=nx>e</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+        <span class=c1>// 检查 panic
+</span><span class=c1></span>        <span class=nf>rollbackTxSet</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=nx>txSet</span><span class=p>)</span>
+        <span class=nb>panic</span><span class=p>(</span><span class=nx>e</span><span class=p>)</span>
+    <span class=p>}</span> <span class=k>else</span> <span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+        <span class=c1>// 检查 error 返回值
+</span><span class=c1></span>        <span class=nx>log</span><span class=p>.</span><span class=nf>ErrorC</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=s>&#34;rollback due to error&#34;</span><span class=p>,</span> <span class=s>&#34;err&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>,</span> <span class=s>&#34;recovered&#34;</span><span class=p>,</span> <span class=nx>e</span><span class=p>)</span>
+        <span class=nf>rollbackTxSet</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=nx>txSet</span><span class=p>)</span>
+    <span class=p>}</span> <span class=k>else</span> <span class=k>if</span> <span class=nx>resp</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=o>&amp;&amp;</span> <span class=nx>reflect</span><span class=p>.</span><span class=nf>Indirect</span><span class=p>(</span><span class=nx>reflect</span><span class=p>.</span><span class=nf>ValueOf</span><span class=p>(</span><span class=nx>resp</span><span class=p>)).</span><span class=nf>FieldByName</span><span class=p>(</span><span class=s>&#34;Code&#34;</span><span class=p>).</span><span class=nf>Int</span><span class=p>()</span> <span class=o>!=</span> <span class=nx>errorcode</span><span class=p>.</span><span class=nx>RequestSuccess</span> <span class=p>{</span>
+        <span class=c1>// 检查响应 Code
+</span><span class=c1></span>        <span class=nx>log</span><span class=p>.</span><span class=nf>ErrorC</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=s>&#34;rollback due to response code&#34;</span><span class=p>,</span> <span class=s>&#34;code&#34;</span><span class=p>,</span> <span class=nx>reflect</span><span class=p>.</span><span class=nf>Indirect</span><span class=p>(</span><span class=nx>reflect</span><span class=p>.</span><span class=nf>ValueOf</span><span class=p>(</span><span class=nx>resp</span><span class=p>)).</span><span class=nf>FieldByName</span><span class=p>(</span><span class=s>&#34;Code&#34;</span><span class=p>).</span><span class=nf>Int</span><span class=p>())</span>
+        <span class=nf>rollbackTxSet</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=nx>txSet</span><span class=p>)</span>
+    <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+        <span class=c1>// 没有错误，提交事务
+</span><span class=c1></span>        <span class=nf>commitTxSet</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=nx>txSet</span><span class=p>)</span>
+        <span class=k>return</span>
+    <span class=p>}</span>
+<span class=p>}()</span>
+</code></pre></div><p>考虑到旧的代码并不规范，所以一个 <code>ctx</code> 是可以可以注入多个数据库和事务的，把事务绑定到上下文的工作只能在微服务代码下再单独写两个工具函数。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>GetBaseDB</span><span class=p>(</span><span class=nx>ctx</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=o>*</span><span class=nx>sql</span><span class=p>.</span><span class=nx>DB</span> <span class=p>{</span>
+	<span class=nx>v</span> <span class=o>:=</span> <span class=nx>ctx</span><span class=p>.</span><span class=nf>Value</span><span class=p>(</span><span class=nx>BaseDBKey</span><span class=p>)</span>
+	<span class=k>if</span> <span class=nx>v</span> <span class=o>==</span> <span class=kc>nil</span> <span class=p>{</span>
+		<span class=nb>panic</span><span class=p>(</span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;no database found in context&#34;</span><span class=p>))</span>
+	<span class=p>}</span>
+
+	<span class=k>if</span> <span class=nx>db</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nx>v</span><span class=p>.(</span><span class=o>*</span><span class=nx>txmanager</span><span class=p>.</span><span class=nx>WrappedDB</span><span class=p>);</span> <span class=nx>ok</span> <span class=p>{</span>
+		<span class=k>return</span> <span class=nx>db</span><span class=p>.</span><span class=nx>DB</span>
+	<span class=p>}</span>
+	<span class=nb>panic</span><span class=p>(</span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;unexpected database type %T&#34;</span><span class=p>,</span> <span class=nx>v</span><span class=p>))</span>
+<span class=p>}</span>
+
+<span class=kd>func</span> <span class=nf>GetTxForBaseDB</span><span class=p>(</span><span class=nx>ctx</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=o>*</span><span class=nx>sql</span><span class=p>.</span><span class=nx>Tx</span> <span class=p>{</span>
+	<span class=nx>tx</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>txmanager</span><span class=p>.</span><span class=nf>LazyBeginTx</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=nx>BaseDBKey</span><span class=p>,</span> <span class=nx>BaseTxKey</span><span class=p>)</span>
+	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+		<span class=nb>panic</span><span class=p>(</span><span class=nx>errors</span><span class=p>.</span><span class=nf>Wrap</span><span class=p>(</span><span class=nx>err</span><span class=p>,</span> <span class=s>&#34;get transaction for base db failed&#34;</span><span class=p>))</span>
+	<span class=p>}</span>
+	<span class=k>return</span> <span class=nx>tx</span><span class=p>.(</span><span class=o>*</span><span class=nx>sql</span><span class=p>.</span><span class=nx>Tx</span><span class=p>)</span>
+<span class=p>}</span>
+</code></pre></div><p>如此一来，在业务代码里，原本的 <code>DB.Query</code>只要改成<code>GetBaseDB(ctx).Query</code>即可，影响降至最低。</p>
+<p>而原本涉及事务的代码，也可以简单地改写成：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=nx>tx</span> <span class=o>:=</span> <span class=nf>GetTxForBaseDB</span><span class=p>(</span><span class=nx>ctx</span><span class=p>)</span>
+
+<span class=c1>// ...业务代码
+</span><span class=c1>// tx.ExecContext(ctx, query, args...)
+</span></code></pre></div><p>原本复杂的<code>defer</code>就可以直接省略了，<code>sqlStmts</code>也可以去除，变成 <code>tx.ExecContext()</code> ，读起来更清楚。</p>
+<h3 id=效果评估>效果评估</h3>
+<p>最明显的就是原本考虑不周的 <code>defer</code> 里 <code>Commit/Rollback</code> 被考虑更全面的中间件替代了，潜在的 <code>panic</code>导致错误提交/回滚问题得到修正，相关代码去除后可读性有所改善。</p>
+<p>其次是有机会在这个基础上统一封装一个分布式事务，把侵入业务代码的可能降到比较低的水平。</p>
+<p>重构完还发现，利用数据库初始化从<code>init</code>推迟到<code>main</code>的改变，有机会对数据库做mock，可测试性也有改善。</p>
+<p>也看了下 jaeger 对请求耗时的分析，重构后的事务管理器增加的耗时不明显，不够成瓶颈，性能上也马马虎虎过得去。压测因为压力直接打到MySQL的原因没法做，QPS瓶颈很明显卡在数据库上，缺少缓存依然是致命短板。</p>
+<h2 id=配置管理重构>配置管理重构</h2>
+<h3 id=痛点-1>痛点</h3>
+<p>相信很多人写代码的时候习惯把第三方的服务的 key/secret 直接写成常量，然后用一个宏或者标志去控制用哪套配置，比如这样：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#ifdef PRODUCTION
+</span><span class=cp>#	define QINIU_AK &#34;***ak***&#34;
+</span><span class=cp>#	define QINIU_SK &#34;***SK***&#34;
+</span><span class=cp>#elif defined(TESTING)
+</span><span class=cp>#	define QINIU_AK &#34;***ak***&#34;
+</span><span class=cp>#	define QINIU_SK &#34;***SK***&#34;
+</span><span class=cp>#else
+</span><span class=cp>#	define QINIU_AK &#34;***ak***&#34;
+</span><span class=cp>#	define QINIU_SK &#34;***SK***&#34;
+</span><span class=cp>#endif
+</span></code></pre></div><p>但这项目比较狗，选择用环境变量来配置。用环境变量也就算了，最大的问题是：不管什么东西都往环境变量里塞，所有微服务共用一套环境变量配置，结果环境变量配置足有一百多行，也不管谁在用，怎么用。</p>
+<p>这也就罢了&mldr;</p>
+<p>更离谱的是，连推送文案，居然也写到环境变量里&mldr;我寻思这玩意儿不得让运营人员编辑的吗&mldr;</p>
+<p>在上一份工作里维护的项目就好得多，大部分配置放到了 etcd，比如第三方服务的ak/sk和一些业务配置，也做到了热重载，不需要开发/运维人员介入就能实时调很多东西。而现在的项目，属于是开发的时间不要钱，宁可随时 on call 也不安排写个配置编辑和热重载。</p>
+<p>而且还有个比较头疼的问题是，因为配置是环境变量，环境变量又由 kubernetes configmap 管理，kubernetes 配置又和源代码一起被 git 跟踪管理，所以即使是运营人员想改个推送文案，也要走开发的 hotpatch 流程，提交到 git 上，谁都不舒服。</p>
+<p>最终列出痛点如下：</p>
+<ul>
+<li>配置修改不便。</li>
+<li>不支持按需访问，存在误用滥用。</li>
+<li>从痛点2延伸出不可控问题，无关配置项配置问题也会导致服务初始化时 crash，倒逼所有服务共用一套环境变量。</li>
+<li>从痛点1延伸出不灵活问题，即使有修改不便的问题，也不支持更换配置源，存在强耦合。</li>
+</ul>
+<h3 id=调研-1>调研</h3>
+<p>因为配置管理其实是一个和语言关系比较大的领域，配置读写的接口灵不灵活好不好用很大程度看语言有哪些奈斯的语法糖。</p>
+<p>比如 python 可以继承 <code>UserDict</code> 等结构实现个同时支持<code>.</code>语法和下标的配置对象，更高阶的还可以用 <code>descriptor</code> 预先定义字段，检查/转换类型等等。</p>
+<p>再比如 C++ 就完全可以一套 <code>template</code> 打天下，接口完全可以设计成 <code>get&lt;int></code>、<code>get&lt;std::string></code> 这样，也可以利用运算符重载实现 <code>config["http.port"]</code> 下标形式的访问，甚至再骚一点，结合一点宏和元编程，<code>config->http->port</code> 也行。</p>
+<p>对 Go 这样的语言来说事情会更麻烦，一来是静态类型，堵死了一个<code>Get</code>覆盖所有情况的路子。除非不介意 <code>interface{}</code> 满天飞。二来泛型不成熟，同样堵死了像 C++ 那样一个 <code>Get[T]</code> 打天下的路子。</p>
+<p>所以调研主要还是考虑有没有现成的轮子，能不能满足需要。</p>
+<h4 id=viper>viper</h4>
+<p><em>viper</em> 是一个相当流行的配置管理库，原本是为 <em>cobra</em> （一个 cli 库）设计的。</p>
+<p><em>viper</em> 支持不少配置源，从配置文件（JSON、TOML、YAML、INI）到环境变量、远程配置（etcd、consul）都能支持，接口设计上也还算舒服（像是<code>viper.GetString(key)</code>这样的用法），而且有个比较奈斯的热重载。缺憾是etcd暂时只支持到 v2，而且支持多种配置的方式是嵌入本体，导致 viper 仓库依赖很多。</p>
+<p>考虑到 viper 对付目前的需求有点 overkill，而且依赖有点偏多，决定是定义一套读配置接口，先自行实现基于环境变量的配置提供者，若有需要再把读配置接口的实现替换成 viper 。</p>
+<h3 id=方案-1>方案</h3>
+<p>鉴于当前项目中配置项是全局变量+<code>func init</code>，替换成配置管理器解决修改不便+热重载的话需要把全局变量换成 <code>sync.Map</code> 或者 <code>GetXxx()</code> 。考虑到是读多写少的场景，<code>sync.Map</code> 有点过，而且把全局变量替换成 <code>config["Xxx"]</code> 还会遇到类型问题。</p>
+<p>而<code>GetString</code>这种形式的接口，又需要把配置名换成字符串，直接用环境变量当 key 的话又会碰到环境变量命名不好、其他配置源命名规则有区别等情况。从使用的角度来说，还是希望尽可能把对业务代码的影响降到最低，因此业务代码里最好还是 <code>GetQiniuAK() string</code> 这样的接口最合适，内部实现可以是适配到 <code>GetString("QINIU_AK")</code>。</p>
+<p>同样有部分痛点无法立即得到解决：</p>
+<ul>
+<li>误用滥用问题无法完全解决，需要进一步对配置项分析，提取出公共配置和独属于服务的配置。这也会造成新的问题：如何兼顾配置的中心化访问模式（保持<code>config.GetXxx</code>这种足够简单清楚的访问方式，不会在业务代码里出现<code>globalConfig</code>和<code>privateConfig</code>两个配置源）和私有配置防误用滥用？</li>
+</ul>
+<p>整体方案如下：</p>
+<ul>
+<li>原本的全局变量全部改成 <code>GetXxx() &lt;type></code> 形式定义。</li>
+<li>实现一个<code>config</code>包，定义<code>ConfigReader</code>接口和初步实现，再给一个全局默认 <code>ConfigReader</code> ，方便直接用 <code>config.GetString(key)</code> 的形式读配置，降低使用门槛。<code>ConfigReader</code>的实现内用一个标准<code>map</code>和<code>sync.RWMutex</code>管理配置项缓存，降低读操作的成本。</li>
+</ul>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>type</span> <span class=nx>ConfigReader</span> <span class=kd>interface</span> <span class=p>{</span>
+	<span class=nf>GetString</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=kt>string</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>GetInt</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=kt>int</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>GetInt32</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=kt>int32</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>GetInt64</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=kt>int64</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>GetUint</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=kt>uint</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>GetUint32</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=kt>uint32</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>GetUint64</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=kt>uint64</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>GetFloat32</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=kt>float32</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>GetFloat64</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=kt>float64</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>GetBytes</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>([]</span><span class=kt>byte</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>GetDuration</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=nx>time</span><span class=p>.</span><span class=nx>Duration</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>GetBool</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=kt>bool</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+
+	<span class=nf>MustGetString</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>string</span>
+	<span class=nf>MustGetInt</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>int</span>
+	<span class=nf>MustGetInt32</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>int32</span>
+	<span class=nf>MustGetInt64</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>int64</span>
+	<span class=nf>MustGetUint</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>uint</span>
+	<span class=nf>MustGetUint32</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>uint32</span>
+	<span class=nf>MustGetUint64</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>uint64</span>
+	<span class=nf>MustGetFloat32</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>float32</span>
+	<span class=nf>MustGetFloat64</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>float64</span>
+	<span class=nf>MustGetBytes</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>[]</span><span class=kt>byte</span>
+	<span class=nf>MustGetDuration</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=nx>time</span><span class=p>.</span><span class=nx>Duration</span>
+	<span class=nf>MustGetBool</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>bool</span>
+<span class=p>}</span>
+</code></pre></div><p>以及配置提供者：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>type</span> <span class=nx>ConfigProvider</span> <span class=kd>interface</span> <span class=p>{</span>
+	<span class=nf>Lookup</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>([]</span><span class=kt>byte</span><span class=p>,</span> <span class=kt>bool</span><span class=p>)</span>
+	<span class=nf>Get</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=p>([]</span><span class=kt>byte</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+	<span class=nf>Set</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>,</span> <span class=nx>val</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>)</span> <span class=kt>error</span>
+	<span class=nf>Delete</span><span class=p>(</span><span class=nx>key</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>error</span>
+
+	<span class=c1>// is config provider support change detection
+</span><span class=c1></span>	<span class=nf>CanWatch</span><span class=p>()</span> <span class=kt>bool</span>
+	<span class=c1>// Optional, implementation may return nil chan
+</span><span class=c1></span>	<span class=nf>Watch</span><span class=p>(</span><span class=nx>ctx</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=o>&lt;-</span><span class=kd>chan</span> <span class=nx>Change</span>
+<span class=p>}</span>
+</code></pre></div><p>最终指定 Provider 来创建 <code>ConfigReader</code> 实例。</p>
+<p>这个方案存在一个比较麻烦的问题：原始的全局变量并不都是 <code>string</code> 类型，而是夹杂了 <code>int</code>、<code>int64</code>、<code>bool</code>，初始化时有的是用了封装好的 <code>GetEnv</code> ，有的使用 <code>os.Getenv()</code>、<code>strconv.Atoi</code> 等。将原本的全局变量替换成 <code>GetXxx</code> 并不是一件简单的事——如果手动来的话。</p>
+<p>幸好，Go 提供了 <code>go/parser</code>，只需要写大概一两百行代码，处理下 <code>GenDecl</code> 和 <code>AssignStmt</code>，找出配置项，然后用 <code>dave/jennifer</code> 生成对应的 Go 代码即可，最终生成 700多行代码，手工调整下部分结果就算完成了。</p>
+<p>至于业务代码中的调用点，可以直接在 vscode 里全局正则表达式搜索 <code>\benv.(\w+)\b</code> 替换。</p>
+<p>至此，配置管理有了更多的可能。</p>
+<h3 id=效果评估-1>效果评估</h3>
+<ul>
+<li>以较低的成本实现了重构</li>
+<li>灵活性显著提高，有了迁移配置源到其他存储服务中的可能</li>
+<li>解决了其他服务的私有配置加载失败也会导致崩溃的问题</li>
+<li>尚未完全解决配置编辑不便的问题：对于配置迁移到 etcd/consul 等平台，还需要进一步调研选型、决定是改用 viper 还是自行在 etcd/consul driver 上实现一个 provider 。</li>
+<li>未解决误用滥用问题，仍需考虑如何兼顾中心化访问和私有配置隔离。</li>
+</ul>
+<h2 id=总结>总结</h2>
+<p>两项重构的成本均在可控范围内，最终结果只能说勉强，还算是在预期内可接受。距离完全解决痛点仍然有不短的路要走。</p>
+<p>真正高价值的重构，比如建立缓存机制，还是需要对相关业务进一步研究理解和思考。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/golang/>golang</a>
+<a href=/blog/tags/%E9%87%8D%E6%9E%84/>重构</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/my-opinion-of-gokit-architecture/>
+<div class=article-details>
+<h2 class=article-title>gokit 架构之我见</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/go-kit-note/>
+<div class=article-details>
+<h2 class=article-title>go-kit 笔记</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/>
+<div class=article-details>
+<h2 class=article-title>gRPC-Gateway 用作多个 gRPC 服务的网关</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/protogen-code-generation/>
+<div class=article-details>
+<h2 class=article-title>protogen代码生成</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/stack-based-virtual-machine-for-minilang/>
+<div class=article-details>
+<h2 class=article-title>基于栈的虚拟机</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
+<div id=vssue></div>
+<script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"记一次重构事务管理和配置管理",options:{autoCreateIssue:!0,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 -
+2022 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#事务管理重构>事务管理重构</a>
+<ol>
+<li><a href=#痛点>痛点</a></li>
+<li><a href=#目标>目标</a></li>
+<li><a href=#调研>调研</a>
+<ol>
+<li><a href=#beego>beego</a></li>
+<li><a href=#gin>gin</a></li>
+<li><a href=#django>django</a></li>
+<li><a href=#springboot>springboot</a></li>
+</ol>
+</li>
+<li><a href=#方案>方案</a></li>
+<li><a href=#效果评估>效果评估</a></li>
+</ol>
+</li>
+<li><a href=#配置管理重构>配置管理重构</a>
+<ol>
+<li><a href=#痛点-1>痛点</a></li>
+<li><a href=#调研-1>调研</a>
+<ol>
+<li><a href=#viper>viper</a></li>
+</ol>
+</li>
+<li><a href=#方案-1>方案</a></li>
+<li><a href=#效果评估-1>效果评估</a></li>
+</ol>
+</li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
