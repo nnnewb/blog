@@ -1,4 +1,130 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>golang on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/golang/</link><description>Recent content in golang on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 11 Apr 2022 13:00:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/golang/index.xml" rel="self" type="application/rss+xml"/><item><title>不安全的 jwt</title><link>https://nnnewb.github.io/blog/p/unsafe-jwt/</link><pubDate>Mon, 11 Apr 2022 13:00:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/unsafe-jwt/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>golang on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/golang/</link><description>Recent content in golang on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 11 Apr 2022 13:00:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/golang/index.xml" rel="self" type="application/rss+xml"/><item><title>codegen 利器 go/types</title><link>https://nnnewb.github.io/blog/p/gotypes-for-codegen/</link><pubDate>Mon, 11 Apr 2022 13:00:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/gotypes-for-codegen/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>本篇博客主要想介绍下 &lt;code>go/types&lt;/code> 这个包。&lt;/p>
+&lt;p>目前关于 go 代码生成比较常见的是利用 &lt;code>go/ast&lt;/code> ，结合 &lt;code>text/template&lt;/code> 生成代码。这种生成方式显然是有局限性的：&lt;code>go/ast&lt;/code> 这个包只能拿到语法树结构，但没有类型信息。比如 &lt;code>var ctx context.Context&lt;/code> 可以解析成语法树节点 &lt;code>ast.GenDecl&lt;/code>，但&lt;code>context.Context&lt;/code> 只能解析出 &lt;code>ast.SelectorExpr&lt;/code>，并不知道 &lt;code>context.Context&lt;/code> 是一个 &lt;code>struct&lt;/code>、&lt;code>interface&lt;/code>还是&lt;code>alias&lt;/code>。&lt;/p>
+&lt;p>在面对简单的代码生成时&lt;code>go/ast&lt;/code>还能顶一下，但更复杂一点的需求，比如说根据 &lt;code>struct&lt;/code> 生成 &lt;code>thrift&lt;/code> 或者 &lt;code>protobuf&lt;/code> 定义，&lt;code>go/ast&lt;/code> 就有点吃力不讨好了。&lt;/p>
+&lt;h2 id="入门">入门&lt;/h2>
+&lt;p>注意这块没照搬官方的 example，因为官方的 example 主要注重在怎么用 &lt;code>go/types&lt;/code> 做类型检查，关注 &lt;code>types.Config&lt;/code> 和 &lt;code>types.Checker&lt;/code>，但我不是很想管 &lt;code>checker&lt;/code> 怎么样，我们的目的是写个 codegen，想办法拿到更丰富的类型信息。&lt;/p>
+&lt;p>因此 &lt;code>go/types&lt;/code> 的使用更关注的是其中的数据结构。&lt;/p>
+&lt;h3 id="类型系统">类型系统&lt;/h3>
+&lt;p>先来个基本的例子。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">package&lt;/span> &lt;span class="nx">main&lt;/span>
+&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;flag&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;fmt&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;go/importer&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;go/token&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;go/types&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;log&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">main&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kd">var&lt;/span> &lt;span class="nx">pkgPath&lt;/span> &lt;span class="kt">string&lt;/span>
+&lt;span class="kd">var&lt;/span> &lt;span class="nx">typ&lt;/span> &lt;span class="kt">string&lt;/span>
+&lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">StringVar&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">pkgPath&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;package&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;package path&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">StringVar&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">typ&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;type&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;type name&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Parse&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">pkgPath&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="s">&amp;#34;&amp;#34;&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nb">println&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;-package is required&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Usage&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">typ&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="s">&amp;#34;&amp;#34;&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nb">println&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;-type is required&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">flag&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Usage&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">fst&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">token&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewFileSet&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="nx">imp&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">importer&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ForCompiler&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">fst&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;source&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">pkg&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">imp&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Import&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">pkgPath&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatal&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">typename&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">pkg&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Scope&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="nf">Lookup&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">typ&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">typename&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">log&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatalf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;type %s not found&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">typ&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">named&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">typename&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Type&lt;/span>&lt;span class="p">().(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">types&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Named&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">switch&lt;/span> &lt;span class="nx">named&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Underlying&lt;/span>&lt;span class="p">().(&lt;/span>&lt;span class="kd">type&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">types&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Basic&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nb">println&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;primitive type&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">types&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Interface&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nb">println&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;interface type&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">types&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Struct&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="nb">println&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;struct type&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">named&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Obj&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="nf">IsAlias&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nb">println&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;is alias type&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;%v&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">named&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>很短，注意几个新出现的包和API：&lt;code>go/importer&lt;/code>、&lt;code>go/types&lt;/code>。&lt;/p>
+&lt;p>&lt;code>go/importer&lt;/code>顾名思义是一个管理&lt;code>import&lt;/code>功能的包，go 不是 python 这样解释执行或 Java 那样可以热加载代码的模型，&lt;code>importer&lt;/code>基本是编译期才会用到。我们用&lt;code>importer.ForCompiler&lt;/code>的目的是构造一个 &lt;code>Importer&lt;/code>， &lt;strong>从源代码&lt;/strong> 拿到类型信息。&lt;/p>
+&lt;p>从&lt;code>Import&lt;/code>调用拿到一个 &lt;code>*types.Package&lt;/code> 类型的返回值后，又使用 &lt;code>Scope().Lookup()&lt;/code>从这个包作用域下查找指定的类型——这里提一嘴，&lt;code>type xxx struct{}&lt;/code>这样的语句可以是块作用域的，&lt;code>Scope().Lookup()&lt;/code>查找的是 &lt;strong>包内的全局类型定义&lt;/strong> ，查找结果是一个 &lt;code>types.Object&lt;/code>，可以理解成一个有类型的对象——比如全局 &lt;code>var v int&lt;/code> 这样声明的 &lt;code>v&lt;/code>。对于查找的是类型的情况，需要关注的就是 &lt;code>.Type()&lt;/code>这个方法了。&lt;/p>
+&lt;p>顾名思义&lt;code>.Type()&lt;/code>返回对象的类型，代码里的 type switch 应该很好地展示了整个过程。&lt;/p>
+&lt;p>另外还要注意到 &lt;code>.(*types.Named)&lt;/code>，这里涉及一个 &lt;code>named type&lt;/code>概念。所谓的 &lt;code>Named&lt;/code> 在 &lt;a class="link" href="https://go.dev/ref/spec#Types" target="_blank" rel="noopener"
+>Go Specification 里是这样解释的&lt;/a>：&lt;/p>
+&lt;blockquote>
+&lt;p>&lt;strong>Predeclared types&lt;/strong>, &lt;strong>defined types&lt;/strong>, and &lt;strong>type parameters&lt;/strong> are called &lt;em>named types&lt;/em>. An alias denotes a named type if the type given in the alias declaration is a named type.&lt;/p>
+&lt;/blockquote>
+&lt;p>什么意思呢？&lt;code>predeclared types&lt;/code> 指的是内置的类型，如 &lt;code>int&lt;/code>、&lt;code>byte&lt;/code>、&lt;code>rune&lt;/code>，参考链接 &lt;a class="link" href="https://go.dev/ref/spec#Predeclared_identifiers" target="_blank" rel="noopener"
+>predeclares&lt;/a> 。而 &lt;code>defined types&lt;/code> 指的是形如 &lt;code>type Sample struct {}&lt;/code> 的类型定义，&lt;code>type parameters&lt;/code> 则是 go 1.18 引入的泛型语法，例如 &lt;code>type Sample[T any] struct {t T}&lt;/code> ，其中的&lt;code>T&lt;/code>也是 &lt;code>named type&lt;/code>。&lt;/p>
+&lt;p>那什么样的不是 &lt;code>named type&lt;/code>呢？比如&lt;code>type Sample = struct {}&lt;/code>，这里的 &lt;code>Sample&lt;/code> 就不是 &lt;code>named type&lt;/code>。注意前面引文的后半句：&lt;/p>
+&lt;blockquote>
+&lt;p>An alias denotes a named type if the type given in the alias declaration is a named type.&lt;/p>
+&lt;/blockquote>
+&lt;p>只有&lt;code>named type&lt;/code>的别名才被视为&lt;code>named type&lt;/code>，所以 &lt;code>type Sample = int&lt;/code> 是 &lt;code>named type&lt;/code>，但 &lt;code>type Sample = struct{}&lt;/code> 或者 &lt;code>type Sample = map[string]string&lt;/code> 都不是 &lt;code>named type&lt;/code>。&lt;/p>
+&lt;p>好了，绕晕了就可以继续下一阶段了，开始了解 &lt;code>Field&lt;/code> 和 &lt;code>Method&lt;/code>。&lt;/p>
+&lt;h3 id="field">Field&lt;/h3>
+&lt;p>我们稍微改一下上面的代码，在 &lt;code>case *types.Struct&lt;/code> 下加入几行循环。记得 &lt;code>switch&lt;/code>也改成&lt;code>switch tp := named.Underlying().(type)&lt;/code>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="k">for&lt;/span> &lt;span class="nx">i&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="nx">i&lt;/span> &lt;span class="p">&amp;lt;&lt;/span> &lt;span class="nx">tp&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NumFields&lt;/span>&lt;span class="p">();&lt;/span> &lt;span class="nx">i&lt;/span>&lt;span class="o">++&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">field&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">tp&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Field&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">i&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;field %s %v\n&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">field&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Name&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="nx">field&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Type&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>又一个惯用法：&lt;code>NumFields&lt;/code> 和 &lt;code>Field&lt;/code>。注意&lt;code>Field&lt;/code>拿到的是一个 &lt;code>*types.Var&lt;/code>，可以认为表示一个变量，而&lt;code>field.Type()&lt;/code>得到的就是这个变量的类型。&lt;/p>
+&lt;p>有了类型数据，我们就可以有的放矢，决定如何生成 &lt;code>field&lt;/code> 对应的代码了。&lt;/p>
+&lt;h3 id="method">Method&lt;/h3>
+&lt;p>另一种常见的情况是基于 &lt;code>interface&lt;/code> 生成实现，比如 &lt;code>go-kit&lt;/code> 那海量的样板代码。&lt;/p>
+&lt;p>我们稍微改下上面的代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="k">for&lt;/span> &lt;span class="nx">i&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="nx">i&lt;/span> &lt;span class="p">&amp;lt;&lt;/span> &lt;span class="nx">tp&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NumMethods&lt;/span>&lt;span class="p">();&lt;/span> &lt;span class="nx">i&lt;/span>&lt;span class="o">++&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">method&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">tp&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Method&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">i&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">signature&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">method&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Type&lt;/span>&lt;span class="p">().(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">types&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Signature&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;func (r Sample) %s(&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">method&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Name&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">i&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="nx">i&lt;/span> &lt;span class="p">&amp;lt;&lt;/span> &lt;span class="nx">signature&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Params&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="nf">Len&lt;/span>&lt;span class="p">();&lt;/span> &lt;span class="nx">i&lt;/span>&lt;span class="o">++&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">param&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">signature&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Params&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="nf">At&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">i&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;%s %v,&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">param&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Name&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="nx">param&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Type&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;)&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">signature&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Results&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="nf">Len&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">&amp;gt;&lt;/span> &lt;span class="mi">1&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34; (&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="nx">i&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="nx">i&lt;/span> &lt;span class="p">&amp;lt;&lt;/span> &lt;span class="nx">signature&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Results&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="nf">Len&lt;/span>&lt;span class="p">();&lt;/span> &lt;span class="nx">i&lt;/span>&lt;span class="o">++&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">result&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">signature&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Results&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="nf">At&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">i&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;%s %v&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">result&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Name&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="nx">result&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Type&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">i&lt;/span>&lt;span class="o">+&lt;/span>&lt;span class="mi">1&lt;/span> &lt;span class="p">&amp;lt;&lt;/span> &lt;span class="nx">signature&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Params&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="nf">Len&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;,&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">signature&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Results&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="nf">Len&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">&amp;gt;&lt;/span> &lt;span class="mi">1&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34; )&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34; {\n\tpanic(errors.New(\&amp;#34;Not implemented!\&amp;#34;))\n}\n\n&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>并不复杂！&lt;/p>
+&lt;p>遍历 interface 下的所有方法，然后把 &lt;code>Params&lt;/code> 和 &lt;code>Results&lt;/code> 挨个打印出来，函数体里放一个 &lt;code>panic(errors.New(&amp;quot;Not implemented!&amp;quot;))&lt;/code>，就是这样！&lt;/p>
+&lt;p>最后输出像是这样：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">r&lt;/span> &lt;span class="nx">Sample&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">FirstName&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nb">panic&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">errors&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">New&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Not implemented!&amp;#34;&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">r&lt;/span> &lt;span class="nx">Sample&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">LastName&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="kt">string&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nb">panic&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">errors&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">New&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;Not implemented!&amp;#34;&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>值得注意的是，&lt;code>Method&lt;/code>返回的是 &lt;code>*types.Func&lt;/code>，但 &lt;code>Params&lt;/code>和&lt;code>Results&lt;/code>并不是&lt;code>types.Func&lt;/code>上的方法，而是 &lt;code>types.Signature&lt;/code>。官方文档说 &lt;code>Func&lt;/code>的&lt;code>Type()&lt;/code>返回的必然是 &lt;code>*types.Signature&lt;/code>，所以直接断言也是安全的。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>参考官方的文档 &lt;a class="link" href="https://github.com/golang/example/tree/master/gotypes" target="_blank" rel="noopener"
+>gotypes&lt;/a>&lt;/p>
+&lt;p>重点就一个：不要用 &lt;code>go/types&lt;/code> 下的 &lt;code>Config&lt;/code> 和 &lt;code>Checker&lt;/code>，用 &lt;code>importer.ForCompiler&lt;/code> 从源码获取类型数据。&lt;code>types&lt;/code>用起来个人感觉比 &lt;code>go/ast&lt;/code> 方便，缺点是因为引入类型会导致解析源码各方面的消耗增加，算是一个我个人比较偏好的 trade-off 吧。在 codegen 的输入类型比较复杂敏感的时候，拿 &lt;code>go/types&lt;/code> 替代 &lt;code>go/ast&lt;/code> 可以省下很多工作量。&lt;/p></description></item><item><title>不安全的 jwt</title><link>https://nnnewb.github.io/blog/p/unsafe-jwt/</link><pubDate>Mon, 11 Apr 2022 13:00:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/unsafe-jwt/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>今早翻到&lt;a class="link" href="https://www.leavesongs.com/PENETRATION/the-collision-of-containers-and-the-cloud-pentesting-a-MinIO.html" target="_blank" rel="noopener"
 >p神挖MinIO CVE的文章&lt;/a>，注意到几句话：&lt;/p>
 &lt;blockquote>

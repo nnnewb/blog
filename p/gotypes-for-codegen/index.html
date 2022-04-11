@@ -1,0 +1,370 @@
+<!doctype html><html lang=zh-cn dir=ltr>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 本篇博客主要想介绍下 go/types 这个包。
+目前关于 go 代码生成比较常见的是利用 go/ast ，结合 text/template 生成代码。这种生成方式显然是有局限性的：go/ast 这个包只能拿到语法树结构，但没有类型信息。比如 var ctx context.Context 可以解析成语法树节点 ast.GenDecl，但context.Context 只能解析出 ast.SelectorExpr，并不知道 context.Context 是一个 struct、interface还是alias。
+在面对简单的代码生成时go/ast还能顶一下，但更复杂一点的需求，比如说根据 struct 生成 thrift 或者 protobuf 定义，go/ast 就有点吃力不讨好了。
+入门 注意这块没照搬官方的 example，因为官方的 example 主要注重在怎么用 go/types 做类型检查，关注 types.Config 和 types.Checker，但我不是很想管 checker 怎么样，我们的目的是写个 codegen，想办法拿到更丰富的类型信息。
+因此 go/types 的使用更关注的是其中的数据结构。
+类型系统 先来个基本的例子。
+package main import ( &amp;#34;flag&amp;#34; &amp;#34;fmt&amp;#34; &amp;#34;go/importer&amp;#34; &amp;#34;go/token&amp;#34; &amp;#34;go/types&amp;#34; &amp;#34;log&amp;#34; ) func main() { var pkgPath string var typ string flag.StringVar(&amp;amp;pkgPath, &amp;#34;package&amp;#34;, &amp;#34;&amp;#34;, &amp;#34;package path&amp;#34;) flag."><title>codegen 利器 go/types</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/gotypes-for-codegen/>
+<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="codegen 利器 go/types">
+<meta property="og:description" content="前言 本篇博客主要想介绍下 go/types 这个包。
+目前关于 go 代码生成比较常见的是利用 go/ast ，结合 text/template 生成代码。这种生成方式显然是有局限性的：go/ast 这个包只能拿到语法树结构，但没有类型信息。比如 var ctx context.Context 可以解析成语法树节点 ast.GenDecl，但context.Context 只能解析出 ast.SelectorExpr，并不知道 context.Context 是一个 struct、interface还是alias。
+在面对简单的代码生成时go/ast还能顶一下，但更复杂一点的需求，比如说根据 struct 生成 thrift 或者 protobuf 定义，go/ast 就有点吃力不讨好了。
+入门 注意这块没照搬官方的 example，因为官方的 example 主要注重在怎么用 go/types 做类型检查，关注 types.Config 和 types.Checker，但我不是很想管 checker 怎么样，我们的目的是写个 codegen，想办法拿到更丰富的类型信息。
+因此 go/types 的使用更关注的是其中的数据结构。
+类型系统 先来个基本的例子。
+package main import ( &amp;#34;flag&amp;#34; &amp;#34;fmt&amp;#34; &amp;#34;go/importer&amp;#34; &amp;#34;go/token&amp;#34; &amp;#34;go/types&amp;#34; &amp;#34;log&amp;#34; ) func main() { var pkgPath string var typ string flag.StringVar(&amp;amp;pkgPath, &amp;#34;package&amp;#34;, &amp;#34;&amp;#34;, &amp;#34;package path&amp;#34;) flag.">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/gotypes-for-codegen/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="codegen"><meta property="article:published_time" content="2022-04-11T13:00:00+08:00"><meta property="article:modified_time" content="2022-04-11T13:00:00+08:00">
+<meta name=twitter:title content="codegen 利器 go/types">
+<meta name=twitter:description content="前言 本篇博客主要想介绍下 go/types 这个包。
+目前关于 go 代码生成比较常见的是利用 go/ast ，结合 text/template 生成代码。这种生成方式显然是有局限性的：go/ast 这个包只能拿到语法树结构，但没有类型信息。比如 var ctx context.Context 可以解析成语法树节点 ast.GenDecl，但context.Context 只能解析出 ast.SelectorExpr，并不知道 context.Context 是一个 struct、interface还是alias。
+在面对简单的代码生成时go/ast还能顶一下，但更复杂一点的需求，比如说根据 struct 生成 thrift 或者 protobuf 定义，go/ast 就有点吃力不讨好了。
+入门 注意这块没照搬官方的 example，因为官方的 example 主要注重在怎么用 go/types 做类型检查，关注 types.Config 和 types.Checker，但我不是很想管 checker 怎么样，我们的目的是写个 codegen，想办法拿到更丰富的类型信息。
+因此 go/types 的使用更关注的是其中的数据结构。
+类型系统 先来个基本的例子。
+package main import ( &amp;#34;flag&amp;#34; &amp;#34;fmt&amp;#34; &amp;#34;go/importer&amp;#34; &amp;#34;go/token&amp;#34; &amp;#34;go/types&amp;#34; &amp;#34;log&amp;#34; ) func main() { var pkgPath string var typ string flag.StringVar(&amp;amp;pkgPath, &amp;#34;package&amp;#34;, &amp;#34;&amp;#34;, &amp;#34;package path&amp;#34;) flag.">
+</head>
+<body class=article-page>
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
+</div>
+</header><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+<li id=dark-mode-toggle><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span>
+</li>
+</div>
+</ol>
+</aside>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/golang/>
+golang
+</a>
+</header>
+<div class=article-title-wrapper>
+<h2 class=article-title>
+<a href=/blog/p/gotypes-for-codegen/>codegen 利器 go/types</a>
+</h2>
+</div>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2022年 4月 11日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 3 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>本篇博客主要想介绍下 <code>go/types</code> 这个包。</p>
+<p>目前关于 go 代码生成比较常见的是利用 <code>go/ast</code> ，结合 <code>text/template</code> 生成代码。这种生成方式显然是有局限性的：<code>go/ast</code> 这个包只能拿到语法树结构，但没有类型信息。比如 <code>var ctx context.Context</code> 可以解析成语法树节点 <code>ast.GenDecl</code>，但<code>context.Context</code> 只能解析出 <code>ast.SelectorExpr</code>，并不知道 <code>context.Context</code> 是一个 <code>struct</code>、<code>interface</code>还是<code>alias</code>。</p>
+<p>在面对简单的代码生成时<code>go/ast</code>还能顶一下，但更复杂一点的需求，比如说根据 <code>struct</code> 生成 <code>thrift</code> 或者 <code>protobuf</code> 定义，<code>go/ast</code> 就有点吃力不讨好了。</p>
+<h2 id=入门>入门</h2>
+<p>注意这块没照搬官方的 example，因为官方的 example 主要注重在怎么用 <code>go/types</code> 做类型检查，关注 <code>types.Config</code> 和 <code>types.Checker</code>，但我不是很想管 <code>checker</code> 怎么样，我们的目的是写个 codegen，想办法拿到更丰富的类型信息。</p>
+<p>因此 <code>go/types</code> 的使用更关注的是其中的数据结构。</p>
+<h3 id=类型系统>类型系统</h3>
+<p>先来个基本的例子。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kn>package</span> <span class=nx>main</span>
+
+<span class=kn>import</span> <span class=p>(</span>
+	<span class=s>&#34;flag&#34;</span>
+	<span class=s>&#34;fmt&#34;</span>
+	<span class=s>&#34;go/importer&#34;</span>
+	<span class=s>&#34;go/token&#34;</span>
+	<span class=s>&#34;go/types&#34;</span>
+	<span class=s>&#34;log&#34;</span>
+<span class=p>)</span>
+
+<span class=kd>func</span> <span class=nf>main</span><span class=p>()</span> <span class=p>{</span>
+	<span class=kd>var</span> <span class=nx>pkgPath</span> <span class=kt>string</span>
+	<span class=kd>var</span> <span class=nx>typ</span> <span class=kt>string</span>
+	<span class=nx>flag</span><span class=p>.</span><span class=nf>StringVar</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>pkgPath</span><span class=p>,</span> <span class=s>&#34;package&#34;</span><span class=p>,</span> <span class=s>&#34;&#34;</span><span class=p>,</span> <span class=s>&#34;package path&#34;</span><span class=p>)</span>
+	<span class=nx>flag</span><span class=p>.</span><span class=nf>StringVar</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>typ</span><span class=p>,</span> <span class=s>&#34;type&#34;</span><span class=p>,</span> <span class=s>&#34;&#34;</span><span class=p>,</span> <span class=s>&#34;type name&#34;</span><span class=p>)</span>
+	<span class=nx>flag</span><span class=p>.</span><span class=nf>Parse</span><span class=p>()</span>
+	<span class=k>if</span> <span class=nx>pkgPath</span> <span class=o>==</span> <span class=s>&#34;&#34;</span> <span class=p>{</span>
+		<span class=nb>println</span><span class=p>(</span><span class=s>&#34;-package is required&#34;</span><span class=p>)</span>
+		<span class=nx>flag</span><span class=p>.</span><span class=nf>Usage</span><span class=p>()</span>
+		<span class=k>return</span>
+	<span class=p>}</span>
+	<span class=k>if</span> <span class=nx>typ</span> <span class=o>==</span> <span class=s>&#34;&#34;</span> <span class=p>{</span>
+		<span class=nb>println</span><span class=p>(</span><span class=s>&#34;-type is required&#34;</span><span class=p>)</span>
+		<span class=nx>flag</span><span class=p>.</span><span class=nf>Usage</span><span class=p>()</span>
+		<span class=k>return</span>
+	<span class=p>}</span>
+
+	<span class=nx>fst</span> <span class=o>:=</span> <span class=nx>token</span><span class=p>.</span><span class=nf>NewFileSet</span><span class=p>()</span>
+	<span class=nx>imp</span> <span class=o>:=</span> <span class=nx>importer</span><span class=p>.</span><span class=nf>ForCompiler</span><span class=p>(</span><span class=nx>fst</span><span class=p>,</span> <span class=s>&#34;source&#34;</span><span class=p>,</span> <span class=kc>nil</span><span class=p>)</span>
+	<span class=nx>pkg</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>imp</span><span class=p>.</span><span class=nf>Import</span><span class=p>(</span><span class=nx>pkgPath</span><span class=p>)</span>
+	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+		<span class=nx>log</span><span class=p>.</span><span class=nf>Fatal</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span>
+	<span class=p>}</span>
+
+	<span class=nx>typename</span> <span class=o>:=</span> <span class=nx>pkg</span><span class=p>.</span><span class=nf>Scope</span><span class=p>().</span><span class=nf>Lookup</span><span class=p>(</span><span class=nx>typ</span><span class=p>)</span>
+	<span class=k>if</span> <span class=nx>typename</span> <span class=o>==</span> <span class=kc>nil</span> <span class=p>{</span>
+		<span class=nx>log</span><span class=p>.</span><span class=nf>Fatalf</span><span class=p>(</span><span class=s>&#34;type %s not found&#34;</span><span class=p>,</span> <span class=nx>typ</span><span class=p>)</span>
+	<span class=p>}</span>
+
+	<span class=k>if</span> <span class=nx>named</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nx>typename</span><span class=p>.</span><span class=nf>Type</span><span class=p>().(</span><span class=o>*</span><span class=nx>types</span><span class=p>.</span><span class=nx>Named</span><span class=p>);</span> <span class=nx>ok</span> <span class=p>{</span>
+		<span class=k>switch</span> <span class=nx>named</span><span class=p>.</span><span class=nf>Underlying</span><span class=p>().(</span><span class=kd>type</span><span class=p>)</span> <span class=p>{</span>
+		<span class=k>case</span> <span class=o>*</span><span class=nx>types</span><span class=p>.</span><span class=nx>Basic</span><span class=p>:</span>
+			<span class=nb>println</span><span class=p>(</span><span class=s>&#34;primitive type&#34;</span><span class=p>)</span>
+		<span class=k>case</span> <span class=o>*</span><span class=nx>types</span><span class=p>.</span><span class=nx>Interface</span><span class=p>:</span>
+			<span class=nb>println</span><span class=p>(</span><span class=s>&#34;interface type&#34;</span><span class=p>)</span>
+		<span class=k>case</span> <span class=o>*</span><span class=nx>types</span><span class=p>.</span><span class=nx>Struct</span><span class=p>:</span>
+			<span class=nb>println</span><span class=p>(</span><span class=s>&#34;struct type&#34;</span><span class=p>)</span>
+		<span class=k>default</span><span class=p>:</span>
+			<span class=k>if</span> <span class=nx>named</span><span class=p>.</span><span class=nf>Obj</span><span class=p>().</span><span class=nf>IsAlias</span><span class=p>()</span> <span class=p>{</span>
+				<span class=nb>println</span><span class=p>(</span><span class=s>&#34;is alias type&#34;</span><span class=p>)</span>
+				<span class=k>return</span>
+			<span class=p>}</span>
+			<span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;%v&#34;</span><span class=p>,</span> <span class=nx>named</span><span class=p>)</span>
+		<span class=p>}</span>
+	<span class=p>}</span>
+<span class=p>}</span>
+
+</code></pre></div><p>很短，注意几个新出现的包和API：<code>go/importer</code>、<code>go/types</code>。</p>
+<p><code>go/importer</code>顾名思义是一个管理<code>import</code>功能的包，go 不是 python 这样解释执行或 Java 那样可以热加载代码的模型，<code>importer</code>基本是编译期才会用到。我们用<code>importer.ForCompiler</code>的目的是构造一个 <code>Importer</code>， <strong>从源代码</strong> 拿到类型信息。</p>
+<p>从<code>Import</code>调用拿到一个 <code>*types.Package</code> 类型的返回值后，又使用 <code>Scope().Lookup()</code>从这个包作用域下查找指定的类型——这里提一嘴，<code>type xxx struct{}</code>这样的语句可以是块作用域的，<code>Scope().Lookup()</code>查找的是 <strong>包内的全局类型定义</strong> ，查找结果是一个 <code>types.Object</code>，可以理解成一个有类型的对象——比如全局 <code>var v int</code> 这样声明的 <code>v</code>。对于查找的是类型的情况，需要关注的就是 <code>.Type()</code>这个方法了。</p>
+<p>顾名思义<code>.Type()</code>返回对象的类型，代码里的 type switch 应该很好地展示了整个过程。</p>
+<p>另外还要注意到 <code>.(*types.Named)</code>，这里涉及一个 <code>named type</code>概念。所谓的 <code>Named</code> 在 <a class=link href=https://go.dev/ref/spec#Types target=_blank rel=noopener>Go Specification 里是这样解释的</a>：</p>
+<blockquote>
+<p><strong>Predeclared types</strong>, <strong>defined types</strong>, and <strong>type parameters</strong> are called <em>named types</em>. An alias denotes a named type if the type given in the alias declaration is a named type.</p>
+</blockquote>
+<p>什么意思呢？<code>predeclared types</code> 指的是内置的类型，如 <code>int</code>、<code>byte</code>、<code>rune</code>，参考链接 <a class=link href=https://go.dev/ref/spec#Predeclared_identifiers target=_blank rel=noopener>predeclares</a> 。而 <code>defined types</code> 指的是形如 <code>type Sample struct {}</code> 的类型定义，<code>type parameters</code> 则是 go 1.18 引入的泛型语法，例如 <code>type Sample[T any] struct {t T}</code> ，其中的<code>T</code>也是 <code>named type</code>。</p>
+<p>那什么样的不是 <code>named type</code>呢？比如<code>type Sample = struct {}</code>，这里的 <code>Sample</code> 就不是 <code>named type</code>。注意前面引文的后半句：</p>
+<blockquote>
+<p>An alias denotes a named type if the type given in the alias declaration is a named type.</p>
+</blockquote>
+<p>只有<code>named type</code>的别名才被视为<code>named type</code>，所以 <code>type Sample = int</code> 是 <code>named type</code>，但 <code>type Sample = struct{}</code> 或者 <code>type Sample = map[string]string</code> 都不是 <code>named type</code>。</p>
+<p>好了，绕晕了就可以继续下一阶段了，开始了解 <code>Field</code> 和 <code>Method</code>。</p>
+<h3 id=field>Field</h3>
+<p>我们稍微改一下上面的代码，在 <code>case *types.Struct</code> 下加入几行循环。记得 <code>switch</code>也改成<code>switch tp := named.Underlying().(type)</code></p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nx>tp</span><span class=p>.</span><span class=nf>NumFields</span><span class=p>();</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+    <span class=nx>field</span> <span class=o>:=</span> <span class=nx>tp</span><span class=p>.</span><span class=nf>Field</span><span class=p>(</span><span class=nx>i</span><span class=p>)</span>
+    <span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;field %s %v\n&#34;</span><span class=p>,</span> <span class=nx>field</span><span class=p>.</span><span class=nf>Name</span><span class=p>(),</span> <span class=nx>field</span><span class=p>.</span><span class=nf>Type</span><span class=p>())</span>
+<span class=p>}</span>
+</code></pre></div><p>又一个惯用法：<code>NumFields</code> 和 <code>Field</code>。注意<code>Field</code>拿到的是一个 <code>*types.Var</code>，可以认为表示一个变量，而<code>field.Type()</code>得到的就是这个变量的类型。</p>
+<p>有了类型数据，我们就可以有的放矢，决定如何生成 <code>field</code> 对应的代码了。</p>
+<h3 id=method>Method</h3>
+<p>另一种常见的情况是基于 <code>interface</code> 生成实现，比如 <code>go-kit</code> 那海量的样板代码。</p>
+<p>我们稍微改下上面的代码。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nx>tp</span><span class=p>.</span><span class=nf>NumMethods</span><span class=p>();</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+    <span class=nx>method</span> <span class=o>:=</span> <span class=nx>tp</span><span class=p>.</span><span class=nf>Method</span><span class=p>(</span><span class=nx>i</span><span class=p>)</span>
+    <span class=nx>signature</span> <span class=o>:=</span> <span class=nx>method</span><span class=p>.</span><span class=nf>Type</span><span class=p>().(</span><span class=o>*</span><span class=nx>types</span><span class=p>.</span><span class=nx>Signature</span><span class=p>)</span>
+    <span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;func (r Sample) %s(&#34;</span><span class=p>,</span> <span class=nx>method</span><span class=p>.</span><span class=nf>Name</span><span class=p>())</span>
+    <span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nx>signature</span><span class=p>.</span><span class=nf>Params</span><span class=p>().</span><span class=nf>Len</span><span class=p>();</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+        <span class=nx>param</span> <span class=o>:=</span> <span class=nx>signature</span><span class=p>.</span><span class=nf>Params</span><span class=p>().</span><span class=nf>At</span><span class=p>(</span><span class=nx>i</span><span class=p>)</span>
+        <span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;%s %v,&#34;</span><span class=p>,</span> <span class=nx>param</span><span class=p>.</span><span class=nf>Name</span><span class=p>(),</span> <span class=nx>param</span><span class=p>.</span><span class=nf>Type</span><span class=p>())</span>
+    <span class=p>}</span>
+    <span class=nx>fmt</span><span class=p>.</span><span class=nf>Print</span><span class=p>(</span><span class=s>&#34;)&#34;</span><span class=p>)</span>
+    <span class=k>if</span> <span class=nx>signature</span><span class=p>.</span><span class=nf>Results</span><span class=p>().</span><span class=nf>Len</span><span class=p>()</span> <span class=p>&gt;</span> <span class=mi>1</span> <span class=p>{</span>
+        <span class=nx>fmt</span><span class=p>.</span><span class=nf>Print</span><span class=p>(</span><span class=s>&#34; (&#34;</span><span class=p>)</span>
+    <span class=p>}</span>
+    <span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nx>signature</span><span class=p>.</span><span class=nf>Results</span><span class=p>().</span><span class=nf>Len</span><span class=p>();</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+        <span class=nx>result</span> <span class=o>:=</span> <span class=nx>signature</span><span class=p>.</span><span class=nf>Results</span><span class=p>().</span><span class=nf>At</span><span class=p>(</span><span class=nx>i</span><span class=p>)</span>
+        <span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;%s %v&#34;</span><span class=p>,</span> <span class=nx>result</span><span class=p>.</span><span class=nf>Name</span><span class=p>(),</span> <span class=nx>result</span><span class=p>.</span><span class=nf>Type</span><span class=p>())</span>
+        <span class=k>if</span> <span class=nx>i</span><span class=o>+</span><span class=mi>1</span> <span class=p>&lt;</span> <span class=nx>signature</span><span class=p>.</span><span class=nf>Params</span><span class=p>().</span><span class=nf>Len</span><span class=p>()</span> <span class=p>{</span>
+            <span class=nx>fmt</span><span class=p>.</span><span class=nf>Print</span><span class=p>(</span><span class=s>&#34;,&#34;</span><span class=p>)</span>
+        <span class=p>}</span>
+    <span class=p>}</span>
+    <span class=k>if</span> <span class=nx>signature</span><span class=p>.</span><span class=nf>Results</span><span class=p>().</span><span class=nf>Len</span><span class=p>()</span> <span class=p>&gt;</span> <span class=mi>1</span> <span class=p>{</span>
+        <span class=nx>fmt</span><span class=p>.</span><span class=nf>Print</span><span class=p>(</span><span class=s>&#34; )&#34;</span><span class=p>)</span>
+    <span class=p>}</span>
+    <span class=nx>fmt</span><span class=p>.</span><span class=nf>Print</span><span class=p>(</span><span class=s>&#34; {\n\tpanic(errors.New(\&#34;Not implemented!\&#34;))\n}\n\n&#34;</span><span class=p>)</span>
+<span class=p>}</span>
+</code></pre></div><p>并不复杂！</p>
+<p>遍历 interface 下的所有方法，然后把 <code>Params</code> 和 <code>Results</code> 挨个打印出来，函数体里放一个 <code>panic(errors.New("Not implemented!"))</code>，就是这样！</p>
+<p>最后输出像是这样：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=p>(</span><span class=nx>r</span> <span class=nx>Sample</span><span class=p>)</span> <span class=nf>FirstName</span><span class=p>()</span> <span class=kt>string</span> <span class=p>{</span>
+        <span class=nb>panic</span><span class=p>(</span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;Not implemented!&#34;</span><span class=p>))</span>
+<span class=p>}</span>
+
+<span class=kd>func</span> <span class=p>(</span><span class=nx>r</span> <span class=nx>Sample</span><span class=p>)</span> <span class=nf>LastName</span><span class=p>()</span> <span class=kt>string</span> <span class=p>{</span>
+        <span class=nb>panic</span><span class=p>(</span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;Not implemented!&#34;</span><span class=p>))</span>
+<span class=p>}</span>
+</code></pre></div><p>值得注意的是，<code>Method</code>返回的是 <code>*types.Func</code>，但 <code>Params</code>和<code>Results</code>并不是<code>types.Func</code>上的方法，而是 <code>types.Signature</code>。官方文档说 <code>Func</code>的<code>Type()</code>返回的必然是 <code>*types.Signature</code>，所以直接断言也是安全的。</p>
+<h2 id=总结>总结</h2>
+<p>参考官方的文档 <a class=link href=https://github.com/golang/example/tree/master/gotypes target=_blank rel=noopener>gotypes</a></p>
+<p>重点就一个：不要用 <code>go/types</code> 下的 <code>Config</code> 和 <code>Checker</code>，用 <code>importer.ForCompiler</code> 从源码获取类型数据。<code>types</code>用起来个人感觉比 <code>go/ast</code> 方便，缺点是因为引入类型会导致解析源码各方面的消耗增加，算是一个我个人比较偏好的 trade-off 吧。在 codegen 的输入类型比较复杂敏感的时候，拿 <code>go/types</code> 替代 <code>go/ast</code> 可以省下很多工作量。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/golang/>golang</a>
+<a href=/blog/tags/codegen/>codegen</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/protogen-code-generation/>
+<div class=article-details>
+<h2 class=article-title>protogen代码生成</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/unsafe-jwt/>
+<div class=article-details>
+<h2 class=article-title>不安全的 jwt</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/refactoring-transaction-and-config-management-note/>
+<div class=article-details>
+<h2 class=article-title>记一次重构事务管理和配置管理</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/my-opinion-of-gokit-architecture/>
+<div class=article-details>
+<h2 class=article-title>gokit 架构之我见</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/go-kit-note/>
+<div class=article-details>
+<h2 class=article-title>go-kit 笔记</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
+<div id=vssue></div>
+<script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"codegen 利器 go/types",options:{autoCreateIssue:!0,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 -
+2022 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#入门>入门</a>
+<ol>
+<li><a href=#类型系统>类型系统</a></li>
+<li><a href=#field>Field</a></li>
+<li><a href=#method>Method</a></li>
+</ol>
+</li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
