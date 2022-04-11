@@ -1,4 +1,132 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 01 Apr 2022 12:30:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>记一次重构事务管理和配置管理</title><link>https://nnnewb.github.io/blog/p/refactoring-transaction-and-config-management-note/</link><pubDate>Fri, 01 Apr 2022 12:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/refactoring-transaction-and-config-management-note/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 11 Apr 2022 13:00:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>不安全的 jwt</title><link>https://nnnewb.github.io/blog/p/unsafe-jwt/</link><pubDate>Mon, 11 Apr 2022 13:00:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/unsafe-jwt/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>今早翻到&lt;a class="link" href="https://www.leavesongs.com/PENETRATION/the-collision-of-containers-and-the-cloud-pentesting-a-MinIO.html" target="_blank" rel="noopener"
+>p神挖MinIO CVE的文章&lt;/a>，注意到几句话：&lt;/p>
+&lt;blockquote>
+&lt;p>jwt常见的攻击方法主要有下面这几种：&lt;/p>
+&lt;ul>
+&lt;li>将alg设置为None，告诉服务器不进行签名校验&lt;/li>
+&lt;li>如果alg为RSA，可以尝试修改为HS256，即告诉服务器使用公钥进行签名的校验&lt;/li>
+&lt;li>爆破签名密钥&lt;/li>
+&lt;/ul>
+&lt;/blockquote>
+&lt;p>虽然早早在项目里用上了jwt（大概是16~17年，在另一家公司的登陆系统里），但在目前任职的公司用上jwt的时候还真没从安全的角度考虑过如何编写 &lt;strong>正确、安全&lt;/strong> 的 jwt 验证代码。&lt;small>悄悄哔哔一句我也不是搞安全的啊（&lt;/small>&lt;/p>
+&lt;p>既然翻博客的时候看到了，就没法当没看见。正好翻翻看自己写的垃圾代码是不是有洞。&lt;/p>
+&lt;h2 id="开始-review">开始 review&lt;/h2>
+&lt;p>因为这项目后端是微服务架构，身份验证实际上分成了两种情况：&lt;/p>
+&lt;ol>
+&lt;li>提供验证的服务，从 redis/mysql 校验身份&lt;/li>
+&lt;li>其他服务，通过 rpc 请求验证服务来校验身份&lt;/li>
+&lt;/ol>
+&lt;p>jwt 本身通过签名机制保证发放出来的 token 不被篡改，所以在最初编写的时候主要考虑的还是解决用户账户的封禁、登陆互斥问题，jwt 对解决这方面问题的帮助有限，就没怎么深究。&lt;/p>
+&lt;p>验证流程很简单：&lt;/p>
+&lt;p>incoming request -&amp;gt; gRPC interceptor (&lt;code>rpc_authneticate()&lt;/code>) -&amp;gt; &lt;code>auth.Authenticate(ctx, req)&lt;/code>&lt;/p>
+&lt;p>&lt;code>auth.Authenticate&lt;/code> 是验证业务的实现，分几个步骤：&lt;/p>
+&lt;ol>
+&lt;li>解析输入token，&lt;code>func ParseToken(token string) (*jwt.Token, *CustomJWTClaims, error)&lt;/code>&lt;/li>
+&lt;li>同平台登陆互斥，限制同一平台仅一个有效登陆。通过比较 redis 里保存的 token 实现。&lt;/li>
+&lt;li>账户状态检查，因为缓存设计的问题导致这一步需要查数据库，实现稀烂。&lt;/li>
+&lt;/ol>
+&lt;p>p神博客原文提到的方法里，修改 &lt;code>ALG&lt;/code> 来跳过校验无疑是最可能出现的坑，然后我就看了下自己写的：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// ParseToken 解析 jwt token，返回 token,claims,error
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="kd">func&lt;/span> &lt;span class="nf">ParseToken&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">token&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">jwt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Token&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">CustomJWTClaims&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">claims&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">CustomJWTClaims&lt;/span>&lt;span class="p">{}&lt;/span>
+&lt;span class="nx">t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">jwt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ParseWithClaims&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">token&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">claims&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">t&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">jwt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Token&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kd">interface&lt;/span>&lt;span class="p">{},&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="k">return&lt;/span> &lt;span class="nx">JWTSecret&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">})&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">errors&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Wrap&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">err&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;parse jwt token with claims fail&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">claims&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">nil&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&amp;hellip;&lt;/p>
+&lt;p>好，我寄了！&lt;/p>
+&lt;h2 id="验证漏洞">验证漏洞&lt;/h2>
+&lt;p>事到如今已经没有退路，洞肯定是要补的，补之前出于好奇，再尝试一次利用，也作为洞存在的验证。&lt;/p>
+&lt;h3 id="alg-none">ALG none&lt;/h3>
+&lt;p>jwt 产生的签名字符串分成3个部分：HEADER、PAYLOAD、SIGNATURE，均使用 base64 编码，用 . 分隔。以官网的例子来分析如下：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/unsafe-jwt/image-20220411103235343.png"
+width="1190"
+height="629"
+srcset="https://nnnewb.github.io/blog/blog/p/unsafe-jwt/image-20220411103235343_hu20c5215e53cd9915045eb9cbbaac446d_65338_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/unsafe-jwt/image-20220411103235343_hu20c5215e53cd9915045eb9cbbaac446d_65338_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="JWT格式"
+class="gallery-image"
+data-flex-grow="189"
+data-flex-basis="454px"
+>&lt;/p>
+&lt;p>其中 header 和 payload 部分会编码成 url 安全的 base64，可以在命令行 &lt;code>echo &amp;lt;jwt.header&amp;gt; | base64 -d&lt;/code> 来看到 header 实际包含的内容，payload 同理。signature 的算法由 header 里的 alg 指定，比如 alg 是 &lt;code>HS256&lt;/code> 的时候签名就是 &lt;code>HMACSHA256(base64(header)+&amp;quot;.&amp;quot;+base64(payload))&lt;/code>。&lt;/p>
+&lt;p>攻击方式1里提到的把 &lt;code>ALG&lt;/code> 改成 &lt;code>none&lt;/code>，就是告诉服务器不做签名验证，如果服务器信了你的邪，那就可以伪造出任意身份。&lt;/p>
+&lt;p>接下来尝试构造一个无签名的 jwt 请求：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="nb">echo&lt;/span> &lt;span class="s1">&amp;#39;{&amp;#34;alg&amp;#34;: &amp;#34;none&amp;#34;, &amp;#34;typ&amp;#34;:&amp;#34;JWT&amp;#34;}&amp;#39;&lt;/span> &lt;span class="p">|&lt;/span> base64
+&lt;span class="c1"># eyJhbGciOiAibm9uZSIsICJ0eXAiOiJKV1QifQo=&lt;/span>
+&lt;span class="nb">echo&lt;/span> &lt;span class="s1">&amp;#39;{&amp;#34;iat&amp;#34;: 1649645013, &amp;#34;user_id&amp;#34;: 1, &amp;#34;device_category&amp;#34;: 0, &amp;#34;device_code&amp;#34;: &amp;#34;233&amp;#34;, &amp;#34;landing_platform&amp;#34;:&amp;#34;PC&amp;#34;}&amp;#39;&lt;/span> &lt;span class="p">|&lt;/span> base64
+&lt;span class="c1"># eyJpYXQiOiAxNjQ5NjQ1MDEzLCAidXNlcl9pZCI6IDEsICJkZXZpY2VfY2F0ZWdvcnkiOiAwLCAi&lt;/span>
+&lt;span class="c1"># ZGV2aWNlX2NvZGUiOiAiMjMzIiwgImxhbmRpbmdfcGxhdGZvcm0iOiJQQyJ9Cg==&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>需要注意的是&lt;code>=&lt;/code>是 base64 编码中的占位符，在构造签名字符串的时候要去掉。&lt;/p>
+&lt;p>最后用&lt;code>.&lt;/code>连接，校验合法性。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">eyJhbGciOiAibm9uZSIsICJ0eXAiOiJKV1QifQo.eyJpYXQiOiAxNjQ5NjQ1MDEzLCAidXNlcl9pZCI6IDEsICJkZXZpY2VfY2F0ZWdvcnkiOiAwLCAiZGV2aWNlX2NvZGUiOiAiMjMzIiwgImxhbmRpbmdfcGxhdGZvcm0iOiJQQyJ9Cg.
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/unsafe-jwt/image-20220411104759489.png"
+width="348"
+height="83"
+srcset="https://nnnewb.github.io/blog/blog/p/unsafe-jwt/image-20220411104759489_hucbe2d7ad8ce50be27cbc1b65d46d84ce_4044_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/unsafe-jwt/image-20220411104759489_hucbe2d7ad8ce50be27cbc1b65d46d84ce_4044_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="invalid signature"
+class="gallery-image"
+data-flex-grow="419"
+data-flex-basis="1006px"
+>&lt;/p>
+&lt;p>&amp;hellip; 得，直接试一下。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">curl -v -X GET -H &lt;span class="s1">&amp;#39;grpc-metadata-sessionkey: eyJhbGciOiAibm9uZSIsICJ0eXAiOiJKV1QifQo.eyJpYXQiOiAxNjQ5NjQ1MDEzLCAidXNlcl9pZCI6IDEsICJkZXZpY2VfY2F0ZWdvcnkiOiAwLCAiZGV2aWNlX2NvZGUiOiAiMjMzIiwgImxhbmRpbmdfcGxhdGZvcm0iOiJQQyJ9Cg.&amp;#39;&lt;/span> &lt;span class="s2">&amp;#34;localhost/v4/user/get_userinfo&amp;#34;&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/unsafe-jwt/image-20220411110837870.png"
+width="652"
+height="147"
+srcset="https://nnnewb.github.io/blog/blog/p/unsafe-jwt/image-20220411110837870_hu718adea8bc6936c75db6c3dab5f17133_5456_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/unsafe-jwt/image-20220411110837870_hu718adea8bc6936c75db6c3dab5f17133_5456_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="&amp;lsquo;none&amp;rsquo; signature type is not allowed"
+class="gallery-image"
+data-flex-grow="443"
+data-flex-basis="1064px"
+>&lt;/p>
+&lt;p>惊喜！&lt;/p>
+&lt;p>看了眼使用的 jwt 库，&lt;code>github.com/dgrijalva/jwt-go v3.2.0+incompatible&lt;/code>，目前迁移到了 &lt;code>github.com/golang-jwt/jwt&lt;/code>，最新版本 4.x ，感谢这库给我挡了一枪。&lt;/p>
+&lt;h3 id="alg-rs256">ALG RS256&lt;/h3>
+&lt;p>另一个坑，HS256 =&amp;gt; RS256 攻击，倒是没踩上。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="nx">token&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">jwt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewWithClaims&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">jwt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">SigningMethodHS256&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">CustomJWTClaims&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;span class="c1">// ...
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="p">})&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>HS256 攻击没有 ALG none 攻击那么简单直白了，特地去搜了下 HS256 攻击方法和原理。&lt;/p>
+&lt;p>参考文章：&lt;/p>
+&lt;ul>
+&lt;li>&lt;a class="link" href="https://infosecwriteups.com/attacks-on-json-web-token-jwt-278a49a1ad2e?gi=11514f6199e8" target="_blank" rel="noopener"
+>Attacks on JSON Web Token&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://anubhav-singh.medium.com/get-a-feel-of-jwt-json-web-token-8ee9c16ce5ce" target="_blank" rel="noopener"
+>Get a Feel of JWT (JSON Web Token)&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;p>RS256签名的算法可以这样表示：&lt;code>base64(rsa256(sha256(base64(header)+&amp;quot;.&amp;quot;+base64(payload)+secret)))&lt;/code>，其中需要关注的是 &lt;code>rsa256&lt;/code> 是如何签名的。&lt;/p>
+&lt;p>关于不对称加密套件的加解密/签名一句话概括就是：公钥加密，私约解密；私钥签名，公钥验签。RS256=&amp;gt;HS256攻击的原理就是服务器验证签名的时使用的是公钥——顾名思义，“公”指的是公开的，如果服务器所使用的的秘钥对在其他地方复用（比如使用的是域名的公钥），那公钥就唾手可得。&lt;/p>
+&lt;p>仅仅拿到了公钥还不够，因为签名只能由私钥产生。这里就涉及一个 JWT 实现的漏洞：&lt;/p>
+&lt;ul>
+&lt;li>&lt;a class="link" href="https://nvd.nist.gov/vuln/detail/CVE-2015-9235" target="_blank" rel="noopener"
+>CVE-2015-9235&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://nvd.nist.gov/vuln/detail/CVE-2016-10555" target="_blank" rel="noopener"
+>CVE-2016-10555&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;p>服务端使假设签名是 RS256 ，用公钥验签时，客户端可以构造一个恶意的 jwt 签名，把HEADER里的 ALG 指定为 HS256，服务端就会把 RS256 验证的公钥当成 HS256 的私钥来验证签名。&lt;/p>
+&lt;p>满足下面三个条件：&lt;/p>
+&lt;ul>
+&lt;li>服务器签发、接受 RS256 私钥签名的JWT&lt;/li>
+&lt;li>拿到公钥&lt;/li>
+&lt;li>使用有漏洞的 jwt 库&lt;/li>
+&lt;/ul>
+&lt;p>就能自由构造任意 JWT PAYLOAD。&lt;/p>
+&lt;h3 id="暴力穷举">暴力穷举&lt;/h3>
+&lt;p>既 brute-force 大法，对弱密码加上好点的字典也是可行的。不过我这服务HS256 秘钥是随机生成的，大小写字母+特殊字符。&lt;/p>
+&lt;p>不过即使是这样还是有考虑定期轮换秘钥，验证的阶段根据 iat/exp 来选择秘钥，即使攻击者舍得花时间碰运气也很难瞎猫碰上死耗子了。但因为种种原因，多少感觉有点过度设计的意思吧。就暂且没管。&lt;/p>
+&lt;h2 id="修复">修复&lt;/h2>
+&lt;p>已知 jwt 库已经解决了 ALG none 的问题，采用的签名算法也不是 RS256，随机秘钥熵也够，那就没啥可修复的了。非要说的话可以在 &lt;code>ParseToken&lt;/code> 阶段限制下 ALG 的选择，强制选择一个比较坚挺的哈希算法。再把秘钥轮换做起来。&lt;/p>
+&lt;p>可以先列入计划，优先级不用太高吧。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>显然没有银弹这句话很对，jwt 并不是解决一切问题的良药，甚至是一把可能砸在自己小拇指上的锤子。&lt;/p>
+&lt;p>对 jwt 的三种常规攻击方式，两种是操纵 header 的 alg 实现的，alg none 的方式尝试跳过签名验证，alg rs256 转 hs256 则是利用库漏洞加上窃取公钥来伪造签名，利用难度更大。&lt;/p>
+&lt;p>暴力穷举法就没什么可说的了，或许在代码审计的时候需要考虑下秘钥面对暴力穷举时的安全性。&lt;/p></description></item><item><title>记一次重构事务管理和配置管理</title><link>https://nnnewb.github.io/blog/p/refactoring-transaction-and-config-management-note/</link><pubDate>Fri, 01 Apr 2022 12:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/refactoring-transaction-and-config-management-note/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>重构发生的背景是这样的。&lt;/p>
 &lt;p>我手里的项目因为一系列管理上的混乱和不作为导致接手的时候非常糟，总之理解成那种写了一两年代码第一次接触Go没人review代码的半吊子还从单体beego一路跨到非常考验架构能力到编程能力各方面能力的微服务架构结果留下烂摊子跑路了的情况就对啦。&lt;/p>
 &lt;p>没看懂写的什么鬼？对，我接手项目的时候也是这个感觉。&lt;/p>

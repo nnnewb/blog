@@ -1,0 +1,352 @@
+<!doctype html><html lang=zh-cn dir=ltr>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 今早翻到p神挖MinIO CVE的文章，注意到几句话：
+ jwt常见的攻击方法主要有下面这几种：
+ 将alg设置为None，告诉服务器不进行签名校验 如果alg为RSA，可以尝试修改为HS256，即告诉服务器使用公钥进行签名的校验 爆破签名密钥   虽然早早在项目里用上了jwt（大概是16~17年，在另一家公司的登陆系统里），但在目前任职的公司用上jwt的时候还真没从安全的角度考虑过如何编写 正确、安全 的 jwt 验证代码。悄悄哔哔一句我也不是搞安全的啊（
+既然翻博客的时候看到了，就没法当没看见。正好翻翻看自己写的垃圾代码是不是有洞。
+开始 review 因为这项目后端是微服务架构，身份验证实际上分成了两种情况：
+ 提供验证的服务，从 redis/mysql 校验身份 其他服务，通过 rpc 请求验证服务来校验身份  jwt 本身通过签名机制保证发放出来的 token 不被篡改，所以在最初编写的时候主要考虑的还是解决用户账户的封禁、登陆互斥问题，jwt 对解决这方面问题的帮助有限，就没怎么深究。
+验证流程很简单：
+incoming request -&amp;gt; gRPC interceptor (rpc_authneticate()) -&amp;gt; auth.Authenticate(ctx, req)
+auth.Authenticate 是验证业务的实现，分几个步骤：
+ 解析输入token，func ParseToken(token string) (*jwt.Token, *CustomJWTClaims, error) 同平台登陆互斥，限制同一平台仅一个有效登陆。通过比较 redis 里保存的 token 实现。 账户状态检查，因为缓存设计的问题导致这一步需要查数据库，实现稀烂。  p神博客原文提到的方法里，修改 ALG 来跳过校验无疑是最可能出现的坑，然后我就看了下自己写的：
+// ParseToken 解析 jwt token，返回 token,claims,error func ParseToken(token string) (*jwt."><title>不安全的 jwt</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/unsafe-jwt/>
+<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="不安全的 jwt">
+<meta property="og:description" content="前言 今早翻到p神挖MinIO CVE的文章，注意到几句话：
+ jwt常见的攻击方法主要有下面这几种：
+ 将alg设置为None，告诉服务器不进行签名校验 如果alg为RSA，可以尝试修改为HS256，即告诉服务器使用公钥进行签名的校验 爆破签名密钥   虽然早早在项目里用上了jwt（大概是16~17年，在另一家公司的登陆系统里），但在目前任职的公司用上jwt的时候还真没从安全的角度考虑过如何编写 正确、安全 的 jwt 验证代码。悄悄哔哔一句我也不是搞安全的啊（
+既然翻博客的时候看到了，就没法当没看见。正好翻翻看自己写的垃圾代码是不是有洞。
+开始 review 因为这项目后端是微服务架构，身份验证实际上分成了两种情况：
+ 提供验证的服务，从 redis/mysql 校验身份 其他服务，通过 rpc 请求验证服务来校验身份  jwt 本身通过签名机制保证发放出来的 token 不被篡改，所以在最初编写的时候主要考虑的还是解决用户账户的封禁、登陆互斥问题，jwt 对解决这方面问题的帮助有限，就没怎么深究。
+验证流程很简单：
+incoming request -&amp;gt; gRPC interceptor (rpc_authneticate()) -&amp;gt; auth.Authenticate(ctx, req)
+auth.Authenticate 是验证业务的实现，分几个步骤：
+ 解析输入token，func ParseToken(token string) (*jwt.Token, *CustomJWTClaims, error) 同平台登陆互斥，限制同一平台仅一个有效登陆。通过比较 redis 里保存的 token 实现。 账户状态检查，因为缓存设计的问题导致这一步需要查数据库，实现稀烂。  p神博客原文提到的方法里，修改 ALG 来跳过校验无疑是最可能出现的坑，然后我就看了下自己写的：
+// ParseToken 解析 jwt token，返回 token,claims,error func ParseToken(token string) (*jwt.">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/unsafe-jwt/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="jwt"><meta property="article:tag" content="安全"><meta property="article:published_time" content="2022-04-11T13:00:00+08:00"><meta property="article:modified_time" content="2022-04-11T13:00:00+08:00">
+<meta name=twitter:title content="不安全的 jwt">
+<meta name=twitter:description content="前言 今早翻到p神挖MinIO CVE的文章，注意到几句话：
+ jwt常见的攻击方法主要有下面这几种：
+ 将alg设置为None，告诉服务器不进行签名校验 如果alg为RSA，可以尝试修改为HS256，即告诉服务器使用公钥进行签名的校验 爆破签名密钥   虽然早早在项目里用上了jwt（大概是16~17年，在另一家公司的登陆系统里），但在目前任职的公司用上jwt的时候还真没从安全的角度考虑过如何编写 正确、安全 的 jwt 验证代码。悄悄哔哔一句我也不是搞安全的啊（
+既然翻博客的时候看到了，就没法当没看见。正好翻翻看自己写的垃圾代码是不是有洞。
+开始 review 因为这项目后端是微服务架构，身份验证实际上分成了两种情况：
+ 提供验证的服务，从 redis/mysql 校验身份 其他服务，通过 rpc 请求验证服务来校验身份  jwt 本身通过签名机制保证发放出来的 token 不被篡改，所以在最初编写的时候主要考虑的还是解决用户账户的封禁、登陆互斥问题，jwt 对解决这方面问题的帮助有限，就没怎么深究。
+验证流程很简单：
+incoming request -&amp;gt; gRPC interceptor (rpc_authneticate()) -&amp;gt; auth.Authenticate(ctx, req)
+auth.Authenticate 是验证业务的实现，分几个步骤：
+ 解析输入token，func ParseToken(token string) (*jwt.Token, *CustomJWTClaims, error) 同平台登陆互斥，限制同一平台仅一个有效登陆。通过比较 redis 里保存的 token 实现。 账户状态检查，因为缓存设计的问题导致这一步需要查数据库，实现稀烂。  p神博客原文提到的方法里，修改 ALG 来跳过校验无疑是最可能出现的坑，然后我就看了下自己写的：
+// ParseToken 解析 jwt token，返回 token,claims,error func ParseToken(token string) (*jwt.">
+</head>
+<body class=article-page>
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
+</div>
+</header><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+<li id=dark-mode-toggle><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span>
+</li>
+</div>
+</ol>
+</aside>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/golang/>
+golang
+</a>
+</header>
+<div class=article-title-wrapper>
+<h2 class=article-title>
+<a href=/blog/p/unsafe-jwt/>不安全的 jwt</a>
+</h2>
+</div>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2022年 4月 11日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 2 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>今早翻到<a class=link href=https://www.leavesongs.com/PENETRATION/the-collision-of-containers-and-the-cloud-pentesting-a-MinIO.html target=_blank rel=noopener>p神挖MinIO CVE的文章</a>，注意到几句话：</p>
+<blockquote>
+<p>jwt常见的攻击方法主要有下面这几种：</p>
+<ul>
+<li>将alg设置为None，告诉服务器不进行签名校验</li>
+<li>如果alg为RSA，可以尝试修改为HS256，即告诉服务器使用公钥进行签名的校验</li>
+<li>爆破签名密钥</li>
+</ul>
+</blockquote>
+<p>虽然早早在项目里用上了jwt（大概是16~17年，在另一家公司的登陆系统里），但在目前任职的公司用上jwt的时候还真没从安全的角度考虑过如何编写 <strong>正确、安全</strong> 的 jwt 验证代码。<small>悄悄哔哔一句我也不是搞安全的啊（</small></p>
+<p>既然翻博客的时候看到了，就没法当没看见。正好翻翻看自己写的垃圾代码是不是有洞。</p>
+<h2 id=开始-review>开始 review</h2>
+<p>因为这项目后端是微服务架构，身份验证实际上分成了两种情况：</p>
+<ol>
+<li>提供验证的服务，从 redis/mysql 校验身份</li>
+<li>其他服务，通过 rpc 请求验证服务来校验身份</li>
+</ol>
+<p>jwt 本身通过签名机制保证发放出来的 token 不被篡改，所以在最初编写的时候主要考虑的还是解决用户账户的封禁、登陆互斥问题，jwt 对解决这方面问题的帮助有限，就没怎么深究。</p>
+<p>验证流程很简单：</p>
+<p>incoming request -> gRPC interceptor (<code>rpc_authneticate()</code>) -> <code>auth.Authenticate(ctx, req)</code></p>
+<p><code>auth.Authenticate</code> 是验证业务的实现，分几个步骤：</p>
+<ol>
+<li>解析输入token，<code>func ParseToken(token string) (*jwt.Token, *CustomJWTClaims, error)</code></li>
+<li>同平台登陆互斥，限制同一平台仅一个有效登陆。通过比较 redis 里保存的 token 实现。</li>
+<li>账户状态检查，因为缓存设计的问题导致这一步需要查数据库，实现稀烂。</li>
+</ol>
+<p>p神博客原文提到的方法里，修改 <code>ALG</code> 来跳过校验无疑是最可能出现的坑，然后我就看了下自己写的：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=c1>// ParseToken 解析 jwt token，返回 token,claims,error
+</span><span class=c1></span><span class=kd>func</span> <span class=nf>ParseToken</span><span class=p>(</span><span class=nx>token</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=o>*</span><span class=nx>jwt</span><span class=p>.</span><span class=nx>Token</span><span class=p>,</span> <span class=o>*</span><span class=nx>CustomJWTClaims</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+	<span class=nx>claims</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>CustomJWTClaims</span><span class=p>{}</span>
+	<span class=nx>t</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>jwt</span><span class=p>.</span><span class=nf>ParseWithClaims</span><span class=p>(</span><span class=nx>token</span><span class=p>,</span> <span class=nx>claims</span><span class=p>,</span> <span class=kd>func</span><span class=p>(</span><span class=nx>t</span> <span class=o>*</span><span class=nx>jwt</span><span class=p>.</span><span class=nx>Token</span><span class=p>)</span> <span class=p>(</span><span class=kd>interface</span><span class=p>{},</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span> <span class=k>return</span> <span class=nx>JWTSecret</span><span class=p>,</span> <span class=kc>nil</span> <span class=p>})</span>
+	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+		<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>errors</span><span class=p>.</span><span class=nf>Wrap</span><span class=p>(</span><span class=nx>err</span><span class=p>,</span> <span class=s>&#34;parse jwt token with claims fail&#34;</span><span class=p>)</span>
+	<span class=p>}</span>
+
+	<span class=k>return</span> <span class=nx>t</span><span class=p>,</span> <span class=nx>claims</span><span class=p>,</span> <span class=kc>nil</span>
+<span class=p>}</span>
+</code></pre></div><p>&mldr;</p>
+<p>好，我寄了！</p>
+<h2 id=验证漏洞>验证漏洞</h2>
+<p>事到如今已经没有退路，洞肯定是要补的，补之前出于好奇，再尝试一次利用，也作为洞存在的验证。</p>
+<h3 id=alg-none>ALG none</h3>
+<p>jwt 产生的签名字符串分成3个部分：HEADER、PAYLOAD、SIGNATURE，均使用 base64 编码，用 . 分隔。以官网的例子来分析如下：</p>
+<p><img src=/blog/p/unsafe-jwt/image-20220411103235343.png width=1190 height=629 srcset="/blog/p/unsafe-jwt/image-20220411103235343_hu20c5215e53cd9915045eb9cbbaac446d_65338_480x0_resize_box_3.png 480w, /blog/p/unsafe-jwt/image-20220411103235343_hu20c5215e53cd9915045eb9cbbaac446d_65338_1024x0_resize_box_3.png 1024w" loading=lazy alt=JWT格式 class=gallery-image data-flex-grow=189 data-flex-basis=454px></p>
+<p>其中 header 和 payload 部分会编码成 url 安全的 base64，可以在命令行 <code>echo &lt;jwt.header> | base64 -d</code> 来看到 header 实际包含的内容，payload 同理。signature 的算法由 header 里的 alg 指定，比如 alg 是 <code>HS256</code> 的时候签名就是 <code>HMACSHA256(base64(header)+"."+base64(payload))</code>。</p>
+<p>攻击方式1里提到的把 <code>ALG</code> 改成 <code>none</code>，就是告诉服务器不做签名验证，如果服务器信了你的邪，那就可以伪造出任意身份。</p>
+<p>接下来尝试构造一个无签名的 jwt 请求：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=nb>echo</span> <span class=s1>&#39;{&#34;alg&#34;: &#34;none&#34;, &#34;typ&#34;:&#34;JWT&#34;}&#39;</span> <span class=p>|</span> base64
+<span class=c1># eyJhbGciOiAibm9uZSIsICJ0eXAiOiJKV1QifQo=</span>
+<span class=nb>echo</span> <span class=s1>&#39;{&#34;iat&#34;: 1649645013, &#34;user_id&#34;: 1, &#34;device_category&#34;: 0, &#34;device_code&#34;: &#34;233&#34;, &#34;landing_platform&#34;:&#34;PC&#34;}&#39;</span> <span class=p>|</span> base64
+<span class=c1># eyJpYXQiOiAxNjQ5NjQ1MDEzLCAidXNlcl9pZCI6IDEsICJkZXZpY2VfY2F0ZWdvcnkiOiAwLCAi</span>
+<span class=c1># ZGV2aWNlX2NvZGUiOiAiMjMzIiwgImxhbmRpbmdfcGxhdGZvcm0iOiJQQyJ9Cg==</span>
+</code></pre></div><p>需要注意的是<code>=</code>是 base64 编码中的占位符，在构造签名字符串的时候要去掉。</p>
+<p>最后用<code>.</code>连接，校验合法性。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>eyJhbGciOiAibm9uZSIsICJ0eXAiOiJKV1QifQo.eyJpYXQiOiAxNjQ5NjQ1MDEzLCAidXNlcl9pZCI6IDEsICJkZXZpY2VfY2F0ZWdvcnkiOiAwLCAiZGV2aWNlX2NvZGUiOiAiMjMzIiwgImxhbmRpbmdfcGxhdGZvcm0iOiJQQyJ9Cg.
+</code></pre></div><p><img src=/blog/p/unsafe-jwt/image-20220411104759489.png width=348 height=83 srcset="/blog/p/unsafe-jwt/image-20220411104759489_hucbe2d7ad8ce50be27cbc1b65d46d84ce_4044_480x0_resize_box_3.png 480w, /blog/p/unsafe-jwt/image-20220411104759489_hucbe2d7ad8ce50be27cbc1b65d46d84ce_4044_1024x0_resize_box_3.png 1024w" loading=lazy alt="invalid signature" class=gallery-image data-flex-grow=419 data-flex-basis=1006px></p>
+<p>&mldr; 得，直接试一下。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>curl -v -X GET -H <span class=s1>&#39;grpc-metadata-sessionkey: eyJhbGciOiAibm9uZSIsICJ0eXAiOiJKV1QifQo.eyJpYXQiOiAxNjQ5NjQ1MDEzLCAidXNlcl9pZCI6IDEsICJkZXZpY2VfY2F0ZWdvcnkiOiAwLCAiZGV2aWNlX2NvZGUiOiAiMjMzIiwgImxhbmRpbmdfcGxhdGZvcm0iOiJQQyJ9Cg.&#39;</span> <span class=s2>&#34;localhost/v4/user/get_userinfo&#34;</span>
+</code></pre></div><p><img src=/blog/p/unsafe-jwt/image-20220411110837870.png width=652 height=147 srcset="/blog/p/unsafe-jwt/image-20220411110837870_hu718adea8bc6936c75db6c3dab5f17133_5456_480x0_resize_box_3.png 480w, /blog/p/unsafe-jwt/image-20220411110837870_hu718adea8bc6936c75db6c3dab5f17133_5456_1024x0_resize_box_3.png 1024w" loading=lazy alt="&lsquo;none&rsquo; signature type is not allowed" class=gallery-image data-flex-grow=443 data-flex-basis=1064px></p>
+<p>惊喜！</p>
+<p>看了眼使用的 jwt 库，<code>github.com/dgrijalva/jwt-go v3.2.0+incompatible</code>，目前迁移到了 <code>github.com/golang-jwt/jwt</code>，最新版本 4.x ，感谢这库给我挡了一枪。</p>
+<h3 id=alg-rs256>ALG RS256</h3>
+<p>另一个坑，HS256 => RS256 攻击，倒是没踩上。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=nx>token</span> <span class=o>:=</span> <span class=nx>jwt</span><span class=p>.</span><span class=nf>NewWithClaims</span><span class=p>(</span><span class=nx>jwt</span><span class=p>.</span><span class=nx>SigningMethodHS256</span><span class=p>,</span> <span class=o>&amp;</span><span class=nx>CustomJWTClaims</span><span class=p>{</span>
+    <span class=c1>// ...
+</span><span class=c1></span><span class=p>})</span>
+</code></pre></div><p>HS256 攻击没有 ALG none 攻击那么简单直白了，特地去搜了下 HS256 攻击方法和原理。</p>
+<p>参考文章：</p>
+<ul>
+<li><a class=link href="https://infosecwriteups.com/attacks-on-json-web-token-jwt-278a49a1ad2e?gi=11514f6199e8" target=_blank rel=noopener>Attacks on JSON Web Token</a></li>
+<li><a class=link href=https://anubhav-singh.medium.com/get-a-feel-of-jwt-json-web-token-8ee9c16ce5ce target=_blank rel=noopener>Get a Feel of JWT (JSON Web Token)</a></li>
+</ul>
+<p>RS256签名的算法可以这样表示：<code>base64(rsa256(sha256(base64(header)+"."+base64(payload)+secret)))</code>，其中需要关注的是 <code>rsa256</code> 是如何签名的。</p>
+<p>关于不对称加密套件的加解密/签名一句话概括就是：公钥加密，私约解密；私钥签名，公钥验签。RS256=>HS256攻击的原理就是服务器验证签名的时使用的是公钥——顾名思义，“公”指的是公开的，如果服务器所使用的的秘钥对在其他地方复用（比如使用的是域名的公钥），那公钥就唾手可得。</p>
+<p>仅仅拿到了公钥还不够，因为签名只能由私钥产生。这里就涉及一个 JWT 实现的漏洞：</p>
+<ul>
+<li><a class=link href=https://nvd.nist.gov/vuln/detail/CVE-2015-9235 target=_blank rel=noopener>CVE-2015-9235</a></li>
+<li><a class=link href=https://nvd.nist.gov/vuln/detail/CVE-2016-10555 target=_blank rel=noopener>CVE-2016-10555</a></li>
+</ul>
+<p>服务端使假设签名是 RS256 ，用公钥验签时，客户端可以构造一个恶意的 jwt 签名，把HEADER里的 ALG 指定为 HS256，服务端就会把 RS256 验证的公钥当成 HS256 的私钥来验证签名。</p>
+<p>满足下面三个条件：</p>
+<ul>
+<li>服务器签发、接受 RS256 私钥签名的JWT</li>
+<li>拿到公钥</li>
+<li>使用有漏洞的 jwt 库</li>
+</ul>
+<p>就能自由构造任意 JWT PAYLOAD。</p>
+<h3 id=暴力穷举>暴力穷举</h3>
+<p>既 brute-force 大法，对弱密码加上好点的字典也是可行的。不过我这服务HS256 秘钥是随机生成的，大小写字母+特殊字符。</p>
+<p>不过即使是这样还是有考虑定期轮换秘钥，验证的阶段根据 iat/exp 来选择秘钥，即使攻击者舍得花时间碰运气也很难瞎猫碰上死耗子了。但因为种种原因，多少感觉有点过度设计的意思吧。就暂且没管。</p>
+<h2 id=修复>修复</h2>
+<p>已知 jwt 库已经解决了 ALG none 的问题，采用的签名算法也不是 RS256，随机秘钥熵也够，那就没啥可修复的了。非要说的话可以在 <code>ParseToken</code> 阶段限制下 ALG 的选择，强制选择一个比较坚挺的哈希算法。再把秘钥轮换做起来。</p>
+<p>可以先列入计划，优先级不用太高吧。</p>
+<h2 id=总结>总结</h2>
+<p>显然没有银弹这句话很对，jwt 并不是解决一切问题的良药，甚至是一把可能砸在自己小拇指上的锤子。</p>
+<p>对 jwt 的三种常规攻击方式，两种是操纵 header 的 alg 实现的，alg none 的方式尝试跳过签名验证，alg rs256 转 hs256 则是利用库漏洞加上窃取公钥来伪造签名，利用难度更大。</p>
+<p>暴力穷举法就没什么可说的了，或许在代码审计的时候需要考虑下秘钥面对暴力穷举时的安全性。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/golang/>golang</a>
+<a href=/blog/tags/jwt/>jwt</a>
+<a href=/blog/tags/%E5%AE%89%E5%85%A8/>安全</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/refactoring-transaction-and-config-management-note/>
+<div class=article-details>
+<h2 class=article-title>记一次重构事务管理和配置管理</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/my-opinion-of-gokit-architecture/>
+<div class=article-details>
+<h2 class=article-title>gokit 架构之我见</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/go-kit-note/>
+<div class=article-details>
+<h2 class=article-title>go-kit 笔记</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/>
+<div class=article-details>
+<h2 class=article-title>gRPC-Gateway 用作多个 gRPC 服务的网关</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/protogen-code-generation/>
+<div class=article-details>
+<h2 class=article-title>protogen代码生成</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
+<div id=vssue></div>
+<script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"不安全的 jwt",options:{autoCreateIssue:!0,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 -
+2022 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#开始-review>开始 review</a></li>
+<li><a href=#验证漏洞>验证漏洞</a>
+<ol>
+<li><a href=#alg-none>ALG none</a></li>
+<li><a href=#alg-rs256>ALG RS256</a></li>
+<li><a href=#暴力穷举>暴力穷举</a></li>
+</ol>
+</li>
+<li><a href=#修复>修复</a></li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
