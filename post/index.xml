@@ -1,6 +1,77 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/post/</link><description>Recent content in Posts on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 18 Apr 2022 10:11:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/post/index.xml" rel="self" type="application/rss+xml"/><item><title>xss入门</title><link>https://nnnewb.github.io/blog/p/xss-day-1/</link><pubDate>Mon, 18 Apr 2022 10:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/xss-day-1/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/post/</link><description>Recent content in Posts on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 19 Apr 2022 11:06:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/post/index.xml" rel="self" type="application/rss+xml"/><item><title>安全入门系列-sql注入</title><link>https://nnnewb.github.io/blog/p/get-start-cyber-security-sql-inject/</link><pubDate>Tue, 19 Apr 2022 11:06:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-cyber-security-sql-inject/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>记得很早以前玩过SQL注入，还在上中学吧好像，拿学校的官网玩。&lt;/p>
+&lt;p>SQL注入是个很老的漏洞了，准确说是开发人员水平太差、相关的库和最佳实践还没传播开的那段时期常出现的 &lt;strong>编程错误&lt;/strong> 。&lt;/p>
+&lt;h2 id="原理">原理&lt;/h2>
+&lt;p>所谓SQL注入就是用户的输入在服务端组织成SQL的时候未经适当地过滤，结果用户输入扭曲了服务端构造的SQL原意，造成错误。&lt;/p>
+&lt;p>比较常见的一种问题就是直接把用户输入拼接到了SQL字符串里。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">handler&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">w&lt;/span> &lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">ResponseWriter&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">req&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">http&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Request&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">row&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">db&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">QueryRow&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">fmt&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Sprintf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;SELECT id FROM user WHERE nickname=&amp;#39;%s&amp;#39;&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">req&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">URL&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Query&lt;/span>&lt;span class="p">()[&lt;/span>&lt;span class="s">&amp;#34;nickname&amp;#34;&lt;/span>&lt;span class="p">]))&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>像是上述的代码，如果用户请求 &lt;code>localhost/user?nickname=weakptr&lt;/code>，拼接的SQL结果就是&lt;code>SELECT id FROM user WHERE nickname='weakptr'&lt;/code>，符合预期。但如果用户请求的是&lt;code>localhost/user?nickname=' UNION SELECT password FROM user WHERE nickname='admin' --&lt;/code>，拼接的SQL就会变成 &lt;code>SELECT id FROM user WHERE nickname='' UNION SELECT password FROM user WHERE nickname='admin' --&lt;/code>，也就是会查出 &lt;code>admin&lt;/code> 用户的 &lt;code>password&lt;/code> 字段。&lt;/p>
+&lt;p>当然这样的注入并不总是能成功，像是上面我用 go 写的 &lt;code>QueryRow&lt;/code>，在 &lt;code>Scan&lt;/code> 的时候传入的变量数量和类型会和被注入的 SQL 不匹配，返回错误。不过这不代表用 Go 就安全了，因为用户完全可以传个 &lt;code>' DROP TABLE user&lt;/code> 删除整个表，或者拼一个 &lt;code>' or 1=1&lt;/code> 让条件恒真，跳过身份认证。&lt;/p>
+&lt;p>对这种问题最好的解决办法就是不要把用户输入直接拼到SQL里，而是用 &lt;code>?&lt;/code> 占位符。&lt;/p>
+&lt;blockquote>
+&lt;p>&lt;a class="link" href="https://dev.mysql.com/doc/refman/8.0/en/sql-prepared-statements.html" target="_blank" rel="noopener"
+>https://dev.mysql.com/doc/refman/8.0/en/sql-prepared-statements.html&lt;/a>&lt;/p>
+&lt;p>Using prepared statements with placeholders for parameter values has the following benefits:&lt;/p>
+&lt;ul>
+&lt;li>Less overhead for parsing the statement each time it is executed. Typically, database applications process large volumes of almost-identical statements, with only changes to literal or variable values in clauses such as &lt;code>WHERE&lt;/code> for queries and deletes, &lt;code>SET&lt;/code> for updates, and &lt;code>VALUES&lt;/code> for inserts.&lt;/li>
+&lt;li>&lt;strong>Protection against SQL injection attacks. The parameter values can contain unescaped SQL quote and delimiter characters.&lt;/strong>&lt;/li>
+&lt;/ul>
+&lt;/blockquote>
+&lt;p>这个特性叫 &lt;code>server-side prepared statement&lt;/code>，在 MySQL 4.1 就引入了。对更古早一些的开发者来说，想写出现安全的服务端代码确实是没有现如今这么轻松的，还得自己关注SQL拼接和转义。而如今像 Go 这样的语言直接把 &lt;code>prepared statement&lt;/code> 写进标准库，当成最佳实践，想写出 bug 都不容易。&lt;/p>
+&lt;p>好了回到正题。&lt;/p>
+&lt;p>其实硬要说起来 SQL 注入如今也不是完全被杜绝了，因为拼 SQL 始终还是有需求的，对自己代码质量有追求的程序猿还是少数。像是 &lt;code>SELECT ... FROM tbl WHERE ... IN (a,b,c,d,e,f)&lt;/code>，&lt;code>IN&lt;/code> 如果要用 &lt;code>prepared statement&lt;/code> 写就至少要维护一个参数列表和 string builder，但如果像是 python 一类语言，就能偷懒成 &lt;code>cond.map(lambda s: f&amp;quot;'{s}'&amp;quot;).join(',')&lt;/code>，省掉一个参数列表和循环，埋下漏洞。&lt;/p>
+&lt;h2 id="漏洞分类">漏洞分类&lt;/h2>
+&lt;h3 id="字符型注入">字符型注入&lt;/h3>
+&lt;p>简而言之，提交的输入类型是字符串的时候（比如&lt;code>nickname&lt;/code>、&lt;code>address&lt;/code>这样的字段），如果存在上面说的漏洞，那就是一个字符型注入漏洞。&lt;/p>
+&lt;p>这里涉及的知识点是 &lt;strong>提交的输入类型&lt;/strong>。对于弱类型语言来说服务端可能没限制前端表单提交的类型，表单是 &lt;code>input type=number&lt;/code> 也接受，字符串也接受，服务端的 web 框架要么推导类型（罕见），要么用客户端的类型（当提交&lt;code>json&lt;/code>一类数据的时候），要么全部当成 &lt;code>bytes&lt;/code>、&lt;code>string&lt;/code>，留给开发者自己处理。&lt;/p>
+&lt;p>比较常规的情况是服务端拿到 &lt;code>request.form&lt;/code> 是一个字典类型（总之就是&lt;code>dict&lt;/code>或&lt;code>map&lt;/code>这样的映射类型，不用抠字眼），值要么全是 &lt;code>string&lt;/code> 要么根据一定条件解析成服务端的数据类型（&lt;code>int&lt;/code>、&lt;code>float&lt;/code>、&lt;code>array&lt;/code>等）。&lt;/p>
+&lt;p>如果服务端没有解析类型，直接往 SQL 里拼，大多时候就是字符型SQL注入；解析了，是个字符串，往 SQL 里拼，也是字符型注入。&lt;/p>
+&lt;p>解析了，不是字符串，再格式化，那就很难控制服务端的SQL了。&lt;/p>
+&lt;h3 id="数字型注入">数字型注入&lt;/h3>
+&lt;p>数字型注入就是放屁。&lt;/p>
+&lt;p>本质依然是你提交的数据没有被服务端检查类型，不管是 &lt;code>int&lt;/code> 还是 &lt;code>string&lt;/code> 直接往 SQL 里拼。非要说和字符型注入的区别就是服务端怎么把自己觉得是数字的内容拼到 SQL 里：&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>WHERE nickname='{nickname}'&lt;/code> 拼字符串的时候为了不出现SQL语法错误，要加上 &lt;code>''&lt;/code> 单引号。&lt;/li>
+&lt;li>&lt;code>WHERE id={id}&lt;/code> 拼数字的时候就不加。&lt;/li>
+&lt;/ul>
+&lt;p>但凡用 &lt;code>sprintf&lt;/code>格式化个&lt;code>%d&lt;/code>，或者拿什么请求验证框架对输入数据做了个类型检查就没数字型注入什么事儿了。&lt;/p>
+&lt;h2 id="注入点">注入点&lt;/h2>
+&lt;h3 id="query">query&lt;/h3>
+&lt;p>就是出现在 URL Query Parameter 里的 SQL 注入点。比如 &lt;code>GET /user_profile?user_id=1&lt;/code>，&lt;code>user_id=1&lt;/code>没过滤，那注入点就在这里。&lt;/p>
+&lt;h3 id="post">post&lt;/h3>
+&lt;p>出现在 post 表单里的注入点，&lt;code>content-type&lt;/code> 是 &lt;code>x-www-form-urlencoded&lt;/code> 还是 &lt;code>multipart/form-data&lt;/code>，亦或者 &lt;code>application/json&lt;/code> 都无关紧要。&lt;/p>
+&lt;p>只要服务端的代码无脑往 SQL 里拼用户输入，那就是注入漏洞。&lt;/p>
+&lt;h3 id="header">header&lt;/h3>
+&lt;p>出现在 HTTP Header 里的注入点，比如在 &lt;code>Cookies&lt;/code> 的什么数据，或者自定义的 HTTP 头字段。牢记 SQL 注入漏洞的本质是服务端拿了这些数据无脑往SQL里拼。&lt;/p>
+&lt;h2 id="攻击手法">攻击手法&lt;/h2>
+&lt;h3 id="报错法">报错法&lt;/h3>
+&lt;p>首先从攻击者的视角看肯定是不知道服务器上数据表怎么设计的，所以一上手就直接传个 &lt;code>' UNION SELECT&lt;/code> 查出管理员账号密码是不太现实的。&lt;/p>
+&lt;p>当通过传 &lt;code>' or 1=1&lt;/code> 或类似的 payload 确认可能存在 SQL 注入点之后，攻击者可以故意制造一些 SQL 错误，看看服务端有没有直接把错误页返回到浏览器。&lt;/p>
+&lt;p>如果服务端没有做好 500 页面处理，直接把面向开发者的错误信息返回给了攻击者，攻击者就能借此获得服务端的信息：比如服务端使用的编程语言、框架、数据库版本、表名等等。如果错误页再人性化一点，比如类型错误顺便打印出变量内容，直接把数据爆出来也有可能。&lt;/p>
+&lt;p>没管好 500 页导致错误爆到前端，这种问题也可能造成 SQL 注入以外的漏洞但不是这篇博客想讨论的内容了。&lt;/p>
+&lt;p>总之报错法攻击就是根据返回的错误信息调整注入的payload，最终构造合法的 SQL 查出攻击者想要的数据。&lt;/p>
+&lt;h3 id="盲注">盲注&lt;/h3>
+&lt;p>对于没有 500 页（注入非法SQL不报错）或者只有一个通用的 500 页（不返回具体错误），此时只能盲注。先确定注入的 SQL 会如何影响页面，比如提交合法 payload 时的页面和提交非法 payload 时的页面有何不同。相当于我们有了一个 bit 的观测窗口。&lt;/p>
+&lt;p>接着只要构造一个合法的 SQL ，比如 &lt;code>' AND username=admin&lt;/code> 等（例子不好，控制了 SQL其实能干的事情太多了）就能一个字符一个字符爆破出用户名和密码（前提是密码没加盐哈希）。&lt;/p>
+&lt;h3 id="读写文件">读写文件&lt;/h3>
+&lt;p>比如服务器运行的是MySQL而且权限配置有问题（比如跑在 root），那就可能直接注入一条 &lt;code>LOAD_FILE/OUT_FILE&lt;/code> 之类的函数，写入 Web Shell 或者读到 &lt;code>/etc/shadow&lt;/code> 之类的敏感文件。&lt;/p>
+&lt;h2 id="工具">工具&lt;/h2>
+&lt;ul>
+&lt;li>sqlmap&lt;/li>
+&lt;/ul>
+&lt;p>只知道这一个。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>现在 SQL 注入的漏洞应该不多了，大概还有些被玩烂了的旧网站依然有这种问题。按现在挖矿的疯狂程度来看，还有这种洞怕是迟早被淦，要么下线要么升级。&lt;/p>
+&lt;p>现代的 web 程序这种问题应该不多了，有好用的 ORM 和各种查询工具还手拼 SQL 干啥呢。&lt;/p>
+&lt;p>挖 ORM 或者那些查询库的洞就是另一码事了。&lt;/p></description></item><item><title>安全入门系列-xss</title><link>https://nnnewb.github.io/blog/p/xss-day-1/</link><pubDate>Mon, 18 Apr 2022 10:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/xss-day-1/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>要是开发拿不到更高薪，继续撞天花板，就打算转安全了。考虑5年开发，以及不止5年的各种学习，想转到安全应该不是太难的事。&lt;/p>
 &lt;p>且不说转不转行，先了解下安全这行总没错。不转行懂点安全也算优势。&lt;/p>
+&lt;blockquote>
+&lt;p>编辑于 2022年4月19日&lt;/p>
+&lt;/blockquote>
+&lt;p>考虑成体系学习，把标题改成了安全入门系列。差不多弄清楚 web 安全主流的攻防方向之后再整理个脑图什么的梳理下怎么深入。&lt;/p>
 &lt;h2 id="xss">XSS&lt;/h2>
 &lt;h3 id="原理">原理&lt;/h3>
 &lt;p>XSS全称 Cross Site Scripting，X 就是 Cross（强行冷笑话）。本质是利用不正常的方式，在网页上插入一段可以执行的 JavaScript 代码，实现窃取 Cookie、冒充用户发送请求之类的操作。&lt;/p>

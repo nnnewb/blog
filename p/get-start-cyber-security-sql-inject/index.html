@@ -1,0 +1,289 @@
+<!doctype html><html lang=zh-cn dir=ltr>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 记得很早以前玩过SQL注入，还在上中学吧好像，拿学校的官网玩。
+SQL注入是个很老的漏洞了，准确说是开发人员水平太差、相关的库和最佳实践还没传播开的那段时期常出现的 编程错误 。
+原理 所谓SQL注入就是用户的输入在服务端组织成SQL的时候未经适当地过滤，结果用户输入扭曲了服务端构造的SQL原意，造成错误。
+比较常见的一种问题就是直接把用户输入拼接到了SQL字符串里。
+func handler(w http.ResponseWriter, req *http.Request) { row := db.QueryRow(fmt.Sprintf(&amp;#34;SELECT id FROM user WHERE nickname=&amp;#39;%s&amp;#39;&amp;#34;, req.URL.Query()[&amp;#34;nickname&amp;#34;])) } 像是上述的代码，如果用户请求 localhost/user?nickname=weakptr，拼接的SQL结果就是SELECT id FROM user WHERE nickname='weakptr'，符合预期。但如果用户请求的是localhost/user?nickname=' UNION SELECT password FROM user WHERE nickname='admin' --，拼接的SQL就会变成 SELECT id FROM user WHERE nickname='' UNION SELECT password FROM user WHERE nickname='admin' --，也就是会查出 admin 用户的 password 字段。
+当然这样的注入并不总是能成功，像是上面我用 go 写的 QueryRow，在 Scan 的时候传入的变量数量和类型会和被注入的 SQL 不匹配，返回错误。不过这不代表用 Go 就安全了，因为用户完全可以传个 ' DROP TABLE user 删除整个表，或者拼一个 ' or 1=1 让条件恒真，跳过身份认证。"><title>安全入门系列-sql注入</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/get-start-cyber-security-sql-inject/>
+<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="安全入门系列-sql注入">
+<meta property="og:description" content="前言 记得很早以前玩过SQL注入，还在上中学吧好像，拿学校的官网玩。
+SQL注入是个很老的漏洞了，准确说是开发人员水平太差、相关的库和最佳实践还没传播开的那段时期常出现的 编程错误 。
+原理 所谓SQL注入就是用户的输入在服务端组织成SQL的时候未经适当地过滤，结果用户输入扭曲了服务端构造的SQL原意，造成错误。
+比较常见的一种问题就是直接把用户输入拼接到了SQL字符串里。
+func handler(w http.ResponseWriter, req *http.Request) { row := db.QueryRow(fmt.Sprintf(&amp;#34;SELECT id FROM user WHERE nickname=&amp;#39;%s&amp;#39;&amp;#34;, req.URL.Query()[&amp;#34;nickname&amp;#34;])) } 像是上述的代码，如果用户请求 localhost/user?nickname=weakptr，拼接的SQL结果就是SELECT id FROM user WHERE nickname='weakptr'，符合预期。但如果用户请求的是localhost/user?nickname=' UNION SELECT password FROM user WHERE nickname='admin' --，拼接的SQL就会变成 SELECT id FROM user WHERE nickname='' UNION SELECT password FROM user WHERE nickname='admin' --，也就是会查出 admin 用户的 password 字段。
+当然这样的注入并不总是能成功，像是上面我用 go 写的 QueryRow，在 Scan 的时候传入的变量数量和类型会和被注入的 SQL 不匹配，返回错误。不过这不代表用 Go 就安全了，因为用户完全可以传个 ' DROP TABLE user 删除整个表，或者拼一个 ' or 1=1 让条件恒真，跳过身份认证。">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/get-start-cyber-security-sql-inject/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="security"><meta property="article:published_time" content="2022-04-19T11:06:00+08:00"><meta property="article:modified_time" content="2022-04-19T11:06:00+08:00">
+<meta name=twitter:title content="安全入门系列-sql注入">
+<meta name=twitter:description content="前言 记得很早以前玩过SQL注入，还在上中学吧好像，拿学校的官网玩。
+SQL注入是个很老的漏洞了，准确说是开发人员水平太差、相关的库和最佳实践还没传播开的那段时期常出现的 编程错误 。
+原理 所谓SQL注入就是用户的输入在服务端组织成SQL的时候未经适当地过滤，结果用户输入扭曲了服务端构造的SQL原意，造成错误。
+比较常见的一种问题就是直接把用户输入拼接到了SQL字符串里。
+func handler(w http.ResponseWriter, req *http.Request) { row := db.QueryRow(fmt.Sprintf(&amp;#34;SELECT id FROM user WHERE nickname=&amp;#39;%s&amp;#39;&amp;#34;, req.URL.Query()[&amp;#34;nickname&amp;#34;])) } 像是上述的代码，如果用户请求 localhost/user?nickname=weakptr，拼接的SQL结果就是SELECT id FROM user WHERE nickname='weakptr'，符合预期。但如果用户请求的是localhost/user?nickname=' UNION SELECT password FROM user WHERE nickname='admin' --，拼接的SQL就会变成 SELECT id FROM user WHERE nickname='' UNION SELECT password FROM user WHERE nickname='admin' --，也就是会查出 admin 用户的 password 字段。
+当然这样的注入并不总是能成功，像是上面我用 go 写的 QueryRow，在 Scan 的时候传入的变量数量和类型会和被注入的 SQL 不匹配，返回错误。不过这不代表用 Go 就安全了，因为用户完全可以传个 ' DROP TABLE user 删除整个表，或者拼一个 ' or 1=1 让条件恒真，跳过身份认证。">
+</head>
+<body class=article-page>
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
+</div>
+</header><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+<li id=dark-mode-toggle><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span>
+</li>
+</div>
+</ol>
+</aside>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/security/>
+security
+</a>
+</header>
+<div class=article-title-wrapper>
+<h2 class=article-title>
+<a href=/blog/p/get-start-cyber-security-sql-inject/>安全入门系列-sql注入</a>
+</h2>
+</div>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2022年 4月 19日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 2 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>记得很早以前玩过SQL注入，还在上中学吧好像，拿学校的官网玩。</p>
+<p>SQL注入是个很老的漏洞了，准确说是开发人员水平太差、相关的库和最佳实践还没传播开的那段时期常出现的 <strong>编程错误</strong> 。</p>
+<h2 id=原理>原理</h2>
+<p>所谓SQL注入就是用户的输入在服务端组织成SQL的时候未经适当地过滤，结果用户输入扭曲了服务端构造的SQL原意，造成错误。</p>
+<p>比较常见的一种问题就是直接把用户输入拼接到了SQL字符串里。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>handler</span><span class=p>(</span><span class=nx>w</span> <span class=nx>http</span><span class=p>.</span><span class=nx>ResponseWriter</span><span class=p>,</span> <span class=nx>req</span> <span class=o>*</span><span class=nx>http</span><span class=p>.</span><span class=nx>Request</span><span class=p>)</span> <span class=p>{</span>
+    <span class=nx>row</span> <span class=o>:=</span> <span class=nx>db</span><span class=p>.</span><span class=nf>QueryRow</span><span class=p>(</span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;SELECT id FROM user WHERE nickname=&#39;%s&#39;&#34;</span><span class=p>,</span> <span class=nx>req</span><span class=p>.</span><span class=nx>URL</span><span class=p>.</span><span class=nf>Query</span><span class=p>()[</span><span class=s>&#34;nickname&#34;</span><span class=p>]))</span>
+<span class=p>}</span>
+</code></pre></div><p>像是上述的代码，如果用户请求 <code>localhost/user?nickname=weakptr</code>，拼接的SQL结果就是<code>SELECT id FROM user WHERE nickname='weakptr'</code>，符合预期。但如果用户请求的是<code>localhost/user?nickname=' UNION SELECT password FROM user WHERE nickname='admin' --</code>，拼接的SQL就会变成 <code>SELECT id FROM user WHERE nickname='' UNION SELECT password FROM user WHERE nickname='admin' --</code>，也就是会查出 <code>admin</code> 用户的 <code>password</code> 字段。</p>
+<p>当然这样的注入并不总是能成功，像是上面我用 go 写的 <code>QueryRow</code>，在 <code>Scan</code> 的时候传入的变量数量和类型会和被注入的 SQL 不匹配，返回错误。不过这不代表用 Go 就安全了，因为用户完全可以传个 <code>' DROP TABLE user</code> 删除整个表，或者拼一个 <code>' or 1=1</code> 让条件恒真，跳过身份认证。</p>
+<p>对这种问题最好的解决办法就是不要把用户输入直接拼到SQL里，而是用 <code>?</code> 占位符。</p>
+<blockquote>
+<p><a class=link href=https://dev.mysql.com/doc/refman/8.0/en/sql-prepared-statements.html target=_blank rel=noopener>https://dev.mysql.com/doc/refman/8.0/en/sql-prepared-statements.html</a></p>
+<p>Using prepared statements with placeholders for parameter values has the following benefits:</p>
+<ul>
+<li>Less overhead for parsing the statement each time it is executed. Typically, database applications process large volumes of almost-identical statements, with only changes to literal or variable values in clauses such as <code>WHERE</code> for queries and deletes, <code>SET</code> for updates, and <code>VALUES</code> for inserts.</li>
+<li><strong>Protection against SQL injection attacks. The parameter values can contain unescaped SQL quote and delimiter characters.</strong></li>
+</ul>
+</blockquote>
+<p>这个特性叫 <code>server-side prepared statement</code>，在 MySQL 4.1 就引入了。对更古早一些的开发者来说，想写出现安全的服务端代码确实是没有现如今这么轻松的，还得自己关注SQL拼接和转义。而如今像 Go 这样的语言直接把 <code>prepared statement</code> 写进标准库，当成最佳实践，想写出 bug 都不容易。</p>
+<p>好了回到正题。</p>
+<p>其实硬要说起来 SQL 注入如今也不是完全被杜绝了，因为拼 SQL 始终还是有需求的，对自己代码质量有追求的程序猿还是少数。像是 <code>SELECT ... FROM tbl WHERE ... IN (a,b,c,d,e,f)</code>，<code>IN</code> 如果要用 <code>prepared statement</code> 写就至少要维护一个参数列表和 string builder，但如果像是 python 一类语言，就能偷懒成 <code>cond.map(lambda s: f"'{s}'").join(',')</code>，省掉一个参数列表和循环，埋下漏洞。</p>
+<h2 id=漏洞分类>漏洞分类</h2>
+<h3 id=字符型注入>字符型注入</h3>
+<p>简而言之，提交的输入类型是字符串的时候（比如<code>nickname</code>、<code>address</code>这样的字段），如果存在上面说的漏洞，那就是一个字符型注入漏洞。</p>
+<p>这里涉及的知识点是 <strong>提交的输入类型</strong>。对于弱类型语言来说服务端可能没限制前端表单提交的类型，表单是 <code>input type=number</code> 也接受，字符串也接受，服务端的 web 框架要么推导类型（罕见），要么用客户端的类型（当提交<code>json</code>一类数据的时候），要么全部当成 <code>bytes</code>、<code>string</code>，留给开发者自己处理。</p>
+<p>比较常规的情况是服务端拿到 <code>request.form</code> 是一个字典类型（总之就是<code>dict</code>或<code>map</code>这样的映射类型，不用抠字眼），值要么全是 <code>string</code> 要么根据一定条件解析成服务端的数据类型（<code>int</code>、<code>float</code>、<code>array</code>等）。</p>
+<p>如果服务端没有解析类型，直接往 SQL 里拼，大多时候就是字符型SQL注入；解析了，是个字符串，往 SQL 里拼，也是字符型注入。</p>
+<p>解析了，不是字符串，再格式化，那就很难控制服务端的SQL了。</p>
+<h3 id=数字型注入>数字型注入</h3>
+<p>数字型注入就是放屁。</p>
+<p>本质依然是你提交的数据没有被服务端检查类型，不管是 <code>int</code> 还是 <code>string</code> 直接往 SQL 里拼。非要说和字符型注入的区别就是服务端怎么把自己觉得是数字的内容拼到 SQL 里：</p>
+<ul>
+<li><code>WHERE nickname='{nickname}'</code> 拼字符串的时候为了不出现SQL语法错误，要加上 <code>''</code> 单引号。</li>
+<li><code>WHERE id={id}</code> 拼数字的时候就不加。</li>
+</ul>
+<p>但凡用 <code>sprintf</code>格式化个<code>%d</code>，或者拿什么请求验证框架对输入数据做了个类型检查就没数字型注入什么事儿了。</p>
+<h2 id=注入点>注入点</h2>
+<h3 id=query>query</h3>
+<p>就是出现在 URL Query Parameter 里的 SQL 注入点。比如 <code>GET /user_profile?user_id=1</code>，<code>user_id=1</code>没过滤，那注入点就在这里。</p>
+<h3 id=post>post</h3>
+<p>出现在 post 表单里的注入点，<code>content-type</code> 是 <code>x-www-form-urlencoded</code> 还是 <code>multipart/form-data</code>，亦或者 <code>application/json</code> 都无关紧要。</p>
+<p>只要服务端的代码无脑往 SQL 里拼用户输入，那就是注入漏洞。</p>
+<h3 id=header>header</h3>
+<p>出现在 HTTP Header 里的注入点，比如在 <code>Cookies</code> 的什么数据，或者自定义的 HTTP 头字段。牢记 SQL 注入漏洞的本质是服务端拿了这些数据无脑往SQL里拼。</p>
+<h2 id=攻击手法>攻击手法</h2>
+<h3 id=报错法>报错法</h3>
+<p>首先从攻击者的视角看肯定是不知道服务器上数据表怎么设计的，所以一上手就直接传个 <code>' UNION SELECT</code> 查出管理员账号密码是不太现实的。</p>
+<p>当通过传 <code>' or 1=1</code> 或类似的 payload 确认可能存在 SQL 注入点之后，攻击者可以故意制造一些 SQL 错误，看看服务端有没有直接把错误页返回到浏览器。</p>
+<p>如果服务端没有做好 500 页面处理，直接把面向开发者的错误信息返回给了攻击者，攻击者就能借此获得服务端的信息：比如服务端使用的编程语言、框架、数据库版本、表名等等。如果错误页再人性化一点，比如类型错误顺便打印出变量内容，直接把数据爆出来也有可能。</p>
+<p>没管好 500 页导致错误爆到前端，这种问题也可能造成 SQL 注入以外的漏洞但不是这篇博客想讨论的内容了。</p>
+<p>总之报错法攻击就是根据返回的错误信息调整注入的payload，最终构造合法的 SQL 查出攻击者想要的数据。</p>
+<h3 id=盲注>盲注</h3>
+<p>对于没有 500 页（注入非法SQL不报错）或者只有一个通用的 500 页（不返回具体错误），此时只能盲注。先确定注入的 SQL 会如何影响页面，比如提交合法 payload 时的页面和提交非法 payload 时的页面有何不同。相当于我们有了一个 bit 的观测窗口。</p>
+<p>接着只要构造一个合法的 SQL ，比如 <code>' AND username=admin</code> 等（例子不好，控制了 SQL其实能干的事情太多了）就能一个字符一个字符爆破出用户名和密码（前提是密码没加盐哈希）。</p>
+<h3 id=读写文件>读写文件</h3>
+<p>比如服务器运行的是MySQL而且权限配置有问题（比如跑在 root），那就可能直接注入一条 <code>LOAD_FILE/OUT_FILE</code> 之类的函数，写入 Web Shell 或者读到 <code>/etc/shadow</code> 之类的敏感文件。</p>
+<h2 id=工具>工具</h2>
+<ul>
+<li>sqlmap</li>
+</ul>
+<p>只知道这一个。</p>
+<h2 id=总结>总结</h2>
+<p>现在 SQL 注入的漏洞应该不多了，大概还有些被玩烂了的旧网站依然有这种问题。按现在挖矿的疯狂程度来看，还有这种洞怕是迟早被淦，要么下线要么升级。</p>
+<p>现代的 web 程序这种问题应该不多了，有好用的 ORM 和各种查询工具还手拼 SQL 干啥呢。</p>
+<p>挖 ORM 或者那些查询库的洞就是另一码事了。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/security/>security</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/xss-day-1/>
+<div class=article-details>
+<h2 class=article-title>安全入门系列-xss</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
+<div id=vssue></div>
+<script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"安全入门系列-sql注入",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 -
+2022 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#原理>原理</a></li>
+<li><a href=#漏洞分类>漏洞分类</a>
+<ol>
+<li><a href=#字符型注入>字符型注入</a></li>
+<li><a href=#数字型注入>数字型注入</a></li>
+</ol>
+</li>
+<li><a href=#注入点>注入点</a>
+<ol>
+<li><a href=#query>query</a></li>
+<li><a href=#post>post</a></li>
+<li><a href=#header>header</a></li>
+</ol>
+</li>
+<li><a href=#攻击手法>攻击手法</a>
+<ol>
+<li><a href=#报错法>报错法</a></li>
+<li><a href=#盲注>盲注</a></li>
+<li><a href=#读写文件>读写文件</a></li>
+</ol>
+</li>
+<li><a href=#工具>工具</a></li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
