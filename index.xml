@@ -1,4 +1,33 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 19 Apr 2022 11:06:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>安全入门系列-sql注入</title><link>https://nnnewb.github.io/blog/p/get-start-cyber-security-sql-inject/</link><pubDate>Tue, 19 Apr 2022 11:06:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-cyber-security-sql-inject/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 20 Apr 2022 15:59:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>安全入门系列-上传漏洞和远程命令执行</title><link>https://nnnewb.github.io/blog/p/get-start-cyber-security-upload-and-remote-command-execution-vulnerability/</link><pubDate>Wed, 20 Apr 2022 15:59:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-cyber-security-upload-and-remote-command-execution-vulnerability/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>迫不及待要找个靶场实践了，抓紧把剩下的两种概念捋一捋。&lt;/p>
+&lt;h2 id="任意文件上传">任意文件上传&lt;/h2>
+&lt;p>上传漏洞本质是&lt;/p>
+&lt;ol>
+&lt;li>可以上传任意类型文件&lt;/li>
+&lt;li>&lt;strong>可以远程执行或利用被上传的文件发起进一步攻击&lt;/strong>&lt;/li>
+&lt;/ol>
+&lt;p>缺一不可。&lt;/p>
+&lt;p>能上传不能利用的情况：&lt;/p>
+&lt;p>举例来说，业务代码里没检查上传文件的 &lt;code>mimetype&lt;/code>，你传了一个包含恶意代码的文件&lt;code>I_am_hacker_hahaha.php&lt;/code>上传到了服务器上，但服务端是一个独立 Go 程序，没有 &lt;code>httpd&lt;/code>也没有&lt;code>nginx&lt;/code>，那任你传什么恶意脚本都没用——根本不会去执行你的代码。&lt;/p>
+&lt;p>能利用但没法上传的情况：&lt;/p>
+&lt;p>比如过滤很完善，会检查文件头的 Magic 之类的。还有一种是服务端用了对象存储服务。阿里云 OSS ，腾讯云 OSS，七牛云。虽然服务器配的是 &lt;code>httpd&lt;/code>+&lt;code>php&lt;/code> 的经典组合，文件名解析漏洞也没补，但上传的文件根本没放服务器上也不行（emm，没依据，不过要是能执行别的服务器上的代码的话就是远程代码执行的大洞了吧）。&lt;/p>
+&lt;p>所以要利用的话，应该要求是：&lt;/p>
+&lt;ol>
+&lt;li>用了 &lt;code>CGI&lt;/code> 这样的协议，传上去的东西有机会被执行。&lt;/li>
+&lt;li>用了动态特性比较强的语言，从 &lt;code>php&lt;/code>、&lt;code>python&lt;/code> 到 &lt;code>java&lt;/code> 都有运行时加载代码的能力。php 不多说，即使静态编译的语言如Java，也有像近期闹得比较大的 Log4J 漏洞，就是利用了运行时加载新代码的能力。更进一步如 &lt;code>Go&lt;/code>、&lt;code>C/C++&lt;/code> 运行时加载代码就要靠共享库&lt;code>dlopen&lt;/code>之类的方法了，用得不多雷也不多。PS: &lt;code>LD_PRELOAD&lt;/code>这里认为不是 &lt;strong>运行时&lt;/strong> 加载代码的方法。&lt;/li>
+&lt;li>有其他被执行的机会，比如能写到 &lt;code>cron.d&lt;/code> 这样的位置，或者有其他可以结合利用的洞，比如有机会控制命令执行时的环境变量，加上任意文件上传，也能利用&lt;code>LD_PRELOAD&lt;/code>之类的方式把上传的 payload 跑起来。&lt;/li>
+&lt;/ol>
+&lt;p>总的来说，未经检查和约束的文件上传接口总是危险的。现在没爆雷，将来某天也可能会爆。&lt;/p>
+&lt;h2 id="远程代码执行">远程代码执行&lt;/h2>
+&lt;h3 id="命令执行">命令执行&lt;/h3>
+&lt;p>也好理解，和 SQL 注入是比较类似的。如果服务端有这样的代码&lt;code>system(&amp;quot;ffmpeg -i /tmp/&amp;quot; + $_REQUEST[&amp;quot;filename&amp;quot;])&lt;/code>，那控制了&lt;code>filename&lt;/code>就能让&lt;code>system&lt;/code>去执行任意命令。&lt;/p>
+&lt;p>比如传一个 &lt;code>filename=|| touch hello&lt;/code>，整条命令就变成了 &lt;code>ffmpeg -i /tmp/|| touch hello&lt;/code>，&lt;code>||&lt;/code> 或运算连接前后两条命令都会被执行。有&lt;code>Linux&lt;/code>环境可以自己试试&lt;code>false||id&lt;/code>看看&lt;code>id&lt;/code>命令会不会跑起来。&lt;/p>
+&lt;h3 id="代码执行">代码执行&lt;/h3>
+&lt;p>代码执行是个很宽泛的概念，因为可以执行的东西太多了。&lt;/p>
+&lt;p>从最最最底层的，利用栈溢出漏洞覆盖返回地址，让进程执行自己期望的代码，到很上层的，利用&lt;code>eval&lt;/code>这样的函数（在&lt;code>php&lt;/code>、&lt;code>nodejs&lt;/code>、&lt;code>python&lt;/code>环境里都有）执行远程代码。&lt;/p>
+&lt;p>还有如&lt;code>dlopen&lt;/code>、java的动态类加载等等，解释执行的语言还可以&lt;code>include&lt;/code>或&lt;code>import&lt;/code>、&lt;code>require&lt;/code>新的代码，等等这些函数的参数如果被用户输入控制的话都会构成远程代码执行的危险。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>其实没什么好总结的，都是些概念性的东西，没有干货。&lt;/p></description></item><item><title>安全入门系列-sql注入</title><link>https://nnnewb.github.io/blog/p/get-start-cyber-security-sql-inject/</link><pubDate>Tue, 19 Apr 2022 11:06:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-cyber-security-sql-inject/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>记得很早以前玩过SQL注入，还在上中学吧好像，拿学校的官网玩。&lt;/p>
 &lt;p>SQL注入是个很老的漏洞了，准确说是开发人员水平太差、相关的库和最佳实践还没传播开的那段时期常出现的 &lt;strong>编程错误&lt;/strong> 。&lt;/p>
 &lt;h2 id="原理">原理&lt;/h2>
