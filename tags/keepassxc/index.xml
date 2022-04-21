@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>keepassxc on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/keepassxc/</link><description>Recent content in keepassxc on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 21 Apr 2022 10:27:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/keepassxc/index.xml" rel="self" type="application/rss+xml"/><item><title>尝鲜keepassxc的ssh集成</title><link>https://nnnewb.github.io/blog/p/keepassxc-ssh-integration/</link><pubDate>Thu, 21 Apr 2022 10:27:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/keepassxc-ssh-integration/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>突发奇想，先前一直把密码存在 keepassxc 里，但 SSH 秘钥是存在 keepassxc 的备注里，用的时候还得先复制出来建个文件，虽然只用折腾一次但还是嫌麻烦。&lt;/p>
+&lt;p>于是想到 keepassxc 自带 SSH 集成，于是研究了下怎么用 SSH 集成在 keepassxc 里保存秘钥对，省掉复制出秘钥内容到文件里的过程，还更安全。&lt;/p>
+&lt;h2 id="过程">过程&lt;/h2>
+&lt;h3 id="平台和选型">平台和选型&lt;/h3>
+&lt;p>首先确定 keepassxc 和 ssh 运行的平台，keepassxc 本体是支持 Windows/MacOS/Linux 三端的，ssh 在Windows上倒是有几种不同的选型。&lt;/p>
+&lt;p>在 Windows 10 Build 1809 版本之后，Windows 已经内置了 OpenSSH 软件，还在用 PuTTY 的可以省掉 PuTTY 了。&lt;/p>
+&lt;p>旧点的 Windows 可以选择 PuTTY 或者装一个基于 MinGW 的 OpenSSH，如 Git-SCM 自带的 OpenSSH 或者 MSYS2、MinGW64 一类。&lt;/p>
+&lt;h3 id="原理">原理&lt;/h3>
+&lt;p>keepassxc 的 ssh 集成本质是主动往 ssh-agent 添加秘钥，ssh 命令从 ssh-agent 读到秘钥，尝试用秘钥连接服务器。表现出的效果就是和直接把秘钥放在 &lt;code>.ssh/id_rsa&lt;/code> 也没什么区别。&lt;/p>
+&lt;p>keepassxc 还支持解锁自动添加和锁定时自动删除，还有超时自动删除，安全性会稍再好一点，可惜 Windows 自带的 OpenSSH 不支持使用秘钥时给用户确认（见 issue &lt;a class="link" href="https://github.com/PowerShell/Win32-OpenSSH/issues/1056" target="_blank" rel="noopener"
+>#1056&lt;/a>），导致开启 keepassxc 的确认功能时会添加秘钥失败。&lt;/p>
+&lt;p>至于 ssh-agent 的原理就略过不提了，可以理解成一个秘钥代理，ssh 自动问 ssh-agent 有什么秘钥可用，就像保管钥匙的管家。&lt;/p>
+&lt;h3 id="配置-openssh">配置 OpenSSH&lt;/h3>
+&lt;p>参考 keepassxc 的文档，先启动 Windows 自带的 OpenSSH 的 ssh-agent 服务。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-powershell" data-lang="powershell">&lt;span class="nb">PS &lt;/span>&lt;span class="n">C:&lt;/span>&lt;span class="p">\&lt;/span>&lt;span class="n">Users&lt;/span>&lt;span class="p">\&lt;/span>&lt;span class="n">user&lt;/span>&lt;span class="p">&amp;gt;&lt;/span> &lt;span class="nb">Get-Service&lt;/span> &lt;span class="nb">ssh-agent&lt;/span> &lt;span class="p">|&lt;/span> &lt;span class="nb">Set-Service&lt;/span> &lt;span class="n">-StartupType&lt;/span> &lt;span class="n">Automatic&lt;/span>
+&lt;span class="nb">PS &lt;/span>&lt;span class="n">C:&lt;/span>&lt;span class="p">\&lt;/span>&lt;span class="n">Users&lt;/span>&lt;span class="p">\&lt;/span>&lt;span class="n">user&lt;/span>&lt;span class="p">&amp;gt;&lt;/span> &lt;span class="nb">Start-Service&lt;/span> &lt;span class="nb">ssh-agent&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>注意上面的命令需要 &lt;strong>管理员权限&lt;/strong> 运行。&lt;/p>
+&lt;p>就是这样！&lt;/p>
+&lt;h3 id="配置-keepassxc">配置 keepassxc&lt;/h3>
+&lt;p>之后在 keepassxc 里打开 ssh 集成，选中 OpenSSH 作为代理。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/sshagent-application-settings.png"
+width="1601"
+height="1218"
+srcset="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/sshagent-application-settings_huf85379ed477f6ac0dbb86a595d8f10b4_56971_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/sshagent-application-settings_huf85379ed477f6ac0dbb86a595d8f10b4_56971_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="sshagent application settings"
+class="gallery-image"
+data-flex-grow="131"
+data-flex-basis="315px"
+>&lt;/p>
+&lt;p>然后添加一个常规的密码记录，在高级里添加秘钥文件，并在 SSH 里启用：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/sshagent-entry-settings.png"
+width="1758"
+height="1374"
+srcset="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/sshagent-entry-settings_huc6b8a73468d62e299570a0a7d6f50725_56080_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/sshagent-entry-settings_huc6b8a73468d62e299570a0a7d6f50725_56080_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="sshagent entry settings"
+class="gallery-image"
+data-flex-grow="127"
+data-flex-basis="307px"
+>&lt;/p>
+&lt;p>注意勾选 &lt;code>Add key to agent when database is opened/unlocked&lt;/code> 和 &lt;code>Remove key from agent when database is closed/locked&lt;/code>，这两个选项会让 keepassxc 解锁的情况下自动在后台添加 SSH 秘钥到 ssh-agent，同时当你关闭 keepassxc 之后 SSH 就无法再从 ssh-agent 拿到秘钥，体验会更自然。&lt;/p>
+&lt;p>如果不勾选这两个选项，也可以手动在设置了 SSH 代理的项目上右击添加到 ssh-agent。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/sshagent-context-menu.png"
+width="1758"
+height="1265"
+srcset="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/sshagent-context-menu_hu5f860989dfb1f00a09b694a656667942_49439_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/sshagent-context-menu_hu5f860989dfb1f00a09b694a656667942_49439_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="sshagent context menu"
+class="gallery-image"
+data-flex-grow="138"
+data-flex-basis="333px"
+>&lt;/p>
+&lt;p>这种方式添加到 ssh-agent 的秘钥不会自动从 ssh-agent 删除或自动添加，每次重启都要自己右键添加，比较麻烦。&lt;/p>
+&lt;h3 id="检查">检查&lt;/h3>
+&lt;p>如何确认配置正确无误？&lt;/p>
+&lt;p>可以通过几个方面：&lt;/p>
+&lt;ol>
+&lt;li>在设置-SSH代理界面，顶部有个绿条，提示 ”SSH代理连接工作正常！“&lt;/li>
+&lt;li>在命令行运行&lt;code>ssh-add -l&lt;/code>，会列出你刚添加的秘钥。&lt;/li>
+&lt;li>尝试&lt;code>ssh&lt;/code>连接你的服务器，公钥登陆成功。&lt;/li>
+&lt;/ol>
+&lt;p>如果 “SSH 代理连接工作正常” 没出现的话可能是 ssh-agent 服务没启动或者有问题，可以 &lt;code>stop-service ssh-agent&lt;/code> 停止 &lt;code>ssh-agent&lt;/code> 这个系统服务后再在命令行运行 &lt;code>ssh-agent -d&lt;/code>，输出调试日志，看看具体什么问题。&lt;/p>
+&lt;p>如果&lt;code>ssh-add -l&lt;/code>没有输出，也是一样，检查&lt;code>ssh-agent&lt;/code>是否在运行，如果在运行但依然没有，用&lt;code>-d&lt;/code>参数启动 ssh-agent 看看添加秘钥的步骤有什么问题。&lt;/p>
+&lt;p>如果 &lt;code>ssh-add -l&lt;/code> 有输出了，但 ssh 连接依然问你要密码，有两种可能：&lt;/p>
+&lt;ol>
+&lt;li>你的 ssh 秘钥有密码保护，一般是 &lt;code>ssh-keygen&lt;/code> 的时候设置的。&lt;/li>
+&lt;li>秘钥被拒绝了。&lt;/li>
+&lt;/ol>
+&lt;p>有密码保护的秘钥 ssh 命令有提示，注意看 ssh 命令的输出就行。秘钥被拒绝的情况表面很难看出来，可以用 &lt;code>-vvv&lt;/code> 参数再运行 ssh 命令，看命令输出。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/image-20220421101423653.png"
+width="1044"
+height="157"
+srcset="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/image-20220421101423653_hu955d457efbed342c16ebd2cc7efa854b_176372_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/image-20220421101423653_hu955d457efbed342c16ebd2cc7efa854b_176372_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220421101423653"
+class="gallery-image"
+data-flex-grow="664"
+data-flex-basis="1595px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/image-20220421101509008.png"
+width="1029"
+height="99"
+srcset="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/image-20220421101509008_hufdb8d068113679e23d2947d5c9dd2a58_103423_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/image-20220421101509008_hufdb8d068113679e23d2947d5c9dd2a58_103423_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220421101509008"
+class="gallery-image"
+data-flex-grow="1039"
+data-flex-basis="2494px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/image-20220421101612311.png"
+width="900"
+height="99"
+srcset="https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/image-20220421101612311_hu416fe79149793836d529a9d87da9135b_46057_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/keepassxc-ssh-integration/image-20220421101612311_hu416fe79149793836d529a9d87da9135b_46057_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220421101612311"
+class="gallery-image"
+data-flex-grow="909"
+data-flex-basis="2181px"
+>&lt;/p>
+&lt;p>如果 &lt;code>will attempt key&lt;/code> 没有出现 &lt;code>ssh-add -l&lt;/code> 列出的秘钥，还可能是因为 &lt;code>.ssh/config&lt;/code> 里，给你要连接的 Host 设置了 &lt;code>IdentitiesOnly yes&lt;/code>。这个设置项会强制 ssh 只使用本地的 &lt;code>.ssh/id_rsa&lt;/code> 等私钥文件。&lt;/p>
+&lt;p>另外 &lt;code>.ssh/config&lt;/code> 里可能还指定了别的验证方式也会导致不使用公钥，这就要靠自己检查 &lt;code>.ssh/config&lt;/code> 来排错了。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>总的来说用 ssh-agent 配合 keepassxc 玩 ssh 还是很舒服的，特别是迁移起来的时候，只要同步和备份 keepassxc 的数据库就完事。&lt;/p>
+&lt;p>keepassxc 的附加文件也非常适合把 GPG 之类的秘钥备份起来，换工作机或者自己电脑重装迁移的时候都能省不少心思。&lt;/p></description></item></channel></rss>

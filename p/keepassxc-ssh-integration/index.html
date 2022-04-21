@@ -1,0 +1,293 @@
+<!doctype html><html lang=zh-cn dir=ltr>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 突发奇想，先前一直把密码存在 keepassxc 里，但 SSH 秘钥是存在 keepassxc 的备注里，用的时候还得先复制出来建个文件，虽然只用折腾一次但还是嫌麻烦。
+于是想到 keepassxc 自带 SSH 集成，于是研究了下怎么用 SSH 集成在 keepassxc 里保存秘钥对，省掉复制出秘钥内容到文件里的过程，还更安全。
+过程 平台和选型 首先确定 keepassxc 和 ssh 运行的平台，keepassxc 本体是支持 Windows/MacOS/Linux 三端的，ssh 在Windows上倒是有几种不同的选型。
+在 Windows 10 Build 1809 版本之后，Windows 已经内置了 OpenSSH 软件，还在用 PuTTY 的可以省掉 PuTTY 了。
+旧点的 Windows 可以选择 PuTTY 或者装一个基于 MinGW 的 OpenSSH，如 Git-SCM 自带的 OpenSSH 或者 MSYS2、MinGW64 一类。
+原理 keepassxc 的 ssh 集成本质是主动往 ssh-agent 添加秘钥，ssh 命令从 ssh-agent 读到秘钥，尝试用秘钥连接服务器。表现出的效果就是和直接把秘钥放在 .ssh/id_rsa 也没什么区别。
+keepassxc 还支持解锁自动添加和锁定时自动删除，还有超时自动删除，安全性会稍再好一点，可惜 Windows 自带的 OpenSSH 不支持使用秘钥时给用户确认（见 issue #1056），导致开启 keepassxc 的确认功能时会添加秘钥失败。"><title>尝鲜keepassxc的ssh集成</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/keepassxc-ssh-integration/>
+<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="尝鲜keepassxc的ssh集成">
+<meta property="og:description" content="前言 突发奇想，先前一直把密码存在 keepassxc 里，但 SSH 秘钥是存在 keepassxc 的备注里，用的时候还得先复制出来建个文件，虽然只用折腾一次但还是嫌麻烦。
+于是想到 keepassxc 自带 SSH 集成，于是研究了下怎么用 SSH 集成在 keepassxc 里保存秘钥对，省掉复制出秘钥内容到文件里的过程，还更安全。
+过程 平台和选型 首先确定 keepassxc 和 ssh 运行的平台，keepassxc 本体是支持 Windows/MacOS/Linux 三端的，ssh 在Windows上倒是有几种不同的选型。
+在 Windows 10 Build 1809 版本之后，Windows 已经内置了 OpenSSH 软件，还在用 PuTTY 的可以省掉 PuTTY 了。
+旧点的 Windows 可以选择 PuTTY 或者装一个基于 MinGW 的 OpenSSH，如 Git-SCM 自带的 OpenSSH 或者 MSYS2、MinGW64 一类。
+原理 keepassxc 的 ssh 集成本质是主动往 ssh-agent 添加秘钥，ssh 命令从 ssh-agent 读到秘钥，尝试用秘钥连接服务器。表现出的效果就是和直接把秘钥放在 .ssh/id_rsa 也没什么区别。
+keepassxc 还支持解锁自动添加和锁定时自动删除，还有超时自动删除，安全性会稍再好一点，可惜 Windows 自带的 OpenSSH 不支持使用秘钥时给用户确认（见 issue #1056），导致开启 keepassxc 的确认功能时会添加秘钥失败。">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/keepassxc-ssh-integration/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="杂谈"><meta property="article:tag" content="keepassxc"><meta property="article:tag" content="ssh"><meta property="article:published_time" content="2022-04-21T10:27:00+08:00"><meta property="article:modified_time" content="2022-04-21T10:27:00+08:00">
+<meta name=twitter:title content="尝鲜keepassxc的ssh集成">
+<meta name=twitter:description content="前言 突发奇想，先前一直把密码存在 keepassxc 里，但 SSH 秘钥是存在 keepassxc 的备注里，用的时候还得先复制出来建个文件，虽然只用折腾一次但还是嫌麻烦。
+于是想到 keepassxc 自带 SSH 集成，于是研究了下怎么用 SSH 集成在 keepassxc 里保存秘钥对，省掉复制出秘钥内容到文件里的过程，还更安全。
+过程 平台和选型 首先确定 keepassxc 和 ssh 运行的平台，keepassxc 本体是支持 Windows/MacOS/Linux 三端的，ssh 在Windows上倒是有几种不同的选型。
+在 Windows 10 Build 1809 版本之后，Windows 已经内置了 OpenSSH 软件，还在用 PuTTY 的可以省掉 PuTTY 了。
+旧点的 Windows 可以选择 PuTTY 或者装一个基于 MinGW 的 OpenSSH，如 Git-SCM 自带的 OpenSSH 或者 MSYS2、MinGW64 一类。
+原理 keepassxc 的 ssh 集成本质是主动往 ssh-agent 添加秘钥，ssh 命令从 ssh-agent 读到秘钥，尝试用秘钥连接服务器。表现出的效果就是和直接把秘钥放在 .ssh/id_rsa 也没什么区别。
+keepassxc 还支持解锁自动添加和锁定时自动删除，还有超时自动删除，安全性会稍再好一点，可惜 Windows 自带的 OpenSSH 不支持使用秘钥时给用户确认（见 issue #1056），导致开启 keepassxc 的确认功能时会添加秘钥失败。">
+</head>
+<body class=article-page>
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
+</div>
+</header><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+<li id=dark-mode-toggle><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span>
+</li>
+</div>
+</ol>
+</aside>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/%E6%9D%82%E8%B0%88/>
+杂谈
+</a>
+</header>
+<div class=article-title-wrapper>
+<h2 class=article-title>
+<a href=/blog/p/keepassxc-ssh-integration/>尝鲜keepassxc的ssh集成</a>
+</h2>
+</div>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2022年 4月 21日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 2 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>突发奇想，先前一直把密码存在 keepassxc 里，但 SSH 秘钥是存在 keepassxc 的备注里，用的时候还得先复制出来建个文件，虽然只用折腾一次但还是嫌麻烦。</p>
+<p>于是想到 keepassxc 自带 SSH 集成，于是研究了下怎么用 SSH 集成在 keepassxc 里保存秘钥对，省掉复制出秘钥内容到文件里的过程，还更安全。</p>
+<h2 id=过程>过程</h2>
+<h3 id=平台和选型>平台和选型</h3>
+<p>首先确定 keepassxc 和 ssh 运行的平台，keepassxc 本体是支持 Windows/MacOS/Linux 三端的，ssh 在Windows上倒是有几种不同的选型。</p>
+<p>在 Windows 10 Build 1809 版本之后，Windows 已经内置了 OpenSSH 软件，还在用 PuTTY 的可以省掉 PuTTY 了。</p>
+<p>旧点的 Windows 可以选择 PuTTY 或者装一个基于 MinGW 的 OpenSSH，如 Git-SCM 自带的 OpenSSH 或者 MSYS2、MinGW64 一类。</p>
+<h3 id=原理>原理</h3>
+<p>keepassxc 的 ssh 集成本质是主动往 ssh-agent 添加秘钥，ssh 命令从 ssh-agent 读到秘钥，尝试用秘钥连接服务器。表现出的效果就是和直接把秘钥放在 <code>.ssh/id_rsa</code> 也没什么区别。</p>
+<p>keepassxc 还支持解锁自动添加和锁定时自动删除，还有超时自动删除，安全性会稍再好一点，可惜 Windows 自带的 OpenSSH 不支持使用秘钥时给用户确认（见 issue <a class=link href=https://github.com/PowerShell/Win32-OpenSSH/issues/1056 target=_blank rel=noopener>#1056</a>），导致开启 keepassxc 的确认功能时会添加秘钥失败。</p>
+<p>至于 ssh-agent 的原理就略过不提了，可以理解成一个秘钥代理，ssh 自动问 ssh-agent 有什么秘钥可用，就像保管钥匙的管家。</p>
+<h3 id=配置-openssh>配置 OpenSSH</h3>
+<p>参考 keepassxc 的文档，先启动 Windows 自带的 OpenSSH 的 ssh-agent 服务。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=nb>PS </span><span class=n>C:</span><span class=p>\</span><span class=n>Users</span><span class=p>\</span><span class=n>user</span><span class=p>&gt;</span> <span class=nb>Get-Service</span> <span class=nb>ssh-agent</span> <span class=p>|</span> <span class=nb>Set-Service</span> <span class=n>-StartupType</span> <span class=n>Automatic</span>
+<span class=nb>PS </span><span class=n>C:</span><span class=p>\</span><span class=n>Users</span><span class=p>\</span><span class=n>user</span><span class=p>&gt;</span> <span class=nb>Start-Service</span> <span class=nb>ssh-agent</span>
+</code></pre></div><p>注意上面的命令需要 <strong>管理员权限</strong> 运行。</p>
+<p>就是这样！</p>
+<h3 id=配置-keepassxc>配置 keepassxc</h3>
+<p>之后在 keepassxc 里打开 ssh 集成，选中 OpenSSH 作为代理。</p>
+<p><img src=/blog/p/keepassxc-ssh-integration/sshagent-application-settings.png width=1601 height=1218 srcset="/blog/p/keepassxc-ssh-integration/sshagent-application-settings_huf85379ed477f6ac0dbb86a595d8f10b4_56971_480x0_resize_box_3.png 480w, /blog/p/keepassxc-ssh-integration/sshagent-application-settings_huf85379ed477f6ac0dbb86a595d8f10b4_56971_1024x0_resize_box_3.png 1024w" loading=lazy alt="sshagent application settings" class=gallery-image data-flex-grow=131 data-flex-basis=315px></p>
+<p>然后添加一个常规的密码记录，在高级里添加秘钥文件，并在 SSH 里启用：</p>
+<p><img src=/blog/p/keepassxc-ssh-integration/sshagent-entry-settings.png width=1758 height=1374 srcset="/blog/p/keepassxc-ssh-integration/sshagent-entry-settings_huc6b8a73468d62e299570a0a7d6f50725_56080_480x0_resize_box_3.png 480w, /blog/p/keepassxc-ssh-integration/sshagent-entry-settings_huc6b8a73468d62e299570a0a7d6f50725_56080_1024x0_resize_box_3.png 1024w" loading=lazy alt="sshagent entry settings" class=gallery-image data-flex-grow=127 data-flex-basis=307px></p>
+<p>注意勾选 <code>Add key to agent when database is opened/unlocked</code> 和 <code>Remove key from agent when database is closed/locked</code>，这两个选项会让 keepassxc 解锁的情况下自动在后台添加 SSH 秘钥到 ssh-agent，同时当你关闭 keepassxc 之后 SSH 就无法再从 ssh-agent 拿到秘钥，体验会更自然。</p>
+<p>如果不勾选这两个选项，也可以手动在设置了 SSH 代理的项目上右击添加到 ssh-agent。</p>
+<p><img src=/blog/p/keepassxc-ssh-integration/sshagent-context-menu.png width=1758 height=1265 srcset="/blog/p/keepassxc-ssh-integration/sshagent-context-menu_hu5f860989dfb1f00a09b694a656667942_49439_480x0_resize_box_3.png 480w, /blog/p/keepassxc-ssh-integration/sshagent-context-menu_hu5f860989dfb1f00a09b694a656667942_49439_1024x0_resize_box_3.png 1024w" loading=lazy alt="sshagent context menu" class=gallery-image data-flex-grow=138 data-flex-basis=333px></p>
+<p>这种方式添加到 ssh-agent 的秘钥不会自动从 ssh-agent 删除或自动添加，每次重启都要自己右键添加，比较麻烦。</p>
+<h3 id=检查>检查</h3>
+<p>如何确认配置正确无误？</p>
+<p>可以通过几个方面：</p>
+<ol>
+<li>在设置-SSH代理界面，顶部有个绿条，提示 ”SSH代理连接工作正常！“</li>
+<li>在命令行运行<code>ssh-add -l</code>，会列出你刚添加的秘钥。</li>
+<li>尝试<code>ssh</code>连接你的服务器，公钥登陆成功。</li>
+</ol>
+<p>如果 “SSH 代理连接工作正常” 没出现的话可能是 ssh-agent 服务没启动或者有问题，可以 <code>stop-service ssh-agent</code> 停止 <code>ssh-agent</code> 这个系统服务后再在命令行运行 <code>ssh-agent -d</code>，输出调试日志，看看具体什么问题。</p>
+<p>如果<code>ssh-add -l</code>没有输出，也是一样，检查<code>ssh-agent</code>是否在运行，如果在运行但依然没有，用<code>-d</code>参数启动 ssh-agent 看看添加秘钥的步骤有什么问题。</p>
+<p>如果 <code>ssh-add -l</code> 有输出了，但 ssh 连接依然问你要密码，有两种可能：</p>
+<ol>
+<li>你的 ssh 秘钥有密码保护，一般是 <code>ssh-keygen</code> 的时候设置的。</li>
+<li>秘钥被拒绝了。</li>
+</ol>
+<p>有密码保护的秘钥 ssh 命令有提示，注意看 ssh 命令的输出就行。秘钥被拒绝的情况表面很难看出来，可以用 <code>-vvv</code> 参数再运行 ssh 命令，看命令输出。</p>
+<p><img src=/blog/p/keepassxc-ssh-integration/image-20220421101423653.png width=1044 height=157 srcset="/blog/p/keepassxc-ssh-integration/image-20220421101423653_hu955d457efbed342c16ebd2cc7efa854b_176372_480x0_resize_box_3.png 480w, /blog/p/keepassxc-ssh-integration/image-20220421101423653_hu955d457efbed342c16ebd2cc7efa854b_176372_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220421101423653 class=gallery-image data-flex-grow=664 data-flex-basis=1595px></p>
+<p><img src=/blog/p/keepassxc-ssh-integration/image-20220421101509008.png width=1029 height=99 srcset="/blog/p/keepassxc-ssh-integration/image-20220421101509008_hufdb8d068113679e23d2947d5c9dd2a58_103423_480x0_resize_box_3.png 480w, /blog/p/keepassxc-ssh-integration/image-20220421101509008_hufdb8d068113679e23d2947d5c9dd2a58_103423_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220421101509008 class=gallery-image data-flex-grow=1039 data-flex-basis=2494px></p>
+<p><img src=/blog/p/keepassxc-ssh-integration/image-20220421101612311.png width=900 height=99 srcset="/blog/p/keepassxc-ssh-integration/image-20220421101612311_hu416fe79149793836d529a9d87da9135b_46057_480x0_resize_box_3.png 480w, /blog/p/keepassxc-ssh-integration/image-20220421101612311_hu416fe79149793836d529a9d87da9135b_46057_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220421101612311 class=gallery-image data-flex-grow=909 data-flex-basis=2181px></p>
+<p>如果 <code>will attempt key</code> 没有出现 <code>ssh-add -l</code> 列出的秘钥，还可能是因为 <code>.ssh/config</code> 里，给你要连接的 Host 设置了 <code>IdentitiesOnly yes</code>。这个设置项会强制 ssh 只使用本地的 <code>.ssh/id_rsa</code> 等私钥文件。</p>
+<p>另外 <code>.ssh/config</code> 里可能还指定了别的验证方式也会导致不使用公钥，这就要靠自己检查 <code>.ssh/config</code> 来排错了。</p>
+<h2 id=总结>总结</h2>
+<p>总的来说用 ssh-agent 配合 keepassxc 玩 ssh 还是很舒服的，特别是迁移起来的时候，只要同步和备份 keepassxc 的数据库就完事。</p>
+<p>keepassxc 的附加文件也非常适合把 GPG 之类的秘钥备份起来，换工作机或者自己电脑重装迁移的时候都能省不少心思。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/%E6%9D%82%E8%B0%88/>杂谈</a>
+<a href=/blog/tags/keepassxc/>keepassxc</a>
+<a href=/blog/tags/ssh/>ssh</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/first-blog-in-2022/>
+<div class=article-details>
+<h2 class=article-title>2022新年第一篇博客</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/2021-11-4-diary/>
+<div class=article-details>
+<h2 class=article-title>一些屁话 2021年11月4日</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/2021-04-25-%E6%97%A0%E4%BA%8B%E5%8F%91%E7%94%9F/>
+<div class=article-details>
+<h2 class=article-title>2021-04-25 无事发生</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/%E5%85%B3%E4%BA%8E%E7%AC%94%E8%AE%B0%E7%9A%84%E8%80%83%E8%99%91/>
+<div class=article-details>
+<h2 class=article-title>关于笔记的考虑</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/an-api-response-time-optimize/>
+<div class=article-details>
+<h2 class=article-title>记一次API响应时间优化</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
+<div id=vssue></div>
+<script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"尝鲜keepassxc的ssh集成",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 -
+2022 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#过程>过程</a>
+<ol>
+<li><a href=#平台和选型>平台和选型</a></li>
+<li><a href=#原理>原理</a></li>
+<li><a href=#配置-openssh>配置 OpenSSH</a></li>
+<li><a href=#配置-keepassxc>配置 keepassxc</a></li>
+<li><a href=#检查>检查</a></li>
+</ol>
+</li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
