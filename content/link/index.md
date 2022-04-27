@@ -12,4 +12,4 @@ title: 友链
 
 厚颜无耻地介绍下我关注的几个大佬：
 
-- 安全领域大佬，p大的博客：[离歌颂](https://leavesongs.com)
+- 安全领域大佬，p大的博客：[离别歌](https://leavesongs.com)
