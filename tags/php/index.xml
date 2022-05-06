@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>php on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/php/</link><description>Recent content in php on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 06 May 2022 11:06:52 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/php/index.xml" rel="self" type="application/rss+xml"/><item><title>一个有点离谱的trick</title><link>https://nnnewb.github.io/blog/p/a-trick-that-was-a-bit-off/</link><pubDate>Fri, 06 May 2022 11:06:52 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/a-trick-that-was-a-bit-off/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>打 red tiger 靶场的时候遇到一个有点怪的 trick ，慢慢道来。&lt;/p>
+&lt;p>level 3 里会拿到一个 php 文件，里面有加密/解密算法。算法本身不算怪，就是个简单的 xor ，比较怪的是秘钥流的生成算法，还有涉及到的密码学内容。&lt;/p>
+&lt;h2 id="正文">正文&lt;/h2>
+&lt;h3 id="解密算法">解密算法&lt;/h3>
+&lt;p>先看解密的算法。&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-php" data-lang="php">&lt;span class="k">function&lt;/span> &lt;span class="nf">decrypt&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nv">$str&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="nx">srand&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">3284724&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">preg_match&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;%^[a-zA-Z0-9/+]*={0,2}$%&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="nv">$str&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="nv">$str&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nx">base64_decode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nv">$str&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nv">$str&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="s2">&amp;#34;&amp;#34;&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="nv">$str&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="k">null&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="nv">$str&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="k">false&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="c1">// 前面都是参数验证，下面才是真正的解密
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nv">$decStr&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s2">&amp;#34;&amp;#34;&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// 把字符串按3个字符一组分割
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 比如 123456789 分割成数组 123,456,789
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 密文每3位表示一个明文字符
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nv">$i&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="nv">$i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="nx">strlen&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nv">$str&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="nv">$i&lt;/span>&lt;span class="o">+=&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="nv">$array&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nv">$i&lt;/span>&lt;span class="o">/&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nx">substr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nv">$str&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="nv">$i&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 有趣的地方：伪随机数 xor 密文完成解密。
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">foreach&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nv">$array&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="nv">$s&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">{&lt;/span>
+&lt;span class="nv">$a&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nv">$s&lt;/span> &lt;span class="o">^&lt;/span> &lt;span class="nx">rand&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">255&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="nv">$decStr&lt;/span> &lt;span class="o">.=&lt;/span> &lt;span class="nx">chr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nv">$a&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nv">$decStr&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="k">false&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="k">false&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>我加了点注释。接着说说为什么有趣。&lt;/p>
+&lt;h3 id="伪随机数">伪随机数&lt;/h3>
+&lt;blockquote>
+&lt;p>口胡警告。&lt;/p>
+&lt;/blockquote>
+&lt;p>首先显而易见，接触过随机数函数都应该知道什么叫 &lt;em>伪随机&lt;/em> ，基本伪随机数函数的文档都会给个密码学相关的警告，一般说的是这个函数不能生成在密码学而言安全的随机数。php 的 &lt;code>rand&lt;/code> 函数也有个这样的警告。&lt;/p>
+&lt;blockquote>
+&lt;p>This function does not generate cryptographically secure values, and should not be used for cryptographic purposes. If you need a cryptographically secure value, consider using &lt;a class="link" href="https://www.php.net/manual/en/function.random-int.php" target="_blank" rel="noopener"
+>random_int()&lt;/a>, &lt;a class="link" href="https://www.php.net/manual/en/function.random-bytes.php" target="_blank" rel="noopener"
+>random_bytes()&lt;/a>, or &lt;a class="link" href="https://www.php.net/manual/en/function.openssl-random-pseudo-bytes.php" target="_blank" rel="noopener"
+>openssl_random_pseudo_bytes()&lt;/a> instead.&lt;/p>
+&lt;/blockquote>
+&lt;p>这就涉及所谓 &lt;em>伪随机&lt;/em> 的本质了。伪随机数之所以是 &lt;em>伪&lt;/em> 的，是因为其内部实现是一个让生成数字尽可能平均地分布到值域里的算法，如果给定输入则经过这个算法会得到固定的输出序列。对于不够强的伪随机数算法，得到一定数量的随机值后可以猜出随机种子或未来会出现的某个随机值的话，显然是不安全的。比如用作秘钥生成或者 &lt;code>nonce&lt;/code> 之类的场景。&lt;/p>
+&lt;p>不过提到“不够强”，自然也有够强的伪随机数算法。也就是密码学安全的伪随机数生成器 &lt;em>cryptographically-secure pseudorandom number generator, CSPRNG or CPRNG&lt;/em>。参考 wiki 定义如下。&lt;/p>
+&lt;blockquote>
+&lt;p>除了满足统计学伪随机性外，还需满足“不能通过给定的随机序列的一部分而以显著大于 1/2 的概率在多项式时间内演算出比特序列的任何其他部分。”&lt;/p>
+&lt;/blockquote>
+&lt;p>真的不是很懂所以就不瞎扯了，继续说为啥有意思。&lt;code>rand&lt;/code> 函数产生的是一个 &lt;strong>随机序列&lt;/strong> ，然后这个序列被用来加密和解密，而且这个随机序列理论上来说是无限长的，而前述解密算法利用随机序列作为秘钥流解密密文。这就让人想到了另一个有意思的事情，&lt;em>一次一密&lt;/em>。&lt;/p>
+&lt;h3 id="一次一密">一次一密&lt;/h3>
+&lt;p>密码学入门教材应该有说过，一次一密是无条件安全的，统计学攻击对一次一密无效。但一次一密的难点在于如何传递或约定秘钥流，毕竟密文可以无条件安全，秘钥传递不行。如果是约定一个很长的秘钥流重复使用，那一次一密就退化成了MTP，获取到足够数量的密文还是可以被攻击。&lt;/p>
+&lt;p>上面的解密算法有趣的地方就在于使用了 &lt;code>rand&lt;/code> 产生的随机数序列作为秘钥，如果再稍微改进一下，&lt;code>$_SESSION&lt;/code>里记录&lt;code>rand&lt;/code>的步数，完全可以实现伪一次一密，每次返回给浏览器的密文都不相同，凭密文也找不出规律。不过这样靶场难度就太高了=。=对我来说。&lt;/p>
+&lt;p>对上面给出的解密算法只能算是 MTP，虽然秘钥长度是无限的，但加密总是在用前 N 个数当秘钥。如果已知明文再多一点的话即使不拿到这个加密/解密算法也可以简单拼凑下密文发起攻击（因为 xor 是简单的替代密码，没有置换）。&lt;/p>
+&lt;h3 id="随机数平台版本差异">随机数平台/版本差异&lt;/h3>
+&lt;p>回到题目本身，这个解密算法其实不是那么可移植。我验证了一下，在 Windows 下 php 5.4 &lt;code>rand&lt;/code> 产生的序列和 Linux 下 php 5.6 &lt;code>rand&lt;/code> 产生的序列是不同的。直接把上面的解密算法在 Windows 下跑无法正常解密。&lt;/p>
+&lt;p>同时，php 5 的随机数算法和 php 7/8 的随机数算法又不一样，产生的序列不同。升级 php 版本也会导致原先加密的内容无法解密。&lt;/p>
+&lt;p>最终用在线沙盒解决了问题。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>代码跑不起来注意下平台和版本差异，我觉得干过几年自己搭过项目环境都应该知道怎么回事吧&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>其他就是闲扯淡没什么好总结的，密码学的东西只看了点基础的，写不出证明也没怎么接触过什么正经实现。非要说的话就是比啥也不懂好一点。&lt;/p></description></item></channel></rss>
