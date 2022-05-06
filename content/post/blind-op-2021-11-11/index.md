@@ -58,3 +58,44 @@ networkctl
 
 我总结个蛋。
 
+> 2022年5月6日 补充
+>
+> 发现问题本源是 netplan 配置未正确生成，dhclient 是暂时性解决。彻底解决的办法是在 `/etc/netplan` 添加 `01-netcfg.yaml`，内容如下：
+>
+> ```yaml
+> network:
+> 	version: 2
+> 	renderer: networkd
+> 	ethernets:
+> 		enp0s3:
+> 			dhcp4: true
+> ```
+>
+> 注意 `enp0s3` 改成你自己的以太网连接名，用 `networkctl` 或者 `ip show addr` 都能列出来。
+>
+> 文件添加好之后用命令：
+>
+> ```bash
+> sudo netplan generate
+> sudo netplan apply
+> ```
+>
+> 就好了。之后重启vm再运行
+>
+> ```bash
+> networkctl
+> ```
+>
+> 可以看到
+>
+> ```plaintext
+> IDX LINK            TYPE     OPERATIONAL SETUP
+>   1 lo              loopback carrier     unmanaged
+>   2 enp0s3          ether    routable    configured
+>   3 docker0         bridge   no-carrier  unmanaged
+>   4 br-e2b0cf462af2 bridge   no-carrier  unmanaged
+> 
+> 4 links listed.
+> ```
+>
+> 注意 `enp0s3` 已经变成了 `configured` 状态，确认问题彻底处理完毕。
