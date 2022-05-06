@@ -1,26 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 总得有个前言。
-用 nasm 手工打造了一个 PE 文件后，这个 PE 文件还没什么卵用。如果要动 IAT，又嫌麻烦。网上冲浪找到一篇关于 shellcode 的文章，讲如何在内存里找到 kernel32.dll 并调用 WinExec 函数，于是就想实践一下看看，实际抄代码碰到不少坑。对汇编又熟悉了一点。
-0x01 寻找 kernel32 微软有一篇很简短的文章。
- The Thread Environment Block (TEB structure) holds context information for a thread.
-In the following versions of Windows, the offset of the 32-bit TEB address within the 64-bit TEB is 0. This can be used to directly access the 32-bit TEB of a WOW64 thread. This might change in later versions of Windows"><title>关于在内存里找kernel32这件事</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 总得有个前言。 用 nasm 手工打造了一个 PE 文件后，这个 PE 文件还没什么卵用。如果要动 IAT，又嫌麻烦。网上冲浪找到一篇关于 shellcode 的文章，讲如何在内存里"><title>关于在内存里找kernel32这件事</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/find-kernel32-in-memory/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="关于在内存里找kernel32这件事">
-<meta property="og:description" content="前言 总得有个前言。
-用 nasm 手工打造了一个 PE 文件后，这个 PE 文件还没什么卵用。如果要动 IAT，又嫌麻烦。网上冲浪找到一篇关于 shellcode 的文章，讲如何在内存里找到 kernel32.dll 并调用 WinExec 函数，于是就想实践一下看看，实际抄代码碰到不少坑。对汇编又熟悉了一点。
-0x01 寻找 kernel32 微软有一篇很简短的文章。
- The Thread Environment Block (TEB structure) holds context information for a thread.
-In the following versions of Windows, the offset of the 32-bit TEB address within the 64-bit TEB is 0. This can be used to directly access the 32-bit TEB of a WOW64 thread. This might change in later versions of Windows">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="关于在内存里找kernel32这件事">
+<meta property="og:description" content="前言 总得有个前言。 用 nasm 手工打造了一个 PE 文件后，这个 PE 文件还没什么卵用。如果要动 IAT，又嫌麻烦。网上冲浪找到一篇关于 shellcode 的文章，讲如何在内存里">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/find-kernel32-in-memory/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="汇编"><meta property="article:tag" content="逆向"><meta property="article:tag" content="Windows"><meta property="article:published_time" content="2021-10-14T16:31:00+08:00"><meta property="article:modified_time" content="2021-10-14T16:31:00+08:00">
 <meta name=twitter:title content="关于在内存里找kernel32这件事">
-<meta name=twitter:description content="前言 总得有个前言。
-用 nasm 手工打造了一个 PE 文件后，这个 PE 文件还没什么卵用。如果要动 IAT，又嫌麻烦。网上冲浪找到一篇关于 shellcode 的文章，讲如何在内存里找到 kernel32.dll 并调用 WinExec 函数，于是就想实践一下看看，实际抄代码碰到不少坑。对汇编又熟悉了一点。
-0x01 寻找 kernel32 微软有一篇很简短的文章。
- The Thread Environment Block (TEB structure) holds context information for a thread.
-In the following versions of Windows, the offset of the 32-bit TEB address within the 64-bit TEB is 0. This can be used to directly access the 32-bit TEB of a WOW64 thread. This might change in later versions of Windows">
+<meta name=twitter:description content="前言 总得有个前言。 用 nasm 手工打造了一个 PE 文件后，这个 PE 文件还没什么卵用。如果要动 IAT，又嫌麻烦。网上冲浪找到一篇关于 shellcode 的文章，讲如何在内存里">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -41,7 +29,12 @@ In the following versions of Windows, the offset of the 32-bit TEB address withi
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -65,6 +58,11 @@ In the following versions of Windows, the offset of the 32-bit TEB address withi
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -94,7 +92,7 @@ In the following versions of Windows, the offset of the 32-bit TEB address withi
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 12 分钟
+阅读时长: 13 分钟
 </time>
 </div>
 </footer>
@@ -112,7 +110,23 @@ In the following versions of Windows, the offset of the 32-bit TEB address withi
 </blockquote>
 <p>另外在<a class=link href=https://en.wikipedia.org/wiki/Win32_Thread_Information_Block target=_blank rel=noopener>维基百科页面</a>也有一点概述，<em>TIB</em> 就是 <em>TEB</em> 。<em>TIB</em> 全称是 <em>Thread Information Block</em> ，<em>TEB</em> 是 <em>Thread Environment Block</em> 。</p>
 <p>关于 <em>TIB</em> 和 <em>TEB</em> 的微软官方文档和文章链接很多都失效了，能找到的相关信息不多。但是微软至少还<a class=link href=https://docs.microsoft.com/en-us/windows/win32/api/winternl/ns-winternl-teb target=_blank rel=noopener>给出了 TEB 的结构定义</a>吧（在Windows SDK 里）。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=k>typedef</span> <span class=k>struct</span> <span class=nc>_TEB</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=k>typedef</span> <span class=k>struct</span> <span class=nc>_TEB</span> <span class=p>{</span>
   <span class=n>PVOID</span> <span class=n>Reserved1</span><span class=p>[</span><span class=mi>12</span><span class=p>];</span>
   <span class=n>PPEB</span>  <span class=n>ProcessEnvironmentBlock</span><span class=p>;</span>
   <span class=n>PVOID</span> <span class=n>Reserved2</span><span class=p>[</span><span class=mi>399</span><span class=p>];</span>
@@ -124,8 +138,73 @@ In the following versions of Windows, the offset of the 32-bit TEB address withi
   <span class=n>PVOID</span> <span class=n>Reserved6</span><span class=p>[</span><span class=mi>4</span><span class=p>];</span>
   <span class=n>PVOID</span> <span class=n>TlsExpansionSlots</span><span class=p>;</span>
 <span class=p>}</span> <span class=n>TEB</span><span class=p>,</span> <span class=o>*</span><span class=n>PTEB</span><span class=p>;</span>
-</code></pre></div><p>大量的刺眼的 <code>Reserved</code> 。不过还好，花了点时间还是谷歌出了所谓的<code>Undocumented</code>的相关信息。<a class=link href="http://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FNT%20Objects%2FThread%2FTEB.html" target=_blank rel=noopener>NTAPI Undocumented Function</a>。也可以像我看的那篇文章一样，用 <code>WinDbg Preview</code> 去实际看看内存里的结构。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=k>typedef</span> <span class=k>struct</span> <span class=nc>_TEB</span> <span class=p>{</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>大量的刺眼的 <code>Reserved</code> 。不过还好，花了点时间还是谷歌出了所谓的<code>Undocumented</code>的相关信息。<a class=link href="http://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FNT%20Objects%2FThread%2FTEB.html" target=_blank rel=noopener>NTAPI Undocumented Function</a>。也可以像我看的那篇文章一样，用 <code>WinDbg Preview</code> 去实际看看内存里的结构。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=k>typedef</span> <span class=k>struct</span> <span class=nc>_TEB</span> <span class=p>{</span>
   <span class=n>NT_TIB</span>                  <span class=n>Tib</span><span class=p>;</span>
   <span class=n>PVOID</span>                   <span class=n>EnvironmentPointer</span><span class=p>;</span>
   <span class=n>CLIENT_ID</span>               <span class=n>Cid</span><span class=p>;</span>
@@ -184,11 +263,73 @@ In the following versions of Windows, the offset of the 32-bit TEB address withi
   <span class=n>PVOID</span>                   <span class=n>StackCommitMax</span><span class=p>;</span>
   <span class=n>PVOID</span>                   <span class=n>StackReserved</span><span class=p>;</span>
 <span class=p>}</span> <span class=n>TEB</span><span class=p>,</span> <span class=o>*</span><span class=n>PTEB</span><span class=p>;</span>
-</code></pre></div><p>不过依然没什么卵用，因为在乎的只有 PPEB 这个字段。好吧，点到为止。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>不过依然没什么卵用，因为在乎的只有 PPEB 这个字段。好吧，点到为止。</p>
 <p>在那篇文章的原文里，给出的找到 kernel32.dll 的查找路径是这样的：<code>TEB->PEB->Ldr->InMemoryOrderLoadList->currentProgram->ntdll->kernel32.BaseDll</code></p>
 <h3 id=11--process-environment-block>1.1 Process Environment Block</h3>
 <p>从 TEB 出发，找到 PEB <code>(12*sizeof PVOID)==48==0x30</code> 。PEB 的结构如下，文档参考<a class=link href="http://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FNT%20Objects%2FProcess%2FPEB.html" target=_blank rel=noopener>这个</a>。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=k>typedef</span> <span class=k>struct</span> <span class=nc>_PEB</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=k>typedef</span> <span class=k>struct</span> <span class=nc>_PEB</span> <span class=p>{</span>
   <span class=n>BOOLEAN</span>                 <span class=n>InheritedAddressSpace</span><span class=p>;</span>
   <span class=n>BOOLEAN</span>                 <span class=n>ReadImageFileExecOptions</span><span class=p>;</span>
   <span class=n>BOOLEAN</span>                 <span class=n>BeingDebugged</span><span class=p>;</span>
@@ -244,10 +385,24 @@ In the following versions of Windows, the offset of the 32-bit TEB address withi
   <span class=n>BYTE</span>                    <span class=n>TlsExpansionBitmapBits</span><span class=p>[</span><span class=mh>0x80</span><span class=p>];</span>
   <span class=n>ULONG</span>                   <span class=n>SessionId</span><span class=p>;</span>
 <span class=p>}</span> <span class=n>PEB</span><span class=p>,</span> <span class=o>*</span><span class=n>PPEB</span><span class=p>;</span>
-</code></pre></div><p>接着从 PEB 找到 <code>Ldr</code>，位置是 <code>(sizeof(BOOLEAN)*4+sizeof(HANDLE)+sizeof(PVOID))==12==0xc</code>。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>接着从 PEB 找到 <code>Ldr</code>，位置是 <code>(sizeof(BOOLEAN)*4+sizeof(HANDLE)+sizeof(PVOID))==12==0xc</code>。</p>
 <h3 id=12-peb_ldr_data>1.2 PEB_LDR_DATA</h3>
 <p>接着从 <code>PEB_LDR_DATA</code> 结构里找 <code>InMemoryOrderModuleList</code> 这个字段，<code>PEB_LDR_DATA</code> 结构如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=k>typedef</span> <span class=k>struct</span> <span class=nc>_PEB_LDR_DATA</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=k>typedef</span> <span class=k>struct</span> <span class=nc>_PEB_LDR_DATA</span> <span class=p>{</span>
   <span class=n>ULONG</span>                   <span class=n>Length</span><span class=p>;</span>
   <span class=n>BOOLEAN</span>                 <span class=n>Initialized</span><span class=p>;</span>
   <span class=n>PVOID</span>                   <span class=n>SsHandle</span><span class=p>;</span>
@@ -255,16 +410,93 @@ In the following versions of Windows, the offset of the 32-bit TEB address withi
   <span class=n>LIST_ENTRY</span>              <span class=n>InMemoryOrderModuleList</span><span class=p>;</span>
   <span class=n>LIST_ENTRY</span>              <span class=n>InInitializationOrderModuleList</span><span class=p>;</span>
 <span class=p>}</span> <span class=n>PEB_LDR_DATA</span><span class=p>,</span> <span class=o>*</span><span class=n>PPEB_LDR_DATA</span><span class=p>;</span>
-</code></pre></div><p>找到<code>InMemoryOrderModuleList</code>字段，位置是<code>(sizeof(ULONG)+sizeof(BOOLEAN)+sizeof(PVOID)+sizeof(LIST_ENTRY))==20==0x14</code></p>
+</code></pre></td></tr></table>
+</div>
+</div><p>找到<code>InMemoryOrderModuleList</code>字段，位置是<code>(sizeof(ULONG)+sizeof(BOOLEAN)+sizeof(PVOID)+sizeof(LIST_ENTRY))==20==0x14</code></p>
 <p>注意 <code>sizeof(BOOLEAN)</code> 是 <code>BYTE</code> 类型，但这个结构体是被对齐到了4字节的，所以 BOOLEAN 字段后面实际有3个字节的 padding。合起来就是三个 DWORD 。</p>
 <h3 id=13-ldr_data_table_entry>1.3 LDR_DATA_TABLE_ENTRY</h3>
 <p>之后就是 LIST_ENTRY 这个结构了，用 WinDbg 查了下结构：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plain data-lang=plain>0:000&gt; dt _LIST_ENTRY
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plain data-lang=plain>0:000&gt; dt _LIST_ENTRY
 ntdll!_LIST_ENTRY
    +0x000 Flink            : Ptr32 _LIST_ENTRY
    +0x004 Blink            : Ptr32 _LIST_ENTRY
-</code></pre></div><p>根据上面 <em>Undocumented</em> 文档和原文章的叙述来看，这应该就是个指向 <code>_LDR_DATA_TABLE_ENTRY</code> 结构（双向链表）的指针。<code>_LIST_ENTRY</code>结构本身是包含两个指针，一个<code>Forward</code>正向指针，一个<code>Backward</code>。所以我们取<code>Flink</code>字段就可以，跳过<code>InLoadOrderModuleList</code>这个字段后，一共偏移 <code>0x14</code> 就是我们要的 <code>Flink</code> 指针了，指向的应该是 <code>_LDR_DATA_TABLE_ENTRY</code> 这个结构体中的 <code>InMemoryOrderLinks</code> 字段。下面给出<code>_LDR_DATA_TABLE_ENTRY</code>的结构（WinDbg）。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plain data-lang=plain>0:000&gt; dt _ldr_data_table_entry
+</code></pre></td></tr></table>
+</div>
+</div><p>根据上面 <em>Undocumented</em> 文档和原文章的叙述来看，这应该就是个指向 <code>_LDR_DATA_TABLE_ENTRY</code> 结构（双向链表）的指针。<code>_LIST_ENTRY</code>结构本身是包含两个指针，一个<code>Forward</code>正向指针，一个<code>Backward</code>。所以我们取<code>Flink</code>字段就可以，跳过<code>InLoadOrderModuleList</code>这个字段后，一共偏移 <code>0x14</code> 就是我们要的 <code>Flink</code> 指针了，指向的应该是 <code>_LDR_DATA_TABLE_ENTRY</code> 这个结构体中的 <code>InMemoryOrderLinks</code> 字段。下面给出<code>_LDR_DATA_TABLE_ENTRY</code>的结构（WinDbg）。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plain data-lang=plain>0:000&gt; dt _ldr_data_table_entry
 ntdll!_LDR_DATA_TABLE_ENTRY
    +0x000 InLoadOrderLinks : _LIST_ENTRY
    +0x008 InMemoryOrderLinks : _LIST_ENTRY
@@ -325,7 +557,9 @@ ntdll!_LDR_DATA_TABLE_ENTRY
    +0x09c ReferenceCount   : Uint4B
    +0x0a0 DependentLoadFlags : Uint4B
    +0x0a4 SigningLevel     : UChar
-</code></pre></div><p>要注意到 <code>_LDR_DATA_TABLE_ENTRY</code> 结构中的 <code>InMemoryOrderLinks</code> 并不是在结构开头，所以取得的地址必须先减去这个偏移值（8字节）再转换类型才是正确的结构。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>要注意到 <code>_LDR_DATA_TABLE_ENTRY</code> 结构中的 <code>InMemoryOrderLinks</code> 并不是在结构开头，所以取得的地址必须先减去这个偏移值（8字节）再转换类型才是正确的结构。</p>
 <h3 id=14-模块基址>1.4 模块基址</h3>
 <p>接着从 WinDbg 可以实际发现，这个链表里，我们的程序之后就是<code>ntdll.dll</code>，再之后就是<code>kernel32.dll</code>，不再演示。反正就当<code>kernel32.dll</code>固定在这个链表的第三个元素就是了。真要高鲁棒性的话就得遍历这个链表，按名字找出 <code>kernel32.dll</code> 对应的结构，再取地址——麻烦死了。</p>
 <p>取得 <code>kernel32.dll</code> 对应的 <code>_LDR_DATA_TABLE_ENTRY</code> 结构后，就可以提取其中的 <code>DllBase</code> 字段了，这个字段就是 <code>kernel32.dll</code> 的基址。</p>
@@ -333,7 +567,28 @@ ntdll!_LDR_DATA_TABLE_ENTRY
 <p>谷歌一下不难找到，Win32程序进程地址空间里，TEB的地址就在 <code>[fs:0]</code> 这个地址上。</p>
 <h3 id=16-获取-kernel-32-基址>1.6 获取 kernel 32 基址</h3>
 <p>那就开始写汇编。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>section</span> <span class=no>.text</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>section</span> <span class=no>.text</span>
     <span class=nf>global</span> <span class=no>_main</span>
 <span class=nl>_main:</span>
     <span class=nf>push</span> <span class=no>ebp</span>
@@ -350,10 +605,20 @@ ntdll!_LDR_DATA_TABLE_ENTRY
     <span class=nf>xor</span> <span class=no>eax</span><span class=p>,</span><span class=no>eax</span>
     <span class=nf>pop</span> <span class=no>ebp</span>
     <span class=nf>retn</span>
-</code></pre></div><p>用 MinGW 编译。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>nasm main.asm -f win32 -o main.o
+</code></pre></td></tr></table>
+</div>
+</div><p>用 MinGW 编译。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>nasm main.asm -f win32 -o main.o
 gcc main.o -nostartfiles -nodefaultlibs -o main.exe
-</code></pre></div><p>第一步 <code>[fs:30h]</code> 这个地址就是 TEB 中的 PEB 指针，将指针保存的地址移入 <code>eax</code> 寄存器。现在 <code>eax</code> 寄存器指向的就是 PEB 结构了。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>第一步 <code>[fs:30h]</code> 这个地址就是 TEB 中的 PEB 指针，将指针保存的地址移入 <code>eax</code> 寄存器。现在 <code>eax</code> 寄存器指向的就是 PEB 结构了。</p>
 <p>第二步取 <code>PEB->Ldr</code> 指针。</p>
 <p>第三步取 <code>PEB_LDR_DATA->InMemoryOrderModuleList.Flink</code> 指针，这个指针指向的是当前程序的 <code>_LDR_DATA_TABLE_ENTRY.InMemoryOrderModuleList.Flink</code> 。此时我们已经开始遍历链表。</p>
 <p>第四步是取链表的下一个元素，我们认为是 <code>ntdll.dll</code> ，再取下一个元素，得到 <code>kernel32.dll</code>。</p>
@@ -369,37 +634,129 @@ gcc main.o -nostartfiles -nodefaultlibs -o main.exe
 <p>到此，我们已经找到了 <code>kernel32.dll</code> 的镜像基址，找到了镜像基址后，根据之前学习的对 PE 文件格式的了解，就有机会自己解析导出表，调用 <code>kernel32.dll</code> 内的函数啦。</p>
 <h2 id=0x02-寻找-winexec-函数>0x02 寻找 WinExec 函数</h2>
 <p>作为实践的目标，这次希望在 <code>kernel32.dll</code> 里找出 <code>WinExec</code> 函数。这个函数的文档在<a class=link href=https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-winexec target=_blank rel=noopener>这里</a>。函数签名如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=n>UINT</span> <span class=nf>WinExec</span><span class=p>(</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=n>UINT</span> <span class=nf>WinExec</span><span class=p>(</span>
   <span class=p>[</span><span class=n>in</span><span class=p>]</span> <span class=n>LPCSTR</span> <span class=n>lpCmdLine</span><span class=p>,</span>
   <span class=p>[</span><span class=n>in</span><span class=p>]</span> <span class=n>UINT</span>   <span class=n>uCmdShow</span>
 <span class=p>);</span>
-</code></pre></div><p>文档说我们应该用 <code>CreateProcess</code> 但是那个函数参数多的一批，狗都不看。微软就没点13数么。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>文档说我们应该用 <code>CreateProcess</code> 但是那个函数参数多的一批，狗都不看。微软就没点13数么。</p>
 <h3 id=21-寻找导出表>2.1 寻找导出表</h3>
 <p>有了 <code>kernel32.dll</code> 的基址，下一步就是寻找导出表的位置了。</p>
 <p>依据我们对 PE 文件格式的了解，首先得在 Data Directories 里找到 <em>Export Directory</em> 。</p>
 <p>在此之前，我们先暂存一下 <code>kernel32.dll</code> 基址以备后用。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>	<span class=nf>mov</span> <span class=no>ebx</span><span class=p>,</span> <span class=no>eax</span>
-</code></pre></div><p>然后开始寻找 dos 文件头里的 <code>lfanew</code> 。相对文件头的偏移是 <code>3ch</code> ，内容是相对文件头的偏移值，我们这样计算。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>	<span class=nf>mov</span> <span class=no>eax</span><span class=p>,</span> <span class=p>[</span><span class=no>ebx</span><span class=err>+</span><span class=mi>3</span><span class=no>ch</span><span class=p>]</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>	<span class=nf>mov</span> <span class=no>ebx</span><span class=p>,</span> <span class=no>eax</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>然后开始寻找 dos 文件头里的 <code>lfanew</code> 。相对文件头的偏移是 <code>3ch</code> ，内容是相对文件头的偏移值，我们这样计算。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>	<span class=nf>mov</span> <span class=no>eax</span><span class=p>,</span> <span class=p>[</span><span class=no>ebx</span><span class=err>+</span><span class=mi>3</span><span class=no>ch</span><span class=p>]</span>
 	<span class=nf>add</span> <span class=no>eax</span><span class=p>,</span> <span class=no>ebx</span>
-</code></pre></div><p>现在 eax 指向的就是 pe 文件头了。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>现在 eax 指向的就是 pe 文件头了。</p>
 <p>然后我们找到 <code>ExportDirectory.VirtualAddress</code> 的偏移，它在相对 PE 文件头 <code>78h</code> 偏移的地方。如果还记得 16 个元素的 Data Directories 结构的话，提醒下 ExportDirectory 就是所有 Data Directories 里排第一个的结构。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>mov</span> <span class=no>eax</span><span class=p>,</span> <span class=p>[</span><span class=no>eax</span><span class=err>+</span><span class=mi>78</span><span class=no>h</span><span class=p>]</span>                                  <span class=c>; eax = ExportDirectory.VirtualAddress
-</span></code></pre></div><p>得到的是 RVA ，加上基址。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>add</span> <span class=no>eax</span><span class=p>,</span> <span class=no>ebx</span>                                        <span class=c>; eax = &amp;ExportDirectoryTable
-</span></code></pre></div><p>接下来要开始解析 ExportDirectoryTable 结构了，参考<a class=link href=https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#export-directory-table target=_blank rel=noopener>微软的文档</a>。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>mov</span> <span class=no>eax</span><span class=p>,</span> <span class=p>[</span><span class=no>eax</span><span class=err>+</span><span class=mi>78</span><span class=no>h</span><span class=p>]</span>                                  <span class=c>; eax = ExportDirectory.VirtualAddress
+</span></code></pre></td></tr></table>
+</div>
+</div><p>得到的是 RVA ，加上基址。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>add</span> <span class=no>eax</span><span class=p>,</span> <span class=no>ebx</span>                                        <span class=c>; eax = &amp;ExportDirectoryTable
+</span></code></pre></td></tr></table>
+</div>
+</div><p>接下来要开始解析 ExportDirectoryTable 结构了，参考<a class=link href=https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#export-directory-table target=_blank rel=noopener>微软的文档</a>。</p>
 <p>因为需要暂存很多变量，我们先给这些变量在栈上分配空间。</p>
 <h3 id=22-分配栈变量>2.2 分配栈变量</h3>
 <p>先回到开头，定义好栈如何分配。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=err>%</span><span class=nf>define</span> <span class=no>kernel32_base</span> <span class=mi>0x04</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=err>%</span><span class=nf>define</span> <span class=no>kernel32_base</span> <span class=mi>0x04</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>numberof_export_entries</span> <span class=mi>0x08</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>address_of_ordinal_table</span> <span class=mi>0x0c</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>address_of_func_address_table</span> <span class=mi>0x10</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>address_of_export_directory_table</span> <span class=mi>0x14</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>address_of_name_table</span> <span class=mi>0x18</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>ordinal_base</span> <span class=mi>0x1c</span>
-</code></pre></div><p>然后在入口点处，添加 <code>sub esp, 0x1c</code>，分配栈空间。之后就可以使用 <code>[ebp-变量]</code> 的形式来使用这些变量了。修改后的代码如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=err>%</span><span class=nf>define</span> <span class=no>kernel32_base</span> <span class=mi>0x04</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>然后在入口点处，添加 <code>sub esp, 0x1c</code>，分配栈空间。之后就可以使用 <code>[ebp-变量]</code> 的形式来使用这些变量了。修改后的代码如下。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=err>%</span><span class=nf>define</span> <span class=no>kernel32_base</span> <span class=mi>0x04</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>numberof_export_entries</span> <span class=mi>0x08</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>address_of_ordinal_table</span> <span class=mi>0x0c</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>address_of_func_address_table</span> <span class=mi>0x10</span>
@@ -435,7 +792,9 @@ gcc main.o -nostartfiles -nodefaultlibs -o main.exe
     <span class=nf>add</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>1</span><span class=no>ch</span>
     <span class=nf>pop</span> <span class=no>ebp</span>
     <span class=nf>retn</span>
-</code></pre></div><p>接着从 <code>xor eax,eax</code> 之前继续。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>接着从 <code>xor eax,eax</code> 之前继续。</p>
 <h3 id=23-分析-export-directory-table>2.3 分析 Export Directory Table</h3>
 <p>先给出定义。</p>
 <div class=table-wrapper><table>
@@ -518,7 +877,29 @@ gcc main.o -nostartfiles -nodefaultlibs -o main.exe
 </table></div>
 <p>注意 offset 是 10 进制，之后编写的代码里会用 16 进制。</p>
 <p>我们把这个结构里，我们关注的字段保存到栈上。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>mov</span> <span class=no>ecx</span><span class=p>,</span> <span class=no>eax</span>                                        <span class=c>; 暂存导出表结构基址用来运算
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>mov</span> <span class=no>ecx</span><span class=p>,</span> <span class=no>eax</span>                                        <span class=c>; 暂存导出表结构基址用来运算
 </span><span class=c></span>    <span class=no>mov</span> <span class=p>[</span><span class=no>ebp-address_of_export_directory_table</span><span class=p>],</span> <span class=no>eax</span>    <span class=c>; 保存导出表结构基址到栈变量
 </span><span class=c></span>    <span class=no>mov</span> <span class=no>eax</span><span class=p>,</span> <span class=p>[</span><span class=no>eax</span><span class=err>+</span><span class=mi>1</span><span class=no>ch</span><span class=p>]</span>
     <span class=nf>add</span> <span class=no>eax</span><span class=p>,</span> <span class=no>ebx</span>
@@ -536,7 +917,9 @@ gcc main.o -nostartfiles -nodefaultlibs -o main.exe
 </span><span class=c></span>    <span class=no>mov</span> <span class=no>eax</span><span class=p>,</span> <span class=no>ecx</span>
     <span class=nf>mov</span> <span class=no>eax</span><span class=p>,</span> <span class=p>[</span><span class=no>eax</span><span class=err>+</span><span class=mi>10</span><span class=no>h</span><span class=p>]</span>
     <span class=nf>mov</span> <span class=p>[</span><span class=no>ebp-ordinal_base</span><span class=p>],</span> <span class=no>eax</span>                         <span class=c>; 保存 ordinal base 用于计算导出函数的地址
-</span></code></pre></div><p>应该不难理解。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>应该不难理解。</p>
 <p>接下来要从这个结构里找出 <code>WinExec</code> 函数的地址。</p>
 <h3 id=24-导出表和函数地址>2.4 导出表和函数地址</h3>
 <p>一些前置知识。</p>
@@ -556,16 +939,60 @@ gcc main.o -nostartfiles -nodefaultlibs -o main.exe
 <p>现在我们可以开始处理这几个表了。</p>
 <h3 id=25-遍历名称表>2.5 遍历名称表</h3>
 <p>字符串常量要记得先定义好，之后用。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>section</span> <span class=no>.data</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>section</span> <span class=no>.data</span>
     <span class=nl>str_winexec:</span>
 	    <span class=nf>db</span> <span class=err>&#39;</span><span class=no>WinExec</span><span class=err>&#39;</span><span class=p>,</span> <span class=mi>0</span>
     <span class=nl>str_calcexe:</span>
 	    <span class=nf>db</span> <span class=err>&#39;</span><span class=no>calc.exe</span><span class=err>&#39;</span><span class=p>,</span> <span class=mi>0</span>
-</code></pre></div><p>首先从名称表里找出 <code>WinExec</code> 这个字符串。之后会拿 <code>eax</code> 保存下标，<code>ecx</code> 用于 <code>repe cmpsb</code> 指令，所以这两个字段我们先清空。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>xor</span> <span class=no>eax</span><span class=p>,</span> <span class=no>eax</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>首先从名称表里找出 <code>WinExec</code> 这个字符串。之后会拿 <code>eax</code> 保存下标，<code>ecx</code> 用于 <code>repe cmpsb</code> 指令，所以这两个字段我们先清空。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>xor</span> <span class=no>eax</span><span class=p>,</span> <span class=no>eax</span>
     <span class=nf>xor</span> <span class=no>ecx</span><span class=p>,</span> <span class=no>ecx</span>
-</code></pre></div><p>接着写一个循环。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>.findWinExecLocation:</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>接着写一个循环。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>.findWinExecLocation:</span>
     <span class=nf>mov</span> <span class=no>esi</span><span class=p>,</span> <span class=no>str_winexec</span>                    <span class=c>; 准备比较，esi=常量字符串
 </span><span class=c></span>    <span class=no>mov</span> <span class=no>edi</span><span class=p>,</span> <span class=p>[</span><span class=no>ebp-address_of_name_table</span><span class=p>]</span>    <span class=c>; 准备比较，edi=名称表首元素，注意名称表是一个指针数组，每个元素都是 DWORD RVA
 </span><span class=c></span>    <span class=no>cld</span>                                     <span class=c>; 清除 df 标志位
@@ -586,33 +1013,182 @@ gcc main.o -nostartfiles -nodefaultlibs -o main.exe
 </span><span class=c></span>    <span class=no>jne</span> <span class=no>.findWinExecLocation</span>                <span class=c>; 继续循环
 </span><span class=c></span>    
 <span class=no>.found</span><span class=p>:</span>
-</code></pre></div><p>最复杂的部分就是算偏移，在 C 中一个下标运算又或者指针解引用的事情在汇编里就很蛋疼。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>最复杂的部分就是算偏移，在 C 中一个下标运算又或者指针解引用的事情在汇编里就很蛋疼。</p>
 <h3 id=26-取-ordinal-和函数地址>2.6 取 Ordinal 和函数地址</h3>
 <p>得到正确下标后就可以取 Ordinal 了。先把 ordinal 表的地址和 函数地址表的地址放进寄存器。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>mov</span> <span class=no>ecx</span><span class=p>,</span> <span class=p>[</span><span class=no>ebp-address_of_ordinal_table</span><span class=p>]</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>mov</span> <span class=no>ecx</span><span class=p>,</span> <span class=p>[</span><span class=no>ebp-address_of_ordinal_table</span><span class=p>]</span>
     <span class=nf>mov</span> <span class=no>edx</span><span class=p>,</span> <span class=p>[</span><span class=no>ebp-address_of_func_address_table</span><span class=p>]</span>
-</code></pre></div><p>然后用 eax 做下标，取 ordinal 值。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>mov</span> <span class=no>ax</span><span class=p>,</span> <span class=p>[</span><span class=no>ecx</span><span class=err>+</span><span class=no>eax</span><span class=p>*</span><span class=mi>2</span><span class=p>]</span>                                 <span class=c>; ax(ordinal) = ((WORD*)ordinal_table)[eax]
-</span></code></pre></div><p>再拿 Ordinal 值做下标，取函数地址。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>mov</span> <span class=no>eax</span><span class=p>,[</span><span class=no>edx</span><span class=err>+</span><span class=no>eax</span><span class=p>*</span><span class=mi>4</span><span class=p>]</span>                                 <span class=c>; eax = ((DWORD*)address_table)[eax]
-</span></code></pre></div><p>最后把函数地址（RVA）加上基址。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>add</span> <span class=no>eax</span><span class=p>,</span> <span class=no>ebx</span>                                        <span class=c>; eax=WinExec 函数的地址
-</span></code></pre></div><p>得到 <code>WinExec</code> 函数在内存中的地址。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>然后用 eax 做下标，取 ordinal 值。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>mov</span> <span class=no>ax</span><span class=p>,</span> <span class=p>[</span><span class=no>ecx</span><span class=err>+</span><span class=no>eax</span><span class=p>*</span><span class=mi>2</span><span class=p>]</span>                                 <span class=c>; ax(ordinal) = ((WORD*)ordinal_table)[eax]
+</span></code></pre></td></tr></table>
+</div>
+</div><p>再拿 Ordinal 值做下标，取函数地址。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>mov</span> <span class=no>eax</span><span class=p>,[</span><span class=no>edx</span><span class=err>+</span><span class=no>eax</span><span class=p>*</span><span class=mi>4</span><span class=p>]</span>                                 <span class=c>; eax = ((DWORD*)address_table)[eax]
+</span></code></pre></td></tr></table>
+</div>
+</div><p>最后把函数地址（RVA）加上基址。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>add</span> <span class=no>eax</span><span class=p>,</span> <span class=no>ebx</span>                                        <span class=c>; eax=WinExec 函数的地址
+</span></code></pre></td></tr></table>
+</div>
+</div><p>得到 <code>WinExec</code> 函数在内存中的地址。</p>
 <h3 id=27-调用-winexec-函数>2.7 调用 WinExec 函数</h3>
 <p>Windows API 都是 <em>stdcall</em> 调用约定，我们不用管清栈，直接压参数就好。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>push</span> <span class=mi>10</span>                                             <span class=c>; SW_SHOWDEFAULT
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>push</span> <span class=mi>10</span>                                             <span class=c>; SW_SHOWDEFAULT
 </span><span class=c></span>    <span class=no>push</span> <span class=no>str_calcexe</span>                                    <span class=c>; 字符串 calc.exe
 </span><span class=c></span>    <span class=no>call</span> <span class=no>eax</span>                                            <span class=c>; __stdcall WinExec
-</span></code></pre></div><p>到这里，应该就成功调用了 <code>WinExec</code> 函数了。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>到这里，应该就成功调用了 <code>WinExec</code> 函数了。</p>
 <h3 id=28-清理和退出>2.8 清理和退出</h3>
 <p>写完了主要功能，接下来就要给自己擦屁股了，平栈。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>add</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>1</span><span class=no>ch</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm>    <span class=nf>add</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>1</span><span class=no>ch</span>
     <span class=nf>pop</span> <span class=no>ebp</span>
     <span class=nf>xor</span> <span class=no>eax</span><span class=p>,</span> <span class=no>eax</span>
     <span class=nf>retn</span>
-</code></pre></div><p>收工！</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>收工！</p>
 <h3 id=29-完整代码>2.9 完整代码</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=err>%</span><span class=nf>define</span> <span class=no>kernel32_base</span> <span class=mi>0x04</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span><span class=lnt>71
+</span><span class=lnt>72
+</span><span class=lnt>73
+</span><span class=lnt>74
+</span><span class=lnt>75
+</span><span class=lnt>76
+</span><span class=lnt>77
+</span><span class=lnt>78
+</span><span class=lnt>79
+</span><span class=lnt>80
+</span><span class=lnt>81
+</span><span class=lnt>82
+</span><span class=lnt>83
+</span><span class=lnt>84
+</span><span class=lnt>85
+</span><span class=lnt>86
+</span><span class=lnt>87
+</span><span class=lnt>88
+</span><span class=lnt>89
+</span><span class=lnt>90
+</span><span class=lnt>91
+</span><span class=lnt>92
+</span><span class=lnt>93
+</span><span class=lnt>94
+</span><span class=lnt>95
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=err>%</span><span class=nf>define</span> <span class=no>kernel32_base</span> <span class=mi>0x04</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>numberof_export_entries</span> <span class=mi>0x08</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>address_of_ordinal_table</span> <span class=mi>0x0c</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>address_of_func_address_table</span> <span class=mi>0x10</span>
@@ -707,7 +1283,9 @@ gcc main.o -nostartfiles -nodefaultlibs -o main.exe
         <span class=nf>db</span> <span class=err>&#39;</span><span class=no>WinExec</span><span class=err>&#39;</span><span class=p>,</span> <span class=mi>0</span>
     <span class=nl>str_calcexe:</span>
         <span class=nf>db</span> <span class=err>&#39;</span><span class=no>calc.exe</span><span class=err>&#39;</span><span class=p>,</span> <span class=mi>0</span>
-</code></pre></div><h2 id=0x03-验证>0x03 验证</h2>
+</code></pre></td></tr></table>
+</div>
+</div><h2 id=0x03-验证>0x03 验证</h2>
 <p>验证方法很简单，我们编译之，运行，然后就好啦！</p>
 <p><img src=/blog/image/%e5%85%b3%e4%ba%8e%e5%9c%a8%e5%86%85%e5%ad%98%e9%87%8c%e6%89%bekernel32%e8%bf%99%e4%bb%b6%e4%ba%8b/image-20211014161140486.png loading=lazy alt=image-20211014161140486></p>
 <p><code>WinExec</code> 的返回值在 eax 里，微软的文档说返回值大于 31 就是 OJBK，0x21 是10进制的33，所以完全 OJBK 。</p>
@@ -803,7 +1381,7 @@ gcc main.o -nostartfiles -nodefaultlibs -o main.exe
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

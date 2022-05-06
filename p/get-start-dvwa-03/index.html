@@ -1,41 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 这次看下 DVWA 的 CSRF 题。
-昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直接在 GitHub 网页点点鼠标就能同步上游代码。这样就能用上最新的 DVWA 同时享受 docker 一键启动 DVWA 环境的快乐了。
-用法很简单：
-git clone https://github.com/nnnewb/dvwa cd dvwa docker-compose up -d --build 就这样！
-当然还有可能遇到一些网络问题，什么deb.debian.org访问慢或者timeout、connection reset之类的，但我觉得想玩这个的多少得有点自己动手解决问题的能力吧，不能跟三岁小孩一样等别人喂嘴里。
-原理 利用方式 CSRF 全名是跨站请求伪造 Cross Site Request Forgery 。
-简单地说，服务器相信收到的请求是用户控制浏览器发起的，是出于用户自身的意图做某些操作。但实际上，是另一个恶意网站的 js 脚本控制了用户的浏览器，在用户不知情的情况下，冒充用户的身份请求服务器做一些并非出自用户本意的操作。
-CSRF 利用中有三个组成部分：
- 用户浏览器 目标服务器 恶意网站  用户不访问恶意网站，CSRF 攻击就无从谈起。
-和CORS的关系 说没关系其实也有。CORS全称是 Cross Origin Resource Sharing，跨域资源共享，也是防浏览器被恶意网站控制着，背着用户拿自己的数据。但有所不同的是，CORS 其实是相当宽松的，因为 CORS 只要求浏览器对 “复杂请求” 发送预检，但简单请求（注意哦，包括 POST 请求，但只能包含指定的 Header 和限定的 Content-Type）会直接呈交给服务器。"><title>DVWA上手记录-CSRF</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 这次看下 DVWA 的 CSRF 题。 昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直"><title>DVWA上手记录-CSRF</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/get-start-dvwa-03/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="DVWA上手记录-CSRF">
-<meta property="og:description" content="前言 这次看下 DVWA 的 CSRF 题。
-昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直接在 GitHub 网页点点鼠标就能同步上游代码。这样就能用上最新的 DVWA 同时享受 docker 一键启动 DVWA 环境的快乐了。
-用法很简单：
-git clone https://github.com/nnnewb/dvwa cd dvwa docker-compose up -d --build 就这样！
-当然还有可能遇到一些网络问题，什么deb.debian.org访问慢或者timeout、connection reset之类的，但我觉得想玩这个的多少得有点自己动手解决问题的能力吧，不能跟三岁小孩一样等别人喂嘴里。
-原理 利用方式 CSRF 全名是跨站请求伪造 Cross Site Request Forgery 。
-简单地说，服务器相信收到的请求是用户控制浏览器发起的，是出于用户自身的意图做某些操作。但实际上，是另一个恶意网站的 js 脚本控制了用户的浏览器，在用户不知情的情况下，冒充用户的身份请求服务器做一些并非出自用户本意的操作。
-CSRF 利用中有三个组成部分：
- 用户浏览器 目标服务器 恶意网站  用户不访问恶意网站，CSRF 攻击就无从谈起。
-和CORS的关系 说没关系其实也有。CORS全称是 Cross Origin Resource Sharing，跨域资源共享，也是防浏览器被恶意网站控制着，背着用户拿自己的数据。但有所不同的是，CORS 其实是相当宽松的，因为 CORS 只要求浏览器对 “复杂请求” 发送预检，但简单请求（注意哦，包括 POST 请求，但只能包含指定的 Header 和限定的 Content-Type）会直接呈交给服务器。">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="DVWA上手记录-CSRF">
+<meta property="og:description" content="前言 这次看下 DVWA 的 CSRF 题。 昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/get-start-dvwa-03/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="security"><meta property="article:tag" content="DVWA"><meta property="article:published_time" content="2022-04-25T16:33:00+08:00"><meta property="article:modified_time" content="2022-04-25T16:33:00+08:00">
 <meta name=twitter:title content="DVWA上手记录-CSRF">
-<meta name=twitter:description content="前言 这次看下 DVWA 的 CSRF 题。
-昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直接在 GitHub 网页点点鼠标就能同步上游代码。这样就能用上最新的 DVWA 同时享受 docker 一键启动 DVWA 环境的快乐了。
-用法很简单：
-git clone https://github.com/nnnewb/dvwa cd dvwa docker-compose up -d --build 就这样！
-当然还有可能遇到一些网络问题，什么deb.debian.org访问慢或者timeout、connection reset之类的，但我觉得想玩这个的多少得有点自己动手解决问题的能力吧，不能跟三岁小孩一样等别人喂嘴里。
-原理 利用方式 CSRF 全名是跨站请求伪造 Cross Site Request Forgery 。
-简单地说，服务器相信收到的请求是用户控制浏览器发起的，是出于用户自身的意图做某些操作。但实际上，是另一个恶意网站的 js 脚本控制了用户的浏览器，在用户不知情的情况下，冒充用户的身份请求服务器做一些并非出自用户本意的操作。
-CSRF 利用中有三个组成部分：
- 用户浏览器 目标服务器 恶意网站  用户不访问恶意网站，CSRF 攻击就无从谈起。
-和CORS的关系 说没关系其实也有。CORS全称是 Cross Origin Resource Sharing，跨域资源共享，也是防浏览器被恶意网站控制着，背着用户拿自己的数据。但有所不同的是，CORS 其实是相当宽松的，因为 CORS 只要求浏览器对 “复杂请求” 发送预检，但简单请求（注意哦，包括 POST 请求，但只能包含指定的 Header 和限定的 Content-Type）会直接呈交给服务器。">
+<meta name=twitter:description content="前言 这次看下 DVWA 的 CSRF 题。 昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -56,7 +29,12 @@ CSRF 利用中有三个组成部分：
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -80,6 +58,11 @@ CSRF 利用中有三个组成部分：
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -109,7 +92,7 @@ security
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 4 分钟
+阅读时长: 8 分钟
 </time>
 </div>
 </footer>
@@ -120,10 +103,19 @@ security
 <p>这次看下 DVWA 的 CSRF 题。</p>
 <p>昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直接在 GitHub 网页点点鼠标就能同步上游代码。这样就能用上最新的 DVWA 同时享受 docker 一键启动 DVWA 环境的快乐了。</p>
 <p>用法很简单：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>git clone https://github.com/nnnewb/dvwa
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>git clone https://github.com/nnnewb/dvwa
 <span class=nb>cd</span> dvwa
 docker-compose up -d --build
-</code></pre></div><p>就这样！</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>就这样！</p>
 <p>当然还有可能遇到一些网络问题，什么<code>deb.debian.org</code>访问慢或者<code>timeout</code>、<code>connection reset</code>之类的，但我觉得想玩这个的多少得有点自己动手解决问题的能力吧，不能跟三岁小孩一样等别人喂嘴里。</p>
 <h2 id=原理>原理</h2>
 <h3 id=利用方式>利用方式</h3>
@@ -140,11 +132,21 @@ docker-compose up -d --build
 <p>说没关系其实也有。CORS全称是 <em>Cross Origin Resource Sharing</em>，跨域资源共享，也是防浏览器被恶意网站控制着，背着用户拿自己的数据。但有所不同的是，CORS 其实是相当宽松的，因为 CORS 只要求浏览器对 “复杂请求” 发送预检，但简单请求（注意哦，包括 POST 请求，但只能包含指定的 Header 和限定的 <code>Content-Type</code>）会直接呈交给服务器。</p>
 <p>而且这个请求是可以带 Cookies 的，也就是说只要接口满足条件（接受限定的 <code>Content-Type</code>，对 Header 没有要求），CORS 策略就没法阻止 CSRF 攻击。</p>
 <p>举一个更实际的例子，哪怕恶意网站只是写了一个简单的表单：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-html data-lang=html><span class=p>&lt;</span><span class=nt>form</span> <span class=na>method</span><span class=o>=</span><span class=s>&#34;POST&#34;</span> <span class=na>action</span><span class=o>=</span><span class=s>&#34;http://good.com/some/action&#34;</span><span class=p>&gt;</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-html data-lang=html><span class=p>&lt;</span><span class=nt>form</span> <span class=na>method</span><span class=o>=</span><span class=s>&#34;POST&#34;</span> <span class=na>action</span><span class=o>=</span><span class=s>&#34;http://good.com/some/action&#34;</span><span class=p>&gt;</span>
     <span class=p>&lt;</span><span class=nt>input</span> <span class=na>type</span><span class=o>=</span><span class=s>&#34;text&#34;</span> <span class=na>value</span><span class=o>=</span><span class=s>&#34;hello&#34;</span><span class=p>/&gt;</span>
     <span class=p>&lt;</span><span class=nt>button</span> <span class=na>type</span><span class=o>=</span><span class=s>&#34;submit&#34;</span><span class=p>&gt;</span>submit<span class=p>&lt;/</span><span class=nt>button</span><span class=p>&gt;</span>
 <span class=p>&lt;/</span><span class=nt>form</span><span class=p>&gt;</span>
-</code></pre></div><p>也满足 CORS 对于 <em>简单请求</em> 的定义，浏览器不会阻止或预检。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>也满足 CORS 对于 <em>简单请求</em> 的定义，浏览器不会阻止或预检。</p>
 <p>因此，即使配置良好的 CORS，也无法杜绝 CSRF 攻击。但 CORS 确实是防御 CSRF 攻击的重要环节。</p>
 <h3 id=防御>防御</h3>
 <p>防御CSRF攻击说难不难，因为<a class=link href=https://portswigger.net/web-security/CSRF target=_blank rel=noopener>发起 CSRF 攻击有几个重要前提</a>：</p>
@@ -179,21 +181,71 @@ docker-compose up -d --build
 <p>必须先提一个我实际下手写的时候才踩到的坑，浏览器发展速度实在太快了。</p>
 <p>在<a class=link href=https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-05#section-5.3.7 target=_blank rel=noopener>RFC6265bis</a>里引入了一个新的 Cookies 属性，<code>SameSite</code>。<a class=link href="https://developers.google.com/search/blog/2020/01/get-ready-for-new-samesitenone-secure?hl=zh-cn" target=_blank rel=noopener>2019年5月份，谷歌宣布推出了一个默认安全的 Cookie 安全模型</a>，由新的 Cookie 分类系统（<a class=link href=https://tools.ietf.org/html/draft-west-cookie-incrementalism-00 target=_blank rel=noopener>规范</a>）提供支持。在规范（PS：同样是谷歌提出的）中将 <code>SameSite</code> 默认设置为 <code>Lax</code>，只允许 Cookies 与顶级导航（包括第三方网站发起的GET请求）一起发送。</p>
 <p>这么说可能有点不好理解，我写了一个简单的 demo，在这项改动之前应该是带上 Cookies 直接发出的请求。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-javascript data-lang=javascript><span class=kd>var</span> <span class=nx>xhr</span> <span class=o>=</span> <span class=k>new</span> <span class=nx>XMLHttpRequest</span><span class=p>();</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-javascript data-lang=javascript><span class=kd>var</span> <span class=nx>xhr</span> <span class=o>=</span> <span class=k>new</span> <span class=nx>XMLHttpRequest</span><span class=p>();</span>
 <span class=nx>xhr</span><span class=p>.</span><span class=nx>open</span><span class=p>(</span><span class=s2>&#34;get&#34;</span><span class=p>,</span> <span class=s2>&#34;http://localhost:8080/vulnerabilities/csrf/?password_new=admin&amp;password_conf=admin&amp;Change=Change&#34;</span><span class=p>);</span>
 <span class=nx>xhr</span><span class=p>.</span><span class=nx>withCredentials</span> <span class=o>=</span> <span class=kc>true</span><span class=p>;</span>
 <span class=nx>xhr</span><span class=p>.</span><span class=nx>send</span><span class=p>();</span>
-</code></pre></div><p>但在这项改动之后（现在是2022年4月25日，Chrome内核版本 100，Edge 浏览器），虽然这是个简单请求，无需预检就会发送，但因为 Cookies 的 <code>SameSite</code> 属性变更为默认 <code>Lax</code> 的原因，即使设置了 <code>withCredentials=true</code> 请求里也不会带上 Cookies。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>但在这项改动之后（现在是2022年4月25日，Chrome内核版本 100，Edge 浏览器），虽然这是个简单请求，无需预检就会发送，但因为 Cookies 的 <code>SameSite</code> 属性变更为默认 <code>Lax</code> 的原因，即使设置了 <code>withCredentials=true</code> 请求里也不会带上 Cookies。</p>
 <p><img src=/blog/p/get-start-dvwa-03/image-20220425150932251.png width=951 height=115 srcset="/blog/p/get-start-dvwa-03/image-20220425150932251_huaa8a43c2711e3dfb7b7a9ac3a293cc3a_19838_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425150932251_huaa8a43c2711e3dfb7b7a9ac3a293cc3a_19838_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425150932251 class=gallery-image data-flex-grow=826 data-flex-basis=1984px></p>
 <p>这就有点恼人，不过稍作变通，还是可以直接控制用户的浏览器发起修改密码的请求，只是没 xhr 那么悄无声息。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-javascript data-lang=javascript><span class=nb>window</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=o>=</span><span class=s1>&#39;http://localhost:8080/vulnerabilities/csrf/?password_new=123456&amp;password_conf=123456&amp;Change=Change&#39;</span>
-</code></pre></div><p>如此一来，就满足了 <code>SameSite=Lax</code> 的由顶级导航启动的要求。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-javascript data-lang=javascript><span class=nb>window</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=o>=</span><span class=s1>&#39;http://localhost:8080/vulnerabilities/csrf/?password_new=123456&amp;password_conf=123456&amp;Change=Change&#39;</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>如此一来，就满足了 <code>SameSite=Lax</code> 的由顶级导航启动的要求。</p>
 <p>这里额外再说一句就是，<code>iframe</code> 似乎也不被视作顶级导航，因此<code>&lt;iframe src="..." width="1" height="1">&lt;/iframe></code>也行不通，不会带上 Cookies。</p>
 <p>简单看了下 MDN 对默认 <code>Lax</code> 策略的支持情况，只有少数几个浏览器还没跟进了。</p>
 <p><img src=/blog/p/get-start-dvwa-03/image-20220425160233505.png width=810 height=701 srcset="/blog/p/get-start-dvwa-03/image-20220425160233505_hu0375771f01931166adb29727ee7ccafb_54993_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425160233505_hu0375771f01931166adb29727ee7ccafb_54993_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425160233505 class=gallery-image data-flex-grow=115 data-flex-basis=277px></p>
 <h3 id=代码审计>代码审计</h3>
 <p>又是很短一段 php 代码。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-php data-lang=php><span class=o>&lt;?</span><span class=nx>php</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-php data-lang=php><span class=o>&lt;?</span><span class=nx>php</span>
 
 <span class=k>if</span><span class=p>(</span> <span class=nx>isset</span><span class=p>(</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;Change&#39;</span> <span class=p>]</span> <span class=p>)</span> <span class=p>)</span> <span class=p>{</span>
     <span class=c1>// Get input
@@ -222,7 +274,9 @@ docker-compose up -d --build
 <span class=p>}</span>
 
 <span class=cp>?&gt;</span><span class=err>
-</span></code></pre></div><p>逻辑很清晰不啰嗦，注意到几个点：</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>逻辑很清晰不啰嗦，注意到几个点：</p>
 <ol>
 <li>md5 未加盐哈希作为密码字段保存到数据库，得到了哈希有可能被逆推出密码。</li>
 <li>直接拼了 <code>dvwaCurrentUser()</code>，目前不清楚这个函数里有没有做好转义处理，没处理可能存在 SQL 注入。</li>
@@ -232,7 +286,47 @@ docker-compose up -d --build
 <h3 id=提高难度败北>提高难度（败北）</h3>
 <p>直接使用 Low 难度下的方法，<code>window.location.href</code>，会报错：<code>That request didn't look correct</code>。</p>
 <p>简单看一下 Medium 难度下的代码。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-php data-lang=php><span class=o>&lt;?</span><span class=nx>php</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-php data-lang=php><span class=o>&lt;?</span><span class=nx>php</span>
 
 <span class=k>if</span><span class=p>(</span> <span class=nx>isset</span><span class=p>(</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;Change&#39;</span> <span class=p>]</span> <span class=p>)</span> <span class=p>)</span> <span class=p>{</span>
     <span class=c1>// Checks to see where the request came from
@@ -268,7 +362,9 @@ docker-compose up -d --build
 <span class=p>}</span>
 
 <span class=cp>?&gt;</span><span class=err>
-</span></code></pre></div><p>注意到主要变化在于进入业务处理前，加上了一条判断：<code>if( stripos( $_SERVER[ 'HTTP_REFERER' ] ,$_SERVER[ 'SERVER_NAME' ]) !== false )</code>。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>注意到主要变化在于进入业务处理前，加上了一条判断：<code>if( stripos( $_SERVER[ 'HTTP_REFERER' ] ,$_SERVER[ 'SERVER_NAME' ]) !== false )</code>。</p>
 <p><code>stripos</code> 函数查找子串出现在字符串里的位置，没找到的情况下返回<code>false</code>，这条判断的意思是在 <code>HTTP_REFERER</code> 里查找 <code>SERVER_NAME</code> 是否出现，如果出现才进一步处理。所以 Medium 难度下问题变成了怎么 bypass 这个判断。</p>
 <p>搜索 <code>SERVER_NAME</code> 的文档可以找到这样的说明：</p>
 <blockquote>
@@ -361,7 +457,7 @@ docker-compose up -d --build
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

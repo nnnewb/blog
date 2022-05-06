@@ -1,32 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 好吧，如果仔细想想就会发现不管是 k3s 还是 ucloud 上的 k8s ，都没有一个是自己手动配置好的。虽说并不是至关重要的，但手动用 kubeadm 装一次 kubernetes 总不会有什么坏处。顺手做个笔记。参考资料列出如下。
- https://kubernetes.io/zh/docs/setup/production-environment/tools/kubeadm/install-kubeadm/ https://mirrors.tuna.tsinghua.edu.cn/help/kubernetes/ https://computingforgeeks.com/deploy-kubernetes-cluster-on-ubuntu-with-kubeadm/  系统配置 正式安装之前先确认一些系统级配置。
-swapoff 简单的做法是 sudo swapoff -a 即可。之后改 fstab 把 swap 分区关掉。
-iptables检查桥接流量 用 lsmod | grep bf_netfitler 检查有没有启用 bf_netfilter 模块，如果没有输出的话说明没加载，执行下面的命令。
-cat &amp;lt;&amp;lt;EOF | sudo tee /etc/modules-load.d/k8s.conf br_netfilter EOF 会在 /etc/modules-load.d 下添加一个模块自动加载的配置。
-cat &amp;lt;&amp;lt;EOF | sudo tee /etc/sysctl.d/k8s.conf net.bridge.bridge-nf-call-ip6tables = 1 net.bridge.bridge-nf-call-iptables = 1 EOF 再在 /etc/sysctl.d/ 下添加一个配置，允许 iptables 查看桥接流量。
-然后用 sysctl 重载配置。"><title>kubeadm安装实验集群记录</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 好吧，如果仔细想想就会发现不管是 k3s 还是 ucloud 上的 k8s ，都没有一个是自己手动配置好的。虽说并不是至关重要的，但手动用 kubeadm 装一次 kubernetes 总不会有什么坏处。"><title>kubeadm安装实验集群记录</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/kubernetes-manually-install-by-kubeadm/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="kubeadm安装实验集群记录">
-<meta property="og:description" content="前言 好吧，如果仔细想想就会发现不管是 k3s 还是 ucloud 上的 k8s ，都没有一个是自己手动配置好的。虽说并不是至关重要的，但手动用 kubeadm 装一次 kubernetes 总不会有什么坏处。顺手做个笔记。参考资料列出如下。
- https://kubernetes.io/zh/docs/setup/production-environment/tools/kubeadm/install-kubeadm/ https://mirrors.tuna.tsinghua.edu.cn/help/kubernetes/ https://computingforgeeks.com/deploy-kubernetes-cluster-on-ubuntu-with-kubeadm/  系统配置 正式安装之前先确认一些系统级配置。
-swapoff 简单的做法是 sudo swapoff -a 即可。之后改 fstab 把 swap 分区关掉。
-iptables检查桥接流量 用 lsmod | grep bf_netfitler 检查有没有启用 bf_netfilter 模块，如果没有输出的话说明没加载，执行下面的命令。
-cat &amp;lt;&amp;lt;EOF | sudo tee /etc/modules-load.d/k8s.conf br_netfilter EOF 会在 /etc/modules-load.d 下添加一个模块自动加载的配置。
-cat &amp;lt;&amp;lt;EOF | sudo tee /etc/sysctl.d/k8s.conf net.bridge.bridge-nf-call-ip6tables = 1 net.bridge.bridge-nf-call-iptables = 1 EOF 再在 /etc/sysctl.d/ 下添加一个配置，允许 iptables 查看桥接流量。
-然后用 sysctl 重载配置。">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="kubeadm安装实验集群记录">
+<meta property="og:description" content="前言 好吧，如果仔细想想就会发现不管是 k3s 还是 ucloud 上的 k8s ，都没有一个是自己手动配置好的。虽说并不是至关重要的，但手动用 kubeadm 装一次 kubernetes 总不会有什么坏处。">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/kubernetes-manually-install-by-kubeadm/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="kubernetes"><meta property="article:tag" content="linux"><meta property="article:published_time" content="2021-11-25T14:31:00+08:00"><meta property="article:modified_time" content="2021-11-25T14:31:00+08:00">
 <meta name=twitter:title content="kubeadm安装实验集群记录">
-<meta name=twitter:description content="前言 好吧，如果仔细想想就会发现不管是 k3s 还是 ucloud 上的 k8s ，都没有一个是自己手动配置好的。虽说并不是至关重要的，但手动用 kubeadm 装一次 kubernetes 总不会有什么坏处。顺手做个笔记。参考资料列出如下。
- https://kubernetes.io/zh/docs/setup/production-environment/tools/kubeadm/install-kubeadm/ https://mirrors.tuna.tsinghua.edu.cn/help/kubernetes/ https://computingforgeeks.com/deploy-kubernetes-cluster-on-ubuntu-with-kubeadm/  系统配置 正式安装之前先确认一些系统级配置。
-swapoff 简单的做法是 sudo swapoff -a 即可。之后改 fstab 把 swap 分区关掉。
-iptables检查桥接流量 用 lsmod | grep bf_netfitler 检查有没有启用 bf_netfilter 模块，如果没有输出的话说明没加载，执行下面的命令。
-cat &amp;lt;&amp;lt;EOF | sudo tee /etc/modules-load.d/k8s.conf br_netfilter EOF 会在 /etc/modules-load.d 下添加一个模块自动加载的配置。
-cat &amp;lt;&amp;lt;EOF | sudo tee /etc/sysctl.d/k8s.conf net.bridge.bridge-nf-call-ip6tables = 1 net.bridge.bridge-nf-call-iptables = 1 EOF 再在 /etc/sysctl.d/ 下添加一个配置，允许 iptables 查看桥接流量。
-然后用 sysctl 重载配置。">
+<meta name=twitter:description content="前言 好吧，如果仔细想想就会发现不管是 k3s 还是 ucloud 上的 k8s ，都没有一个是自己手动配置好的。虽说并不是至关重要的，但手动用 kubeadm 装一次 kubernetes 总不会有什么坏处。">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -47,7 +29,12 @@ cat &amp;lt;&amp;lt;EOF | sudo tee /etc/sysctl.d/k8s.conf net.bridge.bridge-nf-c
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -71,6 +58,11 @@ cat &amp;lt;&amp;lt;EOF | sudo tee /etc/sysctl.d/k8s.conf net.bridge.bridge-nf-c
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -100,7 +92,7 @@ kubernetes
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 8 分钟
+阅读时长: 7 分钟
 </time>
 </div>
 </footer>
@@ -120,18 +112,44 @@ kubernetes
 <p>简单的做法是 <code>sudo swapoff -a</code> 即可。之后改 <code>fstab</code> 把 <code>swap</code> 分区关掉。</p>
 <h3 id=iptables检查桥接流量>iptables检查桥接流量</h3>
 <p>用 <code>lsmod | grep bf_netfitler</code> 检查有没有启用 <code>bf_netfilter</code> 模块，如果没有输出的话说明没加载，执行下面的命令。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>cat <span class=s>&lt;&lt;EOF | sudo tee /etc/modules-load.d/k8s.conf
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>cat <span class=s>&lt;&lt;EOF | sudo tee /etc/modules-load.d/k8s.conf
 </span><span class=s>br_netfilter
 </span><span class=s>EOF</span>
-</code></pre></div><p>会在 <code>/etc/modules-load.d</code> 下添加一个模块自动加载的配置。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>cat <span class=s>&lt;&lt;EOF | sudo tee /etc/sysctl.d/k8s.conf
+</code></pre></td></tr></table>
+</div>
+</div><p>会在 <code>/etc/modules-load.d</code> 下添加一个模块自动加载的配置。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>cat <span class=s>&lt;&lt;EOF | sudo tee /etc/sysctl.d/k8s.conf
 </span><span class=s>net.bridge.bridge-nf-call-ip6tables = 1
 </span><span class=s>net.bridge.bridge-nf-call-iptables = 1
 </span><span class=s>EOF</span>
-</code></pre></div><p>再在 <code>/etc/sysctl.d/</code> 下添加一个配置，允许 <code>iptables</code> 查看桥接流量。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>再在 <code>/etc/sysctl.d/</code> 下添加一个配置，允许 <code>iptables</code> 查看桥接流量。</p>
 <p>然后用 <code>sysctl</code> 重载配置。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo sysctl --system
-</code></pre></div><h3 id=端口>端口</h3>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo sysctl --system
+</code></pre></td></tr></table>
+</div>
+</div><h3 id=端口>端口</h3>
 <p>控制平面节点的端口清单，如果有本机防火墙的话需要开放下面的端口。</p>
 <div class=table-wrapper><table>
 <thead>
@@ -213,21 +231,63 @@ kubernetes
 <p>参考 <a class=link href=https://mirrors.tuna.tsinghua.edu.cn/help/docker-ce/ target=_blank rel=noopener>清华大学开源软件镜像站 Docker Community Edition 镜像使用帮助</a>。</p>
 <h3 id=安装kubeadm>安装kubeadm</h3>
 <p>先信任软件仓库的证书，要注意的是证书托管在谷歌，所以基本不用考虑直接执行命令能成功了。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg <span class=p>|</span> sudo apt-key add -
-</code></pre></div><p>作为代替，可以先手动魔法上网下载到证书，再变通一下完成证书添加。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>cat apt-key.gpg <span class=p>|</span> sudo apt-key add -
-</code></pre></div><p>之后添加源，源的版本并不能直接对应到发行版的版本，目前 ubuntu server 只支持到 16.04 LTS ，或者 Debian 9 Stretch 。更高版本也可以装，但我比较怀疑官方的包到底有没有在新发行版里测试过，支持力度行不行。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg <span class=p>|</span> sudo apt-key add -
+</code></pre></td></tr></table>
+</div>
+</div><p>作为代替，可以先手动魔法上网下载到证书，再变通一下完成证书添加。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>cat apt-key.gpg <span class=p>|</span> sudo apt-key add -
+</code></pre></td></tr></table>
+</div>
+</div><p>之后添加源，源的版本并不能直接对应到发行版的版本，目前 ubuntu server 只支持到 16.04 LTS ，或者 Debian 9 Stretch 。更高版本也可以装，但我比较怀疑官方的包到底有没有在新发行版里测试过，支持力度行不行。</p>
 <p>总之，如果宿主机不拿来当开发环境使的话，上个 Ubuntu server 16.04 LTS 也没事，只要还没有完全停止支持就好。总之这个问题上我保留意见吧。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=nb>echo</span> <span class=s1>&#39;deb https://mirrors.tuna.tsinghua.edu.cn/kubernetes/apt kubernetes-xenial main&#39;</span> <span class=p>|</span> sudo tee /etc/apt/sources.list.d/kubernetes.list
-</code></pre></div><p>添加软件源之后更新软件包清单并安装 <code>kubelet</code>、<code>kubeadm</code>、<code>kubectl</code> 。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo apt update
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=nb>echo</span> <span class=s1>&#39;deb https://mirrors.tuna.tsinghua.edu.cn/kubernetes/apt kubernetes-xenial main&#39;</span> <span class=p>|</span> sudo tee /etc/apt/sources.list.d/kubernetes.list
+</code></pre></td></tr></table>
+</div>
+</div><p>添加软件源之后更新软件包清单并安装 <code>kubelet</code>、<code>kubeadm</code>、<code>kubectl</code> 。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo apt update
 sudo apt install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
-</code></pre></div><h3 id=检查>检查</h3>
+</code></pre></td></tr></table>
+</div>
+</div><h3 id=检查>检查</h3>
 <p>首先确认所有 <code>kubelet</code>、<code>kubeadm</code>、<code>kubectl</code> 命令都已经可用，如果命令不存在则说明安装有问题，根据具体情况处理。</p>
 <p>然后检查<code>kubelet</code>服务的状态（注意用了<code>systemd</code>，不确定有没有用 <code>upstart</code> 或别的 Unix 风格的服务管理的）。</p>
 <p>运行命令 <code>sudo systemctl status kubelet</code> 得到下面的输出。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>● kubelet.service - kubelet: The Kubernetes Node Agent
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>● kubelet.service - kubelet: The Kubernetes Node Agent
      Loaded: loaded (/lib/systemd/system/kubelet.service; enabled; vendor preset: enabled)
     Drop-In: /etc/systemd/system/kubelet.service.d
              └─10-kubeadm.conf
@@ -235,8 +295,30 @@ sudo apt-mark hold kubelet kubeadm kubectl
        Docs: https://kubernetes.io/docs/home/
     Process: 6767 ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS (code=exited, status=1/FAILURE)
    Main PID: 6767 (code=exited, status=1/FAILURE)
-</code></pre></div><p>此时的 <code>kubelet</code> 服务还是失败的状态，再检查 <code>kubelet</code> 的日志，通过 <code>sudo journalctl -u kubelet</code> 。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>-- Logs begin at Thu 2021-11-18 07:40:58 UTC, end at Fri 2021-11-19 02:34:19 UTC. --
+</code></pre></td></tr></table>
+</div>
+</div><p>此时的 <code>kubelet</code> 服务还是失败的状态，再检查 <code>kubelet</code> 的日志，通过 <code>sudo journalctl -u kubelet</code> 。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>-- Logs begin at Thu 2021-11-18 07:40:58 UTC, end at Fri 2021-11-19 02:34:19 UTC. --
 Nov 19 02:27:41 vm systemd[1]: Started kubelet: The Kubernetes Node Agent.
 Nov 19 02:27:42 vm systemd[1]: kubelet.service: Current command vanished from the unit file, execution of the command list won&#39;t be resumed.
 Nov 19 02:27:42 vm systemd[1]: Stopping kubelet: The Kubernetes Node Agent...
@@ -252,17 +334,108 @@ Nov 19 02:27:52 vm systemd[1]: Started kubelet: The Kubernetes Node Agent.
 Nov 19 02:27:52 vm kubelet[6119]: E1119 02:27:52.804723    6119 server.go:206] &#34;Failed to load kubelet config file&#34; err=&#34;failed to load Kubelet config file /var/lib/kubelet/config.yaml, error failed to read kube&gt;
 Nov 19 02:27:52 vm systemd[1]: kubelet.service: Main process exited, code=exited, status=1/FAILURE
 Nov 19 02:27:52 vm systemd[1]: kubelet.service: Failed with result &#39;exit-code&#39;.
-</code></pre></div><p>失败的原因是 <code>Failed to load kubelet config file" err="failed to load Kubelet config file /var/lib/kubelet/config.yaml, error failed to read kube></code>。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>失败的原因是 <code>Failed to load kubelet config file" err="failed to load Kubelet config file /var/lib/kubelet/config.yaml, error failed to read kube></code>。</p>
 <h2 id=创建集群>创建集群</h2>
 <p>目标是创建一个单节点的集群。</p>
 <h3 id=拉取镜像>拉取镜像</h3>
 <p>众所周知的原因，<code>kubernetes</code> 的镜像托管在谷歌服务器上，麻瓜是访问不到的，所以就连拉取镜像也值得用几十个字来说。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo kubeadm config images pull --image-repository registry.cn-hangzhou.aliyuncs.com/google_containers
-</code></pre></div><h3 id=初始化主节点>初始化主节点</h3>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo kubeadm config images pull --image-repository registry.cn-hangzhou.aliyuncs.com/google_containers
+</code></pre></td></tr></table>
+</div>
+</div><h3 id=初始化主节点>初始化主节点</h3>
 <p>注意使用 <code>kubeadm config images pull</code> 拉取了镜像的话，在 <code>init</code> 阶段除非你把镜像 tag 给改了，不然也要传个 <code>--image-repository</code> 参数。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo kubeadm init --image-repository registry.cn-hangzhou.aliyuncs.com/google_containers
-</code></pre></div><p>完整输出如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>[init] Using Kubernetes version: v1.22.4
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo kubeadm init --image-repository registry.cn-hangzhou.aliyuncs.com/google_containers
+</code></pre></td></tr></table>
+</div>
+</div><p>完整输出如下。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span><span class=lnt>71
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>[init] Using Kubernetes version: v1.22.4
 [preflight] Running pre-flight checks
 [preflight] Pulling images required for setting up a Kubernetes cluster
 [preflight] This might take a minute or two, depending on the speed of your internet connection
@@ -333,9 +506,26 @@ Then you can join any number of worker nodes by running the following on each as
 
 kubeadm join 10.0.2.15:6443 --token jfhacg.2ahc3yqndiwct9vk \
         --discovery-token-ca-cert-hash sha256:377d6ead2bde8373000333d883c9bd9449233686fe277814ccade0b55fc362a1
-</code></pre></div><p>因为是虚拟机里的集群，也没打算给任何人访问，关键信息懒得打码了。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>因为是虚拟机里的集群，也没打算给任何人访问，关键信息懒得打码了。</p>
 <p>几个值得关注的内容：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=c1># Your Kubernetes control-plane has initialized successfully!</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=c1># Your Kubernetes control-plane has initialized successfully!</span>
 
 <span class=c1># To start using your cluster, you need to run the following as a regular user:</span>
 
@@ -346,24 +536,85 @@ kubeadm join 10.0.2.15:6443 --token jfhacg.2ahc3yqndiwct9vk \
 <span class=c1># Alternatively, if you are the root user, you can run:</span>
 
   <span class=nb>export</span> <span class=nv>KUBECONFIG</span><span class=o>=</span>/etc/kubernetes/admin.conf
-</code></pre></div><p>首先，集群控制平面已经初始化成功了，说明命令执行基本 OK，没有致命错误。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>首先，集群控制平面已经初始化成功了，说明命令执行基本 OK，没有致命错误。</p>
 <p>后面就是教你怎么配置 <code>kubectl</code> 来访问控制平面，集群的管理员配置放在 <code>/etc/kubernetes/admin.conf</code> ，可以用 <code>KUBECONFIG</code> 环境变量来使用，或者把配置文件复制到家目录下的路径 <code>~/.kube/config</code> 。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>You should now deploy a pod network to the cluster.
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>You should now deploy a pod network to the cluster.
 Run &#34;kubectl apply -f [podnetwork].yaml&#34; with one of the options listed at:
   https://kubernetes.io/docs/concepts/cluster-administration/addons/
-</code></pre></div><p>提示你应该部署一个 POD 网络到集群，也就是一般说的 CNI 插件，以便 POD 之间可以互相通信。安装插件之前，集群的 DNS （<code>CoreDNS</code>） 不会启动。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>Then you can join any number of worker nodes by running the following on each as root:
+</code></pre></td></tr></table>
+</div>
+</div><p>提示你应该部署一个 POD 网络到集群，也就是一般说的 CNI 插件，以便 POD 之间可以互相通信。安装插件之前，集群的 DNS （<code>CoreDNS</code>） 不会启动。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>Then you can join any number of worker nodes by running the following on each as root:
 
 kubeadm join 10.0.2.15:6443 --token jfhacg.2ahc3yqndiwct9vk \
         --discovery-token-ca-cert-hash sha256:377d6ead2bde8373000333d883c9bd9449233686fe277814ccade0b55fc362a1
-</code></pre></div><p>一旦搞定了网络插件，就可以用 <code>kubeadm</code> 继续添加新的节点到集群里了。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>一旦搞定了网络插件，就可以用 <code>kubeadm</code> 继续添加新的节点到集群里了。</p>
 <h3 id=安装网络插件>安装网络插件</h3>
 <p>看起来大家都在用 <code>calico</code> 做 POD 网络，所以我也用 <code>calico</code> 好了。步骤参考 <code>calico</code> 的<a class=link href=https://docs.projectcalico.org/getting-started/kubernetes/self-managed-onprem/onpremises target=_blank rel=noopener>官方文档</a> 和 <a class=link href=https://docs.projectcalico.org/getting-started/kubernetes/quickstart target=_blank rel=noopener>官方的快速开始</a> 来配置一个单节点集群的 POD 。</p>
 <p>正式开始前，参考上面的内容配置好 <code>kubectl</code> ，以便无需 root 权限运行 <code>kubectl</code> 命令。</p>
 <p>先下载 <code>calico</code> 的 k8s 资源。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>curl https://docs.projectcalico.org/manifests/calico-typha.yaml -o calico.yaml
-</code></pre></div><p>按照说明，判断下 POD 的 CIDR（POD的网段），用 <code>sudo kubectl --kubeconfig /etc/kubernetes/admin.conf get cm kubeadm-config -n kube-system -o yaml</code> 获取 <code>kubeadm-config</code> 这个 <code>configmap</code>，检查其中的 <code>networking.podSubnet</code> 值。在我这里的输出如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>apiVersion</span><span class=p>:</span><span class=w> </span><span class=l>v1</span><span class=w>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>curl https://docs.projectcalico.org/manifests/calico-typha.yaml -o calico.yaml
+</code></pre></td></tr></table>
+</div>
+</div><p>按照说明，判断下 POD 的 CIDR（POD的网段），用 <code>sudo kubectl --kubeconfig /etc/kubernetes/admin.conf get cm kubeadm-config -n kube-system -o yaml</code> 获取 <code>kubeadm-config</code> 这个 <code>configmap</code>，检查其中的 <code>networking.podSubnet</code> 值。在我这里的输出如下。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>apiVersion</span><span class=p>:</span><span class=w> </span><span class=l>v1</span><span class=w>
 </span><span class=w></span><span class=nt>data</span><span class=p>:</span><span class=w>
 </span><span class=w>  </span><span class=nt>ClusterConfiguration</span><span class=p>:</span><span class=w> </span><span class=p>|</span><span class=sd>
 </span><span class=sd>    apiServer:
@@ -392,10 +643,54 @@ kubeadm join 10.0.2.15:6443 --token jfhacg.2ahc3yqndiwct9vk \
 </span><span class=w>  </span><span class=nt>namespace</span><span class=p>:</span><span class=w> </span><span class=l>kube-system</span><span class=w>
 </span><span class=w>  </span><span class=nt>resourceVersion</span><span class=p>:</span><span class=w> </span><span class=s2>&#34;210&#34;</span><span class=w>
 </span><span class=w>  </span><span class=nt>uid</span><span class=p>:</span><span class=w> </span><span class=l>2567d366-2257-4114-8709-12b016cd1fe8</span><span class=w>
-</span></code></pre></div><p>可以发现没有 <code>podSubnet</code>，那就当是默认，按照 <code>calico</code> 文档说明不用改 <code>yaml</code>，正常应用。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f calico.yaml
-</code></pre></div><p>输出如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>configmap/calico-config created
+</span></code></pre></td></tr></table>
+</div>
+</div><p>可以发现没有 <code>podSubnet</code>，那就当是默认，按照 <code>calico</code> 文档说明不用改 <code>yaml</code>，正常应用。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f calico.yaml
+</code></pre></td></tr></table>
+</div>
+</div><p>输出如下。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>configmap/calico-config created
 customresourcedefinition.apiextensions.k8s.io/bgpconfigurations.crd.projectcalico.org created
 customresourcedefinition.apiextensions.k8s.io/bgppeers.crd.projectcalico.org created
 customresourcedefinition.apiextensions.k8s.io/blockaffinities.crd.projectcalico.org created
@@ -426,8 +721,25 @@ serviceaccount/calico-node created
 deployment.apps/calico-kube-controllers created
 serviceaccount/calico-kube-controllers created
 poddisruptionbudget.policy/calico-kube-controllers created
-</code></pre></div><p>出现了一个弃用警告，无视之，反正是 <code>calico</code> 的问题。再检查下相关的 <code>POD</code> 创建是否成功，用命令 <code>kubectl get pod -n kube-system</code>，输出如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>NAMESPACE     NAME                                       READY   STATUS    RESTARTS      AGE
+</code></pre></td></tr></table>
+</div>
+</div><p>出现了一个弃用警告，无视之，反正是 <code>calico</code> 的问题。再检查下相关的 <code>POD</code> 创建是否成功，用命令 <code>kubectl get pod -n kube-system</code>，输出如下。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>NAMESPACE     NAME                                       READY   STATUS    RESTARTS      AGE
 kube-system   calico-kube-controllers-5d995d45d6-gwwrw   1/1     Running   0             5m29s
 kube-system   calico-node-sgb2x                          0/1     Running   2 (49s ago)   5m29s
 kube-system   calico-typha-7df55cc78b-hpfkx              0/1     Pending   0             5m29s
@@ -438,22 +750,72 @@ kube-system   kube-apiserver-vm                          1/1     Running   0    
 kube-system   kube-controller-manager-vm                 1/1     Running   0             32m
 kube-system   kube-proxy-d64kh                           1/1     Running   0             32m
 kube-system   kube-scheduler-vm                          1/1     Running   0             32m
-</code></pre></div><p>可以看到至少镜像是拉到了。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>可以看到至少镜像是拉到了。</p>
 <p><code>calico-typha-7df55cc78b-hpfkx</code> 这个 POD 的 <code>describe</code> 显示不能运行在 <code>master</code> 节点。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>Events:
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>Events:
   Type     Reason            Age                  From               Message
   ----     ------            ----                 ----               -------
   Warning  FailedScheduling  56s (x9 over 8m57s)  default-scheduler  0/1 nodes are available: 1 node(s) had taint {node-role.kubernetes.io/master: }, that the pod didn&#39;t tolerate.
-</code></pre></div><p>而 <code>calico-node-sgb2x</code> 的日志显示需要 <code>calico-typha</code> 才能运行。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>2021-11-19 03:27:46.413 [ERROR][1674] confd/discovery.go 153: Didn&#39;t find any ready Typha instances.
+</code></pre></td></tr></table>
+</div>
+</div><p>而 <code>calico-node-sgb2x</code> 的日志显示需要 <code>calico-typha</code> 才能运行。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>2021-11-19 03:27:46.413 [ERROR][1674] confd/discovery.go 153: Didn&#39;t find any ready Typha instances.
 2021-11-19 03:27:46.413 [FATAL][1674] confd/startsyncerclient.go 48: Typha discovery enabled but discovery failed. error=Kubernetes service missing IP or port
 bird: Unable to open configuration file /etc/calico/confd/config/bird6.cfg: No such file or directory
-</code></pre></div><p>因为想要的是一个单节点集群，所以接下来把本节点的污点 <code>node-role.kubernetes.io/master-</code> 给去掉。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo kubectl --kubeconfig /etc/kubernetes/admin.conf taint nodes --all node-role.kubernetes.io/master-
-</code></pre></div><p>输出</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>node/vm untainted
-</code></pre></div><p>再观察 <code>kube-system</code> 里的 POD 状态。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>NAME                                       READY   STATUS    RESTARTS      AGE
+</code></pre></td></tr></table>
+</div>
+</div><p>因为想要的是一个单节点集群，所以接下来把本节点的污点 <code>node-role.kubernetes.io/master-</code> 给去掉。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo kubectl --kubeconfig /etc/kubernetes/admin.conf taint nodes --all node-role.kubernetes.io/master-
+</code></pre></td></tr></table>
+</div>
+</div><p>输出</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>node/vm untainted
+</code></pre></td></tr></table>
+</div>
+</div><p>再观察 <code>kube-system</code> 里的 POD 状态。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>NAME                                       READY   STATUS    RESTARTS      AGE
 calico-kube-controllers-5d995d45d6-gwwrw   1/1     Running   0             11m
 calico-node-sgb2x                          1/1     Running   7 (38s ago)   11m
 calico-typha-7df55cc78b-hpfkx              1/1     Running   0             11m
@@ -464,11 +826,21 @@ kube-apiserver-vm                          1/1     Running   0             38m
 kube-controller-manager-vm                 1/1     Running   0             38m
 kube-proxy-d64kh                           1/1     Running   0             38m
 kube-scheduler-vm                          1/1     Running   0             38m
-</code></pre></div><p>可以看到所有的POD都已经进入<code>Ready</code>状态。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>可以看到所有的POD都已经进入<code>Ready</code>状态。</p>
 <p>最后通过 <code>kubectl get nodes -o wide</code> 检查节点状态。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>NAME   STATUS   ROLES                  AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION     CONTAINER-RUNTIME
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>NAME   STATUS   ROLES                  AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION     CONTAINER-RUNTIME
 vm     Ready    control-plane,master   39m   v1.22.4   10.0.2.15     &lt;none&gt;        Ubuntu 20.04.3 LTS   5.4.0-90-generic   docker://20.10.11
-</code></pre></div><p>到这里单节点集群就成功部署了。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>到这里单节点集群就成功部署了。</p>
 <h2 id=总结>总结</h2>
 <p>之后还可以部署 dashboard 之类的应用验证，不想写了，浪费时间。</p>
 <p>写了一大堆又删掉了。</p>
@@ -534,7 +906,7 @@ vm     Ready    control-plane,master   39m   v1.22.4   10.0.2.15     &lt;none&gt
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

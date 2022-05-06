@@ -1,62 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。
-可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具体定义可能有所不同。这里聊的是 C++语言中的可重入性。
-所谓可重入性（reetrant），指的是同时具备并发安全和中断安全的特征，这是目前为止我对可重入性的认识，也是这篇博客在写下时给可重入性下的定义。
-这个认知可能并不准确，因为在wiki上的定义是这样的。
- 若一个程序或子程序可以「在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错」，则称其为可重入（reentrant 或 re-entrant）的。即当该子程序正在运行时，执行线程可以再次进入并执行它，仍然获得符合設計時預期的结果。与多线程并发执行的线程安全不同，可重入强调对单个线程执行时重新进入同一个子程序仍然是安全的。
- 但是在很多中文博客里，聊到可重入性的时候往往也会把并发安全混为一谈。实际上来说的话&amp;hellip;&amp;hellip;一个可重入的函数，常常也是并发安全的。
-那么先从并发安全讲起吧。
-并发安全性和可重入性 所谓并发安全已经是老生常谈了。
-以一段非常简单的代码为例，我们打算初始化一个对象，这个对象被两个线程共享。
-void initialize(Something** someshit) { if(!*someshit) { *someshit = createSomeShit(); } } 显而易见，如果线程在执行到特定环节时发生了切换
-void initialize(Something** someshit) { if(!*someshit) { // &amp;lt;-------- 线程切换  // 线程2() {  // initialize(something);  // }  // 线程切换 ---------&amp;gt;  *someshit = createSomeShit(); } } 那么 createSomeShit这段代码就会被执行两次。
-显然这和我们预期的行为不符。
-这里要聊的不是并发，而是&amp;hellip;&amp;hellip;可重入性。所以我们再看看这个函数能否被重入。
-按照 wiki 提供的定义，函数可重入指的是
- 在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错。
- 符合吗？不。为什么？因为同样在那个线程切换的位置上中断，然后再另一段代码里再次执行这个函数，也会触发同样的问题，导致createSomeShit被执行两次。
-void initialize(Something** someshit) { if(!"><title>可重入和异步安全</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。 可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具"><title>可重入和异步安全</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="可重入和异步安全">
-<meta property="og:description" content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。
-可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具体定义可能有所不同。这里聊的是 C++语言中的可重入性。
-所谓可重入性（reetrant），指的是同时具备并发安全和中断安全的特征，这是目前为止我对可重入性的认识，也是这篇博客在写下时给可重入性下的定义。
-这个认知可能并不准确，因为在wiki上的定义是这样的。
- 若一个程序或子程序可以「在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错」，则称其为可重入（reentrant 或 re-entrant）的。即当该子程序正在运行时，执行线程可以再次进入并执行它，仍然获得符合設計時預期的结果。与多线程并发执行的线程安全不同，可重入强调对单个线程执行时重新进入同一个子程序仍然是安全的。
- 但是在很多中文博客里，聊到可重入性的时候往往也会把并发安全混为一谈。实际上来说的话&amp;hellip;&amp;hellip;一个可重入的函数，常常也是并发安全的。
-那么先从并发安全讲起吧。
-并发安全性和可重入性 所谓并发安全已经是老生常谈了。
-以一段非常简单的代码为例，我们打算初始化一个对象，这个对象被两个线程共享。
-void initialize(Something** someshit) { if(!*someshit) { *someshit = createSomeShit(); } } 显而易见，如果线程在执行到特定环节时发生了切换
-void initialize(Something** someshit) { if(!*someshit) { // &amp;lt;-------- 线程切换  // 线程2() {  // initialize(something);  // }  // 线程切换 ---------&amp;gt;  *someshit = createSomeShit(); } } 那么 createSomeShit这段代码就会被执行两次。
-显然这和我们预期的行为不符。
-这里要聊的不是并发，而是&amp;hellip;&amp;hellip;可重入性。所以我们再看看这个函数能否被重入。
-按照 wiki 提供的定义，函数可重入指的是
- 在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错。
- 符合吗？不。为什么？因为同样在那个线程切换的位置上中断，然后再另一段代码里再次执行这个函数，也会触发同样的问题，导致createSomeShit被执行两次。
-void initialize(Something** someshit) { if(!">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="可重入和异步安全">
+<meta property="og:description" content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。 可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="c++"><meta property="article:tag" content="并发"><meta property="article:published_time" content="2018-06-24T22:48:00+08:00"><meta property="article:modified_time" content="2018-06-24T22:48:00+08:00">
 <meta name=twitter:title content="可重入和异步安全">
-<meta name=twitter:description content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。
-可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具体定义可能有所不同。这里聊的是 C++语言中的可重入性。
-所谓可重入性（reetrant），指的是同时具备并发安全和中断安全的特征，这是目前为止我对可重入性的认识，也是这篇博客在写下时给可重入性下的定义。
-这个认知可能并不准确，因为在wiki上的定义是这样的。
- 若一个程序或子程序可以「在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错」，则称其为可重入（reentrant 或 re-entrant）的。即当该子程序正在运行时，执行线程可以再次进入并执行它，仍然获得符合設計時預期的结果。与多线程并发执行的线程安全不同，可重入强调对单个线程执行时重新进入同一个子程序仍然是安全的。
- 但是在很多中文博客里，聊到可重入性的时候往往也会把并发安全混为一谈。实际上来说的话&amp;hellip;&amp;hellip;一个可重入的函数，常常也是并发安全的。
-那么先从并发安全讲起吧。
-并发安全性和可重入性 所谓并发安全已经是老生常谈了。
-以一段非常简单的代码为例，我们打算初始化一个对象，这个对象被两个线程共享。
-void initialize(Something** someshit) { if(!*someshit) { *someshit = createSomeShit(); } } 显而易见，如果线程在执行到特定环节时发生了切换
-void initialize(Something** someshit) { if(!*someshit) { // &amp;lt;-------- 线程切换  // 线程2() {  // initialize(something);  // }  // 线程切换 ---------&amp;gt;  *someshit = createSomeShit(); } } 那么 createSomeShit这段代码就会被执行两次。
-显然这和我们预期的行为不符。
-这里要聊的不是并发，而是&amp;hellip;&amp;hellip;可重入性。所以我们再看看这个函数能否被重入。
-按照 wiki 提供的定义，函数可重入指的是
- 在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错。
- 符合吗？不。为什么？因为同样在那个线程切换的位置上中断，然后再另一段代码里再次执行这个函数，也会触发同样的问题，导致createSomeShit被执行两次。
-void initialize(Something** someshit) { if(!">
+<meta name=twitter:description content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。 可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -77,7 +29,12 @@ void initialize(Something** someshit) { if(!">
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -101,6 +58,11 @@ void initialize(Something** someshit) { if(!">
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -130,7 +92,7 @@ c++
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 2 分钟
+阅读时长: 7 分钟
 </time>
 </div>
 </footer>
@@ -150,13 +112,38 @@ c++
 <h2 id=并发安全性和可重入性>并发安全性和可重入性</h2>
 <p>所谓并发安全已经是老生常谈了。</p>
 <p>以一段非常简单的代码为例，我们打算初始化一个对象，这个对象被两个线程共享。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
   <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
     <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
   <span class=p>}</span>
 <span class=p>}</span>
-</code></pre></div><p>显而易见，如果线程在执行到特定环节时发生了切换</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>显而易见，如果线程在执行到特定环节时发生了切换</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
   <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
     <span class=c1>// &lt;-------- 线程切换
 </span><span class=c1></span>    <span class=c1>// 线程2() {
@@ -166,7 +153,9 @@ c++
 </span><span class=c1></span>    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
   <span class=p>}</span>
 <span class=p>}</span>
-</code></pre></div><p>那么 <code>createSomeShit</code>这段代码就会被执行两次。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>那么 <code>createSomeShit</code>这段代码就会被执行两次。</p>
 <p>显然这和我们预期的行为不符。</p>
 <p>这里要聊的不是并发，而是&mldr;&mldr;可重入性。所以我们再看看这个函数能否被重入。</p>
 <p>按照 wiki 提供的定义，函数可重入指的是</p>
@@ -174,7 +163,21 @@ c++
 <p>在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错。</p>
 </blockquote>
 <p>符合吗？不。为什么？因为同样在那个线程切换的位置上中断，然后再另一段代码里再次执行这个函数，也会触发同样的问题，导致<code>createSomeShit</code>被执行两次。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
   <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
     <span class=c1>// &lt;-------- 被中断
 </span><span class=c1></span>    <span class=c1>// 中断处理函数() {
@@ -184,22 +187,53 @@ c++
 </span><span class=c1></span>    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
   <span class=p>}</span>
 <span class=p>}</span>
-</code></pre></div><p>可以看出，那些线程不安全的代码，都是不可重入的。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>可以看出，那些线程不安全的代码，都是不可重入的。</p>
 <p>那么，线程安全的代码，就一定是可重入的吗？</p>
 <h2 id=中断安全性或者叫信号安全性>中断安全性，或者叫信号安全性</h2>
 <p>中断这个东西对其他编程语言的用户来说可能会少见一些，在 C/C++语言里，中断并不是什么新鲜话题。</p>
 <p>在 C 标准库中，规定了一系列的信号和信号处理方法。关于信号的定义可以参考<a class=link href=https://zh.cppreference.com/w/c/program/signal target=_blank rel=noopener>这个</a>。</p>
 <p>当进程接收到信号的时候，当前正在执行的代码就会被中断——注意了，这回，锁救不了你。</p>
 <p>在 C/C++中，中断处理是由一个函数进行。在函数里可能会调用到中断时正在执行的函数。那么问题来了——一个线程安全的函数，是中断安全的函数吗？</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>,</span> <span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&amp;</span> <span class=n>realshit</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>,</span> <span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&amp;</span> <span class=n>realshit</span><span class=p>)</span> <span class=p>{</span>
   <span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
   <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
     <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
   <span class=p>}</span>
 <span class=p>}</span>
-</code></pre></div><p>看上去岁月静好~一切线程切换的问题，都被那句<code>std::lock_guard&lt;std::mutex>(realshit)</code>给挡在了墙的另一边。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>看上去岁月静好~一切线程切换的问题，都被那句<code>std::lock_guard&lt;std::mutex>(realshit)</code>给挡在了墙的另一边。</p>
 <p>但是&mldr;&mldr;</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>,</span> <span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&amp;</span> <span class=n>realshit</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>,</span> <span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&amp;</span> <span class=n>realshit</span><span class=p>)</span> <span class=p>{</span>
   <span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
   <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
     <span class=c1>// &lt;----- 调皮的用户按下了 Ctrl-C
@@ -212,11 +246,22 @@ c++
 </span><span class=c1></span>    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
   <span class=p>}</span>
 <span class=p>}</span>
-</code></pre></div><p>看这里~</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>看这里~</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
 <span class=c1>// 进入信号处理
 </span><span class=c1></span><span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
-</code></pre></div><p>好了，GG。死锁在这个时候发生了。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>好了，GG。死锁在这个时候发生了。</p>
 <p>经验丰富的大佬可能注意到了，咱还可以用<code>std::recursive_mutex</code>啊！</p>
 <p>这里就要提到一个很遗憾的问题了：C/C++的语言标准给了哪些保证。</p>
 <p>C 对信号处理函数的定义很粗暴，除了<code>abort</code>、<code>_Exit</code>、<code>quick_exit</code>、<code>signal</code>、<code>stdatomic.h的免锁原子函数</code>、<code>atomic_is_lock_free与任何类型的原子参数</code>这些函数以外，任何标准库函数的调用，行为都是未定义的。</p>
@@ -231,7 +276,21 @@ c++
 <p>一个递归函数，直觉上来讲，好像应该是可重入的：因为它要调用自己。</p>
 <p>那么&mldr;&mldr;事实上呢？</p>
 <p>写个比较骚的递归删除链表节点的例子。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>removeNode</span><span class=p>(</span><span class=n>Node</span><span class=o>*</span> <span class=n>node</span><span class=p>,</span> <span class=kt>int</span> <span class=n>length</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>removeNode</span><span class=p>(</span><span class=n>Node</span><span class=o>*</span> <span class=n>node</span><span class=p>,</span> <span class=kt>int</span> <span class=n>length</span><span class=p>)</span> <span class=p>{</span>
   <span class=n>Node</span><span class=o>*</span> <span class=n>tmp</span> <span class=o>=</span> <span class=n>node</span><span class=p>.</span><span class=n>prev</span><span class=p>;</span>
   <span class=n>node</span><span class=p>.</span><span class=n>next</span><span class=p>.</span><span class=n>prev</span> <span class=o>=</span> <span class=n>tmp</span><span class=p>;</span>
   <span class=c1>// &lt;------ 出现了！中断兽！
@@ -241,7 +300,9 @@ c++
   <span class=n>freeNode</span><span class=p>(</span><span class=n>node</span><span class=p>);</span>
   <span class=n>removeNode</span><span class=p>(</span><span class=n>tmp</span><span class=p>.</span><span class=n>next</span><span class=p>,</span> <span class=n>length</span><span class=o>-</span><span class=mi>1</span><span class=p>);</span>
 <span class=p>}</span>
-</code></pre></div><p>轻易地否定了递归函数=可重入函数的直觉想法。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>轻易地否定了递归函数=可重入函数的直觉想法。</p>
 <p>深究下去，又到了线程安全——然后是死锁——然后提出了<code>std::recursive_mutex</code>或者其他类似的操作——最后走到平台相关的 API 和保证——失去可移植性。</p>
 <p>为什么我一直在提可移植性？</p>
 <p>emmmm，大概是装逼如风，常伴吾身吧。</p>
@@ -332,7 +393,7 @@ c++
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

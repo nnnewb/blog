@@ -1,56 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 有言道，纸上得来终觉浅，绝知此事要躬行。分布式事务的具体方案，看几篇文章就基本有了概念，但实际应用的机会很少。这不有点闲暇，就试试看把理论化作代码，在实践中检验。
-#1 案例设计 采用分布式事务经典的转账案例：用户从银行A转账到银行B，银行A扣除余额，银行B增加余额。
-XA事务官方规范文档给出的示意图如下。
-用 XA 事务描述，用户的转账操作发生在AP，AP调用TM注册全局事务后，调用银行A（RM）完成扣款（PREPARE），调用银行B（RM）完成增加余额（PREPARE），然后调用TM提交全局事务，TM回调银行A和B提交本地事务。
-图示如下。
-上面的时序图是读了 github.com/yedf/dtm 代码后胡乱分析出来的，图略去了错误处理的部分。根据这个时序图可以做出一个简单的服务划分设计。
-为了更好地观察服务的交互情况，引入了 Jaeger ，如果是为了简化整个案例代码考虑也可以不要。但大部分时候 Jaeger 应该是没什么存在感的。
-nginx 反向代理将 AP 的接口还有 Bank1/Bank2的接口导出给用户访问，实际上案例中没有需要访问 Bank1/Bank2 接口的情况，所以 去掉 nginx 反向代理应该也没什么大关系。
-#2 技术栈 所有服务使用docker-compose部署，kubernetes也没问题。
-MySQL使用5.7版本，jaeger和nginx最新稳定版。AP/Bank服务都使用 Go 语言编写， 使用 Gin 作为 HTTP 服务框架，OpenTelemetry 跟踪，sqlx 做 ORM。
-#3 接口设计 接口url设计有参考 Google APIs 规范，但并不是硬套 RESTful 。
-AP服务提供接口
- /v1alpha1/transfer 转账接口  Bank服务提供接口
- /v1alpha1/trans_in 余额转入 /v1alpha1/trans_out 余额转出 /v1alpha1/tm_callback 事务回调，当AP提交事务或者回滚时，TM回调这个接口并告知需要提交还是回滚  TM服务提供接口
- /v1alpha1/create_global_tx 注册全局事务。 /v1alpha1/register_local_tx 注册本地事务，指定关联哪个全局事务。在AP提交或者回滚的时候TM可以查找出所有本地事务并回调。 /v1alpha1/commit_global_tx 提交全局事务。 /v1alpha1/rollback_global_tx 回滚全局事务。  一共需要实现8个接口，接口会尽量简化。"><title>XA 事务从理论到实践</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 有言道，纸上得来终觉浅，绝知此事要躬行。分布式事务的具体方案，看几篇文章就基本有了概念，但实际应用的机会很少。这不有点闲暇，就试试看把理"><title>XA 事务从理论到实践</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/xa-transaction-theory-to-practice/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="XA 事务从理论到实践">
-<meta property="og:description" content="前言 有言道，纸上得来终觉浅，绝知此事要躬行。分布式事务的具体方案，看几篇文章就基本有了概念，但实际应用的机会很少。这不有点闲暇，就试试看把理论化作代码，在实践中检验。
-#1 案例设计 采用分布式事务经典的转账案例：用户从银行A转账到银行B，银行A扣除余额，银行B增加余额。
-XA事务官方规范文档给出的示意图如下。
-用 XA 事务描述，用户的转账操作发生在AP，AP调用TM注册全局事务后，调用银行A（RM）完成扣款（PREPARE），调用银行B（RM）完成增加余额（PREPARE），然后调用TM提交全局事务，TM回调银行A和B提交本地事务。
-图示如下。
-上面的时序图是读了 github.com/yedf/dtm 代码后胡乱分析出来的，图略去了错误处理的部分。根据这个时序图可以做出一个简单的服务划分设计。
-为了更好地观察服务的交互情况，引入了 Jaeger ，如果是为了简化整个案例代码考虑也可以不要。但大部分时候 Jaeger 应该是没什么存在感的。
-nginx 反向代理将 AP 的接口还有 Bank1/Bank2的接口导出给用户访问，实际上案例中没有需要访问 Bank1/Bank2 接口的情况，所以 去掉 nginx 反向代理应该也没什么大关系。
-#2 技术栈 所有服务使用docker-compose部署，kubernetes也没问题。
-MySQL使用5.7版本，jaeger和nginx最新稳定版。AP/Bank服务都使用 Go 语言编写， 使用 Gin 作为 HTTP 服务框架，OpenTelemetry 跟踪，sqlx 做 ORM。
-#3 接口设计 接口url设计有参考 Google APIs 规范，但并不是硬套 RESTful 。
-AP服务提供接口
- /v1alpha1/transfer 转账接口  Bank服务提供接口
- /v1alpha1/trans_in 余额转入 /v1alpha1/trans_out 余额转出 /v1alpha1/tm_callback 事务回调，当AP提交事务或者回滚时，TM回调这个接口并告知需要提交还是回滚  TM服务提供接口
- /v1alpha1/create_global_tx 注册全局事务。 /v1alpha1/register_local_tx 注册本地事务，指定关联哪个全局事务。在AP提交或者回滚的时候TM可以查找出所有本地事务并回调。 /v1alpha1/commit_global_tx 提交全局事务。 /v1alpha1/rollback_global_tx 回滚全局事务。  一共需要实现8个接口，接口会尽量简化。">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="XA 事务从理论到实践">
+<meta property="og:description" content="前言 有言道，纸上得来终觉浅，绝知此事要躬行。分布式事务的具体方案，看几篇文章就基本有了概念，但实际应用的机会很少。这不有点闲暇，就试试看把理">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/xa-transaction-theory-to-practice/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="mysql"><meta property="article:tag" content="分布式"><meta property="article:tag" content="go"><meta property="article:published_time" content="2021-12-16T15:00:00+08:00"><meta property="article:modified_time" content="2021-12-16T15:00:00+08:00">
 <meta name=twitter:title content="XA 事务从理论到实践">
-<meta name=twitter:description content="前言 有言道，纸上得来终觉浅，绝知此事要躬行。分布式事务的具体方案，看几篇文章就基本有了概念，但实际应用的机会很少。这不有点闲暇，就试试看把理论化作代码，在实践中检验。
-#1 案例设计 采用分布式事务经典的转账案例：用户从银行A转账到银行B，银行A扣除余额，银行B增加余额。
-XA事务官方规范文档给出的示意图如下。
-用 XA 事务描述，用户的转账操作发生在AP，AP调用TM注册全局事务后，调用银行A（RM）完成扣款（PREPARE），调用银行B（RM）完成增加余额（PREPARE），然后调用TM提交全局事务，TM回调银行A和B提交本地事务。
-图示如下。
-上面的时序图是读了 github.com/yedf/dtm 代码后胡乱分析出来的，图略去了错误处理的部分。根据这个时序图可以做出一个简单的服务划分设计。
-为了更好地观察服务的交互情况，引入了 Jaeger ，如果是为了简化整个案例代码考虑也可以不要。但大部分时候 Jaeger 应该是没什么存在感的。
-nginx 反向代理将 AP 的接口还有 Bank1/Bank2的接口导出给用户访问，实际上案例中没有需要访问 Bank1/Bank2 接口的情况，所以 去掉 nginx 反向代理应该也没什么大关系。
-#2 技术栈 所有服务使用docker-compose部署，kubernetes也没问题。
-MySQL使用5.7版本，jaeger和nginx最新稳定版。AP/Bank服务都使用 Go 语言编写， 使用 Gin 作为 HTTP 服务框架，OpenTelemetry 跟踪，sqlx 做 ORM。
-#3 接口设计 接口url设计有参考 Google APIs 规范，但并不是硬套 RESTful 。
-AP服务提供接口
- /v1alpha1/transfer 转账接口  Bank服务提供接口
- /v1alpha1/trans_in 余额转入 /v1alpha1/trans_out 余额转出 /v1alpha1/tm_callback 事务回调，当AP提交事务或者回滚时，TM回调这个接口并告知需要提交还是回滚  TM服务提供接口
- /v1alpha1/create_global_tx 注册全局事务。 /v1alpha1/register_local_tx 注册本地事务，指定关联哪个全局事务。在AP提交或者回滚的时候TM可以查找出所有本地事务并回调。 /v1alpha1/commit_global_tx 提交全局事务。 /v1alpha1/rollback_global_tx 回滚全局事务。  一共需要实现8个接口，接口会尽量简化。">
+<meta name=twitter:description content="前言 有言道，纸上得来终觉浅，绝知此事要躬行。分布式事务的具体方案，看几篇文章就基本有了概念，但实际应用的机会很少。这不有点闲暇，就试试看把理">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -71,7 +29,12 @@ AP服务提供接口
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -95,6 +58,11 @@ AP服务提供接口
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -124,7 +92,7 @@ mysql
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 6 分钟
+阅读时长: 11 分钟
 </time>
 </div>
 </footer>
@@ -169,7 +137,92 @@ mysql
 <p>一共需要实现8个接口，接口会尽量简化。</p>
 <h2 id=4-框架构建>#4 框架构建</h2>
 <p>创建好各个服务的样板（就是简单的用Gin把上面的接口定义好，写好主程序），接着写 Dockerfile 和 docker-compose.yml 把之前设计的服务划分实现出来。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>version</span><span class=p>:</span><span class=w> </span><span class=s1>&#39;3.1&#39;</span><span class=w>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span><span class=lnt>71
+</span><span class=lnt>72
+</span><span class=lnt>73
+</span><span class=lnt>74
+</span><span class=lnt>75
+</span><span class=lnt>76
+</span><span class=lnt>77
+</span><span class=lnt>78
+</span><span class=lnt>79
+</span><span class=lnt>80
+</span><span class=lnt>81
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>version</span><span class=p>:</span><span class=w> </span><span class=s1>&#39;3.1&#39;</span><span class=w>
 </span><span class=w></span><span class=nt>services</span><span class=p>:</span><span class=w>
 </span><span class=w>  </span><span class=nt>jaeger</span><span class=p>:</span><span class=w>
 </span><span class=w>    </span><span class=nt>image</span><span class=p>:</span><span class=w> </span><span class=l>jaegertracing/all-in-one:1.29</span><span class=w>
@@ -250,10 +303,32 @@ mysql
 </span><span class=w>      </span>- <span class=l>bank1</span><span class=w>
 </span><span class=w>      </span>- <span class=l>bank2</span><span class=w>
 </span><span class=w>      </span>- <span class=l>mysql</span><span class=w>
-</span></code></pre></div><p>其中 Bank1/Bank2 用的同一套代码，以命令行参数来区分连接不同的数据库。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>其中 Bank1/Bank2 用的同一套代码，以命令行参数来区分连接不同的数据库。</p>
 <h2 id=5-tm-实现>#5 TM 实现</h2>
 <h3 id=创建全局事务>创建全局事务</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>createGlobalTx</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>createGlobalTx</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
 	<span class=nx>req</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>tm</span><span class=p>.</span><span class=nx>CreateGlobalTxReq</span><span class=p>{}</span>
 	<span class=nx>c</span><span class=p>.</span><span class=nf>BindJSON</span><span class=p>(</span><span class=nx>req</span><span class=p>)</span>
 
@@ -269,9 +344,39 @@ mysql
 		<span class=s>&#34;message&#34;</span><span class=p>:</span> <span class=s>&#34;ok&#34;</span><span class=p>,</span>
 	<span class=p>})</span>
 <span class=p>}</span>
-</code></pre></div><p>暂时没有考虑更多全局事务的用法，只是单纯的保存。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>暂时没有考虑更多全局事务的用法，只是单纯的保存。</p>
 <h3 id=注册本地事务>注册本地事务</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>registerLocalTx</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>registerLocalTx</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
 	<span class=nx>req</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>tm</span><span class=p>.</span><span class=nx>RegisterLocalTxReq</span><span class=p>{}</span>
 	<span class=nx>c</span><span class=p>.</span><span class=nf>BindJSON</span><span class=p>(</span><span class=nx>req</span><span class=p>)</span>
 
@@ -295,9 +400,52 @@ mysql
 		<span class=s>&#34;message&#34;</span><span class=p>:</span> <span class=s>&#34;ok&#34;</span><span class=p>,</span>
 	<span class=p>})</span>
 <span class=p>}</span>
-</code></pre></div><p>本地事务需要记录下对应的全局事务ID和分支ID（就是这个本地事务的ID，用于回调的时候告诉RM提交哪个本地事务，在MySQL XA里就是XID 的 bqual 部分），以及回调的地址。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>本地事务需要记录下对应的全局事务ID和分支ID（就是这个本地事务的ID，用于回调的时候告诉RM提交哪个本地事务，在MySQL XA里就是XID 的 bqual 部分），以及回调的地址。</p>
 <h3 id=提交全局事务>提交全局事务</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>commitGlobalTx</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>commitGlobalTx</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
 	<span class=nx>req</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>tm</span><span class=p>.</span><span class=nx>CommitGlobalTxReq</span><span class=p>{}</span>
 	<span class=nx>c</span><span class=p>.</span><span class=nf>BindJSON</span><span class=p>(</span><span class=nx>req</span><span class=p>)</span>
 
@@ -334,14 +482,57 @@ mysql
 		<span class=s>&#34;message&#34;</span><span class=p>:</span> <span class=s>&#34;ok&#34;</span><span class=p>,</span>
 	<span class=p>})</span>
 <span class=p>}</span>
-</code></pre></div><p>全局事务的提交，本质是由TM负责逐个告知RM提交自己的本地事务，也是整个 XA 过程里最重要也最脆弱的一步。理论上来说这时的 XA 事务无论是提交还是回滚都应该无条件成功。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>全局事务的提交，本质是由TM负责逐个告知RM提交自己的本地事务，也是整个 XA 过程里最重要也最脆弱的一步。理论上来说这时的 XA 事务无论是提交还是回滚都应该无条件成功。</p>
 <p>但TM本身，以及TM和RM之间的网络存在故障的可能。如果TM崩溃，或者TM和RM之间出现网络分区，导致TM无法发出提交或回滚的消息时，就会导致参与者陷入长时间的阻塞，直到TM恢复运行，或网络恢复畅通，参与者收到TM发出的Commit或Rollback消息为止。</p>
 <p>更可能出现的情况是，一个或几个参与者出现网络分区或崩溃，没有收到 Commit 消息，只能继续阻塞等待，TM也需要不断重试。参与者不能依据超时时间武断提交或回滚，因为TM很可能发出了提交的指令，只是因为网络状况不佳等原因未能及时送达。这一情况也可以通过参与者之间互相询问来解决，等待超时的参与者可以询问其他参与者，如果有参与者未准备则可以确定需要回滚，如果有参与者已经提交，则也可以确定需要提交。但如果所有参与者都处于就绪状态，则无法判断TM的最终决策，只能继续傻等。</p>
 <p>另外关于网络分区（就是CAP中的P），假如说消息发送者会不断重试发送，直到接收者告知成功，暂且认为多次发送消息产生的结果是幂等的，那么接收者因为网络原因未能接收到消息，和接收到了消息，但因为接收者本身的故障或资源不足等原因未能处理消息就崩溃重启的话，实质上和网络分区的结果是差不多的，都可以看作是接收者未能收到消息。举例来说就是一个HTTP请求在程序中间件里触发了崩溃，没有执行任何业务逻辑，直到压力缓解后才恢复，这种情况放在上面的场景（TM回调提交本地事务）里分析，和出现网络分区的情况是很接近的。（PS：开脑洞，别当真啊，应该和 P 还是不大一样的）</p>
 <p>所以总结就是，TM要保证最终一致，所有的XA事务都被提交或回滚。一旦进入提交或回滚全局事务的状态，则<strong>需要无限次尝试回调提交或回滚本地事务，直至全部成功</strong>。上面的案例代码是没有考虑重试的情况，实际应该在函数里不断重试，直到成功。或者直接放到后台去跑，返回个提交进行中也是一种办法。大部分情况下应该是不会有问题的，直接重试也还能接受。可以给个超时，如果出现部分失败就放到后台去慢慢跑，先返回个进行中。</p>
 <p>虽然保证了一致性（CAP里的C），也容忍了叫参与者提交本地事务失败而产生的分区（P），但这样做必然是要舍弃一部分可用性（A）的。所以 XA 事务是一种保证 CP 的分布式事务解决方案。</p>
 <h3 id=回滚本地事务>回滚本地事务</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>rollbackGlobalTx</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>rollbackGlobalTx</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
 	<span class=nx>req</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>tm</span><span class=p>.</span><span class=nx>RollbackGlobalTxReq</span><span class=p>{}</span>
 	<span class=nx>c</span><span class=p>.</span><span class=nf>BindJSON</span><span class=p>(</span><span class=nx>req</span><span class=p>)</span>
 
@@ -378,10 +569,72 @@ mysql
 		<span class=s>&#34;message&#34;</span><span class=p>:</span> <span class=s>&#34;ok&#34;</span><span class=p>,</span>
 	<span class=p>})</span>
 <span class=p>}</span>
-</code></pre></div><p>回滚的逻辑和提交是一样的，不多做解释了。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>回滚的逻辑和提交是一样的，不多做解释了。</p>
 <h2 id=6-bank-实现>#6 Bank 实现</h2>
 <h3 id=转入>转入</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>transIn</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>transIn</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
 	<span class=nx>req</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>bank</span><span class=p>.</span><span class=nx>TransInReq</span><span class=p>{}</span>
 	<span class=nx>c</span><span class=p>.</span><span class=nf>BindJSON</span><span class=p>(</span><span class=nx>req</span><span class=p>)</span>
 	<span class=nx>db</span> <span class=o>:=</span> <span class=nx>c</span><span class=p>.</span><span class=nf>MustGet</span><span class=p>(</span><span class=s>&#34;db&#34;</span><span class=p>).(</span><span class=o>*</span><span class=nx>sqlx</span><span class=p>.</span><span class=nx>DB</span><span class=p>)</span>
@@ -437,10 +690,73 @@ mysql
 		<span class=s>&#34;message&#34;</span><span class=p>:</span> <span class=s>&#34;ok&#34;</span><span class=p>,</span>
 	<span class=p>})</span>
 <span class=p>}</span>
-</code></pre></div><p>如果把MySQL视作RM的话，Bank服务就是连通TM和AP的桥梁。放到转账的场景里，假设AP是支付宝，那能指望支付宝去直接访问银行的数据库吗？比如支付宝从基金里提款，调用基金的提款接口和银行的转账，也是个类似的场景。当然具体业务不能直接套XA，就是举个例子。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>如果把MySQL视作RM的话，Bank服务就是连通TM和AP的桥梁。放到转账的场景里，假设AP是支付宝，那能指望支付宝去直接访问银行的数据库吗？比如支付宝从基金里提款，调用基金的提款接口和银行的转账，也是个类似的场景。当然具体业务不能直接套XA，就是举个例子。</p>
 <p>转入的接口本身就是代理了一下 MySQL 的 <code>update</code> 语句，实际业务场景里可能还会有更多业务逻辑上的判断。</p>
 <h3 id=转出>转出</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>transOut</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>transOut</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
 	<span class=nx>req</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>bank</span><span class=p>.</span><span class=nx>TransOutReq</span><span class=p>{}</span>
 	<span class=nx>c</span><span class=p>.</span><span class=nf>BindJSON</span><span class=p>(</span><span class=nx>req</span><span class=p>)</span>
 	<span class=nx>db</span> <span class=o>:=</span> <span class=nx>c</span><span class=p>.</span><span class=nf>MustGet</span><span class=p>(</span><span class=s>&#34;db&#34;</span><span class=p>).(</span><span class=o>*</span><span class=nx>sqlx</span><span class=p>.</span><span class=nx>DB</span><span class=p>)</span>
@@ -497,10 +813,111 @@ mysql
 		<span class=s>&#34;message&#34;</span><span class=p>:</span> <span class=s>&#34;ok&#34;</span><span class=p>,</span>
 	<span class=p>})</span>
 <span class=p>}</span>
-</code></pre></div><p>转出的代码其实有点问题，漏掉了检查余额，其他和转入的接口就没什么区别了。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>转出的代码其实有点问题，漏掉了检查余额，其他和转入的接口就没什么区别了。</p>
 <h2 id=7-ap-实现>#7 AP 实现</h2>
 <h3 id=转账>转账</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>transfer</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span><span class=lnt>71
+</span><span class=lnt>72
+</span><span class=lnt>73
+</span><span class=lnt>74
+</span><span class=lnt>75
+</span><span class=lnt>76
+</span><span class=lnt>77
+</span><span class=lnt>78
+</span><span class=lnt>79
+</span><span class=lnt>80
+</span><span class=lnt>81
+</span><span class=lnt>82
+</span><span class=lnt>83
+</span><span class=lnt>84
+</span><span class=lnt>85
+</span><span class=lnt>86
+</span><span class=lnt>87
+</span><span class=lnt>88
+</span><span class=lnt>89
+</span><span class=lnt>90
+</span><span class=lnt>91
+</span><span class=lnt>92
+</span><span class=lnt>93
+</span><span class=lnt>94
+</span><span class=lnt>95
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>transfer</span><span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>gin</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span> <span class=p>{</span>
 	<span class=nx>req</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>TransferReq</span><span class=p>{}</span>
 	<span class=nx>c</span><span class=p>.</span><span class=nf>BindJSON</span><span class=p>(</span><span class=nx>req</span><span class=p>)</span>
 
@@ -595,7 +1012,9 @@ mysql
 		<span class=s>&#34;message&#34;</span><span class=p>:</span> <span class=s>&#34;ok&#34;</span><span class=p>,</span>
 	<span class=p>})</span>
 <span class=p>}</span>
-</code></pre></div><p>AP代码主要就是调各个RM，发起转入/转出操作，以及在出现问题的情况下回滚全局事务。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>AP代码主要就是调各个RM，发起转入/转出操作，以及在出现问题的情况下回滚全局事务。</p>
 <p>当然，AP回滚全局事务也会出现网络分区的情况，AP崩溃或者网络故障而无法连接TM，也就无法告诉TM是不是所有参与者都准备就绪，TM只能自己等超时后去回调参与者，让参与者回滚所有本地事务。</p>
 <p>这里和参与者出现分区又不大一样，AP出现分区最多是导致原本该提交的事务被回滚，并不会破坏一致性，也就满足了CP。但事务被回滚，等于是失去了可用性，不满足CAP中的A。</p>
 <h2 id=8-关于tcc>#8 关于TCC</h2>
@@ -684,7 +1103,7 @@ mysql
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

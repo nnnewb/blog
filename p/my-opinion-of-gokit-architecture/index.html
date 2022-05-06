@@ -1,23 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 这是看了 Go kit: the road ahead 之后，对 go kit 这套抽象的一些想法。主要是关于 endpoint 是否有必要、generic 会如何影响 go kit 的架构、go kit 的代码生成这些问题。
-endpoint 抽象层是否必要存在 我的看法是需要。原因下面分析。
-一个没有额外功能的 Endpoint 其实是起到了把请求类型适配到 Go 函数签名的作用。stringsvc 实现如下。
-import ( &amp;#34;context&amp;#34; &amp;#34;github.com/go-kit/kit/endpoint&amp;#34; ) func makeUppercaseEndpoint(svc StringService) endpoint.Endpoint { return func(_ context.Context, request interface{}) (interface{}, error) { req := request.(uppercaseRequest) v, err := svc.Uppercase(req.S) if err != nil { return uppercaseResponse{v, err.Error()}, nil } return uppercaseResponse{v, &amp;#34;&amp;#34;}, nil } } func makeCountEndpoint(svc StringService) endpoint."><title>gokit 架构之我见</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 这是看了 Go kit: the road ahead 之后，对 go kit 这套抽象的一些想法。主要是关于 endpoint 是否有必要、generic 会如何影响 go kit 的架构、go kit 的代码生成这些问题。"><title>gokit 架构之我见</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/my-opinion-of-gokit-architecture/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="gokit 架构之我见">
-<meta property="og:description" content="前言 这是看了 Go kit: the road ahead 之后，对 go kit 这套抽象的一些想法。主要是关于 endpoint 是否有必要、generic 会如何影响 go kit 的架构、go kit 的代码生成这些问题。
-endpoint 抽象层是否必要存在 我的看法是需要。原因下面分析。
-一个没有额外功能的 Endpoint 其实是起到了把请求类型适配到 Go 函数签名的作用。stringsvc 实现如下。
-import ( &amp;#34;context&amp;#34; &amp;#34;github.com/go-kit/kit/endpoint&amp;#34; ) func makeUppercaseEndpoint(svc StringService) endpoint.Endpoint { return func(_ context.Context, request interface{}) (interface{}, error) { req := request.(uppercaseRequest) v, err := svc.Uppercase(req.S) if err != nil { return uppercaseResponse{v, err.Error()}, nil } return uppercaseResponse{v, &amp;#34;&amp;#34;}, nil } } func makeCountEndpoint(svc StringService) endpoint.">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="gokit 架构之我见">
+<meta property="og:description" content="前言 这是看了 Go kit: the road ahead 之后，对 go kit 这套抽象的一些想法。主要是关于 endpoint 是否有必要、generic 会如何影响 go kit 的架构、go kit 的代码生成这些问题。">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/my-opinion-of-gokit-architecture/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="gokit"><meta property="article:tag" content="golang"><meta property="article:tag" content="微服务"><meta property="article:published_time" content="2022-03-02T12:30:00+08:00"><meta property="article:modified_time" content="2022-03-02T12:30:00+08:00">
 <meta name=twitter:title content="gokit 架构之我见">
-<meta name=twitter:description content="前言 这是看了 Go kit: the road ahead 之后，对 go kit 这套抽象的一些想法。主要是关于 endpoint 是否有必要、generic 会如何影响 go kit 的架构、go kit 的代码生成这些问题。
-endpoint 抽象层是否必要存在 我的看法是需要。原因下面分析。
-一个没有额外功能的 Endpoint 其实是起到了把请求类型适配到 Go 函数签名的作用。stringsvc 实现如下。
-import ( &amp;#34;context&amp;#34; &amp;#34;github.com/go-kit/kit/endpoint&amp;#34; ) func makeUppercaseEndpoint(svc StringService) endpoint.Endpoint { return func(_ context.Context, request interface{}) (interface{}, error) { req := request.(uppercaseRequest) v, err := svc.Uppercase(req.S) if err != nil { return uppercaseResponse{v, err.Error()}, nil } return uppercaseResponse{v, &amp;#34;&amp;#34;}, nil } } func makeCountEndpoint(svc StringService) endpoint.">
+<meta name=twitter:description content="前言 这是看了 Go kit: the road ahead 之后，对 go kit 这套抽象的一些想法。主要是关于 endpoint 是否有必要、generic 会如何影响 go kit 的架构、go kit 的代码生成这些问题。">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -38,7 +29,12 @@ import ( &amp;#34;context&amp;#34; &amp;#34;github.com/go-kit/kit/endpoint&amp;#
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -62,6 +58,11 @@ import ( &amp;#34;context&amp;#34; &amp;#34;github.com/go-kit/kit/endpoint&amp;#
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -91,7 +92,7 @@ golang
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 2 分钟
+阅读时长: 5 分钟
 </time>
 </div>
 </footer>
@@ -103,7 +104,34 @@ golang
 <h2 id=endpoint-抽象层是否必要存在>endpoint 抽象层是否必要存在</h2>
 <p>我的看法是需要。原因下面分析。</p>
 <p>一个没有额外功能的 Endpoint 其实是起到了把请求类型适配到 Go 函数签名的作用。<a class=link href=http://gokit.io/examples/stringsvc.html#endpoints target=_blank rel=noopener>stringsvc</a> 实现如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kn>import</span> <span class=p>(</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kn>import</span> <span class=p>(</span>
 	<span class=s>&#34;context&#34;</span>
 	<span class=s>&#34;github.com/go-kit/kit/endpoint&#34;</span>
 <span class=p>)</span>
@@ -126,10 +154,27 @@ golang
 		<span class=k>return</span> <span class=nx>countResponse</span><span class=p>{</span><span class=nx>v</span><span class=p>},</span> <span class=kc>nil</span>
 	<span class=p>}</span>
 <span class=p>}</span>
-</code></pre></div><p>对于写过 rpcx 或者 gRPC 的朋友来说，Endpoint 更像是个脱裤子放屁的封装。只要把接口参数约定成 <code>func (ctx context.Context, req interface{}) (interface{}, error)</code> 不就完了？传输层收到的请求解码成本地数据类型，然后按约定传入，就万事大吉了。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>对于写过 rpcx 或者 gRPC 的朋友来说，Endpoint 更像是个脱裤子放屁的封装。只要把接口参数约定成 <code>func (ctx context.Context, req interface{}) (interface{}, error)</code> 不就完了？传输层收到的请求解码成本地数据类型，然后按约定传入，就万事大吉了。</p>
 <p>空口无凭，不如看看如果不要 endpoint，实际编写的代码会变成什么样。</p>
 <p>像是 go kit 提供的这种帮助函数：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=nx>uppercaseHandler</span> <span class=o>:=</span> <span class=nx>httptransport</span><span class=p>.</span><span class=nf>NewServer</span><span class=p>(</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=nx>uppercaseHandler</span> <span class=o>:=</span> <span class=nx>httptransport</span><span class=p>.</span><span class=nf>NewServer</span><span class=p>(</span>
     <span class=nf>makeUppercaseEndpoint</span><span class=p>(</span><span class=nx>svc</span><span class=p>),</span>
     <span class=nx>decodeUppercaseRequest</span><span class=p>,</span>
     <span class=nx>encodeResponse</span><span class=p>,</span>
@@ -140,8 +185,25 @@ golang
     <span class=nx>decodeCountRequest</span><span class=p>,</span>
     <span class=nx>encodeResponse</span><span class=p>,</span>
 <span class=p>)</span>
-</code></pre></div><p>可能就会变成这样：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=nx>uppercaseHandler</span> <span class=o>:=</span> <span class=nx>httptransport</span><span class=p>.</span><span class=nf>NewServer</span><span class=p>(</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>可能就会变成这样：</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=nx>uppercaseHandler</span> <span class=o>:=</span> <span class=nx>httptransport</span><span class=p>.</span><span class=nf>NewServer</span><span class=p>(</span>
     <span class=nx>svc</span><span class=p>.</span><span class=nx>Uppercase</span><span class=p>,</span>
     <span class=nx>decodeUppercaseRequest</span><span class=p>,</span>
     <span class=nx>encodeResponse</span><span class=p>,</span>
@@ -152,14 +214,30 @@ golang
     <span class=nx>decodeCountRequest</span><span class=p>,</span>
     <span class=nx>encodeResponse</span><span class=p>,</span>
 <span class=p>)</span>
-</code></pre></div><p>当然，为了让 Go 语言的类型系统开心，这里的 <code>svc.Uppercase</code> 和 <code>svc.Count</code> 得是一样的签名，或者用 <code>interface{}</code> 做形参，又或者考虑还没有发布的泛型能不能支持。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>当然，为了让 Go 语言的类型系统开心，这里的 <code>svc.Uppercase</code> 和 <code>svc.Count</code> 得是一样的签名，或者用 <code>interface{}</code> 做形参，又或者考虑还没有发布的泛型能不能支持。</p>
 <p>看起来是舒服了很多对吧？Endpoint 没了。但还有个问题：中间件。要怎么实现通用的中间件，应用在每个原本应该是 Endpoint 的地方？</p>
 <p>例如在微服务系统里很常见的分布式跟踪、metrics收集，无论最终采用的是 opentracing、opencecus、opentelemetry 还是 zipkin、prometheus，跟踪调用链路是一个很基本的可观测性要求。当然，你可以说用 linkerd 一类的 service mesh 解决方案（虽然我觉得不能替代上面提到的这些东西），但也应该有所警惕：我们是不是还有需要在每个接口上都执行、和传输层无关的代码？对，还有身份验证和鉴权工作。还有吗？</p>
 <p>当然，也不是脱离了 Endpoint 就别无他法，只是在需要的时候，我想总还是会有意无意抽象出一个类似 endpoint 的层级——可能隐藏在 service 中间件里，也可能交给了传输层。可能写得更好，也可能又是在堆屎山。经验告诉我在一个需要长期支持的系统里，人是靠不住的，但规范可以。endpoint 并没有牺牲多少编码上的自由度，但一定程度上避免了潜在的堆屎可能，我觉得完全可以接受。</p>
 <h2 id=generic-会如何影响-go-kit-架构>generic 会如何影响 go kit 架构</h2>
 <p>我直说，Go 的泛型（beta1）就是一泡狗屎，我向来不喜欢 Go 团队的品味，从 slice 和 interface{} 泄露语言的实现细节到其他更离谱的东西。但现在 Go 泛型还没有正式公布（预期就在本月），现在我也没什么好评论的。</p>
 <p>generic 会影响 go kit 的架构吗？我的看法是不会。泛型也许能极大帮助各种容器类型、迭代器之类饱受 <code>interface{}</code> 折磨的组件，但是 go kit 用得上泛型的地方其实不多。少数常见的 <code>interface{}</code> 场合，都是在从一个类型适配到另一个类型，代码编写者清楚自己要处理的两个类型，但 go kit 不知道。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>makeUppercaseEndpoint</span><span class=p>(</span><span class=nx>svc</span> <span class=nx>StringService</span><span class=p>)</span> <span class=nx>endpoint</span><span class=p>.</span><span class=nx>Endpoint</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=nf>makeUppercaseEndpoint</span><span class=p>(</span><span class=nx>svc</span> <span class=nx>StringService</span><span class=p>)</span> <span class=nx>endpoint</span><span class=p>.</span><span class=nx>Endpoint</span> <span class=p>{</span>
 	<span class=k>return</span> <span class=kd>func</span><span class=p>(</span><span class=nx>_</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span> <span class=nx>request</span> <span class=kd>interface</span><span class=p>{})</span> <span class=p>(</span><span class=kd>interface</span><span class=p>{},</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
 		<span class=nx>req</span> <span class=o>:=</span> <span class=nx>request</span><span class=p>.(</span><span class=nx>uppercaseRequest</span><span class=p>)</span>
 		<span class=nx>v</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>svc</span><span class=p>.</span><span class=nf>Uppercase</span><span class=p>(</span><span class=nx>req</span><span class=p>.</span><span class=nx>S</span><span class=p>)</span>
@@ -169,9 +247,18 @@ golang
 		<span class=k>return</span> <span class=nx>uppercaseResponse</span><span class=p>{</span><span class=nx>v</span><span class=p>,</span> <span class=s>&#34;&#34;</span><span class=p>},</span> <span class=kc>nil</span>
 	<span class=p>}</span>
 <span class=p>}</span>
-</code></pre></div><p>这部分适配代码如果把 <code>interface{}</code> 替换成具体的 <code>uppercaseRequest</code> 和 <code>uppercaseResponse</code> 的话，就需要 go kit 提供泛型形式的 Endpoint 接口了，像是这样：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>type</span> <span class=nx>Endpoint</span><span class=p>[</span><span class=nx>RequestType</span><span class=p>,</span><span class=nx>ResponseType</span><span class=p>]</span> <span class=p>=</span> <span class=kd>func</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span> <span class=nx>RequestType</span><span class=p>)</span> <span class=p>(</span><span class=nx>ResponseType</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
-</code></pre></div><p>上面的代码有效无效先不说，我记得在 beta1 尝试泛型的时候发现 Go 在推断类型的时候存在问题，这个 <code>RequestType</code> 和 <code>ResponseType</code> 在实际用的时候怕是要写不止一次。又是 Go 特色的啰嗦。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>这部分适配代码如果把 <code>interface{}</code> 替换成具体的 <code>uppercaseRequest</code> 和 <code>uppercaseResponse</code> 的话，就需要 go kit 提供泛型形式的 Endpoint 接口了，像是这样：</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>type</span> <span class=nx>Endpoint</span><span class=p>[</span><span class=nx>RequestType</span><span class=p>,</span><span class=nx>ResponseType</span><span class=p>]</span> <span class=p>=</span> <span class=kd>func</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span> <span class=nx>RequestType</span><span class=p>)</span> <span class=p>(</span><span class=nx>ResponseType</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>上面的代码有效无效先不说，我记得在 beta1 尝试泛型的时候发现 Go 在推断类型的时候存在问题，这个 <code>RequestType</code> 和 <code>ResponseType</code> 在实际用的时候怕是要写不止一次。又是 Go 特色的啰嗦。</p>
 <p>可即便是这样恐怕还有问题，如果修改了 <code>Endpoint</code> 的签名，那么 <code>endpoint.Middleware</code> 恐怕也要泛型化，原来的所有中间件库，<code>trace</code>、<code>auth</code>、<code>metrics</code> 可能也得做泛型化改造。对一个已经深度开发过的系统来说，为了这一点类型检查的好处付出如此代价恐怕是不能接受的。</p>
 <p>总而言之，我的观点是 Generic 可能带来变化，但根本上的几个抽象不大可能跟着重构，这是由 go kit 性质决定的。</p>
 <h2 id=go-kit-代码生成>go kit 代码生成</h2>
@@ -262,7 +349,7 @@ golang
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

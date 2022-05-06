@@ -1,29 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。
-0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作为首要开发环境，不然光是 MSVC 把 LLVM 源码编译一遍就够呛了。
-安装好MSYS2之后安装 clang 工具链（2021年11月3日，clang32工具链默认不在msys2的源里，需要手动改 pacman.conf 加入 clang32 源，这里以 x86_64 的 LLVM 工具链进行实践）。
-pacman -Sy mingw-w64-clang-x86_64-toolchain 完成后添加环境变量，把 msys2 安装目录下的 clang64/bin 加入环境变量，方便 VSCode + CMake 找到工具链。另外注意装一个 Ninja，同样加入 Path。
-VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense，实在太慢。
-手动编译整个LLVM源码树实在是太费时间了，我选择用MSYS2的工具链。参考这篇文档去配置一个 LLVM 源码树外的 Pass 工程：CMake out of source pass - LLVM 。写一个简单的 CMakeLists.txt ，跟着 Writing an LLVM Pass - LLVM 这篇文档快速实现一个遍历函数的 Pass 。"><title>加壳原理08：混淆技术入门</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。 0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作"><title>加壳原理08：混淆技术入门</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-08/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="加壳原理08：混淆技术入门">
-<meta property="og:description" content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。
-0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作为首要开发环境，不然光是 MSVC 把 LLVM 源码编译一遍就够呛了。
-安装好MSYS2之后安装 clang 工具链（2021年11月3日，clang32工具链默认不在msys2的源里，需要手动改 pacman.conf 加入 clang32 源，这里以 x86_64 的 LLVM 工具链进行实践）。
-pacman -Sy mingw-w64-clang-x86_64-toolchain 完成后添加环境变量，把 msys2 安装目录下的 clang64/bin 加入环境变量，方便 VSCode + CMake 找到工具链。另外注意装一个 Ninja，同样加入 Path。
-VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense，实在太慢。
-手动编译整个LLVM源码树实在是太费时间了，我选择用MSYS2的工具链。参考这篇文档去配置一个 LLVM 源码树外的 Pass 工程：CMake out of source pass - LLVM 。写一个简单的 CMakeLists.txt ，跟着 Writing an LLVM Pass - LLVM 这篇文档快速实现一个遍历函数的 Pass 。">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="加壳原理08：混淆技术入门">
+<meta property="og:description" content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。 0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-08/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="windows"><meta property="article:tag" content="c++"><meta property="article:tag" content="llvm"><meta property="article:tag" content="汇编"><meta property="article:published_time" content="2021-11-03T16:54:00+08:00"><meta property="article:modified_time" content="2021-11-03T16:54:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-08/cover.jpg">
 <meta name=twitter:title content="加壳原理08：混淆技术入门">
-<meta name=twitter:description content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。
-0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作为首要开发环境，不然光是 MSVC 把 LLVM 源码编译一遍就够呛了。
-安装好MSYS2之后安装 clang 工具链（2021年11月3日，clang32工具链默认不在msys2的源里，需要手动改 pacman.conf 加入 clang32 源，这里以 x86_64 的 LLVM 工具链进行实践）。
-pacman -Sy mingw-w64-clang-x86_64-toolchain 完成后添加环境变量，把 msys2 安装目录下的 clang64/bin 加入环境变量，方便 VSCode + CMake 找到工具链。另外注意装一个 Ninja，同样加入 Path。
-VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense，实在太慢。
-手动编译整个LLVM源码树实在是太费时间了，我选择用MSYS2的工具链。参考这篇文档去配置一个 LLVM 源码树外的 Pass 工程：CMake out of source pass - LLVM 。写一个简单的 CMakeLists.txt ，跟着 Writing an LLVM Pass - LLVM 这篇文档快速实现一个遍历函数的 Pass 。"><meta name=twitter:card content="summary_large_image">
+<meta name=twitter:description content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。 0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作"><meta name=twitter:card content="summary_large_image">
 <meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-08/cover.jpg">
 </head>
 <body class=article-page>
@@ -45,7 +30,12 @@ VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -69,6 +59,11 @@ VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -103,7 +98,7 @@ VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 12 分钟
+阅读时长: 14 分钟
 </time>
 </div>
 </footer>
@@ -115,12 +110,37 @@ VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense
 <h2 id=0x01-环境设置>0x01 环境设置</h2>
 <p>LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作为首要开发环境，不然光是 MSVC 把 LLVM 源码编译一遍就够呛了。</p>
 <p>安装好MSYS2之后安装 clang 工具链（2021年11月3日，clang32工具链默认不在msys2的源里，需要手动改 <code>pacman.conf</code> 加入 <code>clang32</code> 源，这里以 x86_64 的 LLVM 工具链进行实践）。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>pacman -Sy mingw-w64-clang-x86_64-toolchain
-</code></pre></div><p>完成后添加环境变量，把 msys2 安装目录下的 <code>clang64/bin</code> 加入环境变量，方便 VSCode + CMake 找到工具链。另外注意装一个 Ninja，同样加入 Path。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>pacman -Sy mingw-w64-clang-x86_64-toolchain
+</code></pre></td></tr></table>
+</div>
+</div><p>完成后添加环境变量，把 msys2 安装目录下的 <code>clang64/bin</code> 加入环境变量，方便 VSCode + CMake 找到工具链。另外注意装一个 Ninja，同样加入 Path。</p>
 <p>VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense，实在太慢。</p>
 <p>手动编译整个LLVM源码树实在是太费时间了，我选择用MSYS2的工具链。参考这篇文档去配置一个 LLVM 源码树外的 Pass 工程：<a class=link href=https://llvm.org/docs/CMake.html#cmake-out-of-source-pass target=_blank rel=noopener>CMake out of source pass - LLVM</a> 。写一个简单的 CMakeLists.txt ，跟着 <a class=link href=https://llvm.org/docs/WritingAnLLVMPass.html target=_blank rel=noopener>Writing an LLVM Pass - LLVM</a> 这篇文档快速实现一个遍历函数的 Pass 。</p>
 <p>下面是 <code>CMakeLists.txt</code> 的内容</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=nb>cmake_minimum_required</span><span class=p>(</span><span class=s>VERSION</span> <span class=s>3.13.4</span><span class=p>)</span><span class=err>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=nb>cmake_minimum_required</span><span class=p>(</span><span class=s>VERSION</span> <span class=s>3.13.4</span><span class=p>)</span><span class=err>
 </span><span class=err></span><span class=nb>project</span><span class=p>(</span><span class=s>Hello</span><span class=p>)</span><span class=err>
 </span><span class=err></span><span class=nb>find_package</span><span class=p>(</span><span class=s>LLVM</span> <span class=s>REQUIRED</span> <span class=s>CONFIG</span><span class=p>)</span><span class=err>
 </span><span class=err>
@@ -134,8 +154,42 @@ VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense
 </span><span class=err></span><span class=nb>list</span><span class=p>(</span><span class=s>APPEND</span> <span class=s>CMAKE_MODULE_PATH</span> <span class=s2>&#34;${LLVM_CMAKE_DIR}&#34;</span><span class=p>)</span><span class=err>
 </span><span class=err></span><span class=nb>include</span><span class=p>(</span><span class=s>AddLLVM</span><span class=p>)</span><span class=err>
 </span><span class=err></span><span class=nb>add_llvm_library</span><span class=p>(</span><span class=s>Hello</span> <span class=s>MODULE</span> <span class=s>hello.cpp</span> <span class=s>PLUGIN_TOOL</span> <span class=s>opt</span><span class=p>)</span><span class=err>
-</span></code></pre></div><p>然后是实现 pass 的源码，源码的详细解释直接读 LLVM 给的文档。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cp>#include</span> <span class=cpf>&#34;llvm/IR/Function.h&#34;</span><span class=cp>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>然后是实现 pass 的源码，源码的详细解释直接读 LLVM 给的文档。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cp>#include</span> <span class=cpf>&#34;llvm/IR/Function.h&#34;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&#34;llvm/IR/LegacyPassManager.h&#34;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&#34;llvm/Pass.h&#34;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&#34;llvm/Support/raw_ostream.h&#34;</span><span class=cp>
@@ -163,23 +217,84 @@ VSCode 里装上微软的 C/C++ 和 clangd，禁用微软 C/C++ 的 Intellisense
                                 <span class=p>[](</span><span class=k>const</span> <span class=n>PassManagerBuilder</span> <span class=o>&amp;</span><span class=n>builder</span><span class=p>,</span> <span class=n>legacy</span><span class=o>::</span><span class=n>PassManagerBase</span> <span class=o>&amp;</span><span class=n>pm</span><span class=p>)</span> <span class=p>{</span>
                                   <span class=n>pm</span><span class=p>.</span><span class=n>add</span><span class=p>(</span><span class=k>new</span> <span class=n>Hello</span><span class=p>());</span>
                                 <span class=p>});</span>
-</code></pre></div><p>再准备一个简单的样本，用来实验 Pass 的效果。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;stdio.h&gt;</span><span class=cp>
+</code></pre></td></tr></table>
+</div>
+</div><p>再准备一个简单的样本，用来实验 Pass 的效果。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;stdio.h&gt;</span><span class=cp>
 </span><span class=cp></span>
 <span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
   <span class=n>printf</span><span class=p>(</span><span class=s>&#34;hello world&#34;</span><span class=p>);</span>
   <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>接着是实验步骤：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>clang -O3 -emit-llvm sample.c -c -o sample.bc
+</code></pre></td></tr></table>
+</div>
+</div><p>接着是实验步骤：</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>clang -O3 -emit-llvm sample.c -c -o sample.bc
 opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello.dll -hello sample.bc -o sample.exe
-</code></pre></div><p>如果一切顺利，输出如下：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plain data-lang=plain>Hello:main
-</code></pre></div><p>不顺利的话只能自己谷歌。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>如果一切顺利，输出如下：</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plain data-lang=plain>Hello:main
+</code></pre></td></tr></table>
+</div>
+</div><p>不顺利的话只能自己谷歌。</p>
 <h2 id=0x02-ollvm-bcf-混淆初窥>0x02 OLLVM bcf 混淆初窥</h2>
 <p>这部分先看看知名的 OLLVM 项目是怎么做的，先看 <em>bcf</em> 混淆，源码在 <code>llvm/lib/Transforms/Obfuscation/BogusControlFlow.cpp</code>， 入口在 <code>runOnFunction</code> 函数。</p>
 <h3 id=21-runonfunction>2.1 runOnFunction</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp>    <span class=cm>/* runOnFunction
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp>    <span class=cm>/* runOnFunction
 </span><span class=cm>     *
 </span><span class=cm>     * Overwrite FunctionPass method to apply the transformation
 </span><span class=cm>     * to the function. See header for more details.
@@ -207,11 +322,58 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
 
       <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
     <span class=p>}</span> <span class=c1>// end of runOnFunction()
-</span></code></pre></div><p>前两个 <code>if</code> 都是在判断参数，先忽略。<code>if(toObfuscate(flag,&F,"bcf"))</code> 判断是否是否需要混淆，<code>if (isInvoke(&F))</code> 判断能否混淆。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>前两个 <code>if</code> 都是在判断参数，先忽略。<code>if(toObfuscate(flag,&F,"bcf"))</code> 判断是否是否需要混淆，<code>if (isInvoke(&F))</code> 判断能否混淆。</p>
 <p>真正的混淆逻辑在 <code>bogus(F)</code> 里。</p>
 <h3 id=22-bogus>2.2 bogus</h3>
 <p>裁剪掉了调试输出后的 <code>bogus</code> 函数内容。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=kt>void</span> <span class=nf>bogus</span><span class=p>(</span><span class=n>Function</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=kt>void</span> <span class=nf>bogus</span><span class=p>(</span><span class=n>Function</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>)</span> <span class=p>{</span>
   <span class=c1>// For statistics and debug
 </span><span class=c1></span>  <span class=o>++</span><span class=n>NumFunction</span><span class=p>;</span>
   <span class=kt>int</span> <span class=n>NumBasicBlocks</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
@@ -252,7 +414,9 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
     <span class=n>firstTime</span> <span class=o>=</span> <span class=nb>false</span><span class=p>;</span>
   <span class=p>}</span> <span class=k>while</span> <span class=p>(</span><span class=o>--</span><span class=n>NumObfTimes</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>);</span>
 <span class=p>}</span>
-</code></pre></div><p>尝试分析上面的函数逻辑：</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>尝试分析上面的函数逻辑：</p>
 <ol>
 <li>循环混淆一定次数（<code>NumObfTimes</code>）
 <ol>
@@ -272,7 +436,74 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
 <p>混淆次数和基本块遍历没什么好说的，选择基本块这里，<code>get_range(100)</code> 实际上是一个安全的随机数生成器，<code>ObfProbRate</code> 是基本块被混淆的机率。也就是说一个函数内的基本块是随机被混淆的，加上混淆次数的设计，会出现有的基本块被混淆多次有的没有被混淆的情况。</p>
 <h3 id=22-addbogusflow>2.2 addBogusFlow</h3>
 <p>接着继续看添加伪造控制流的逻辑，同样裁剪掉了调试输出。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cm>/* addBogusFlow
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cm>/* addBogusFlow
 </span><span class=cm>  *
 </span><span class=cm>  * Add bogus flow to a given basic block, according to the header&#39;s description
 </span><span class=cm>  */</span>
@@ -335,7 +566,9 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
       <span class=n>FCmpInst</span> <span class=o>*</span><span class=n>condition2</span> <span class=o>=</span> <span class=k>new</span> <span class=n>FCmpInst</span><span class=p>(</span><span class=o>*</span><span class=n>originalBB</span><span class=p>,</span> <span class=n>CmpInst</span><span class=o>::</span><span class=n>FCMP_TRUE</span><span class=p>,</span> <span class=n>LHS</span><span class=p>,</span> <span class=n>RHS</span><span class=p>,</span> <span class=o>*</span><span class=n>var6</span><span class=p>);</span>
       <span class=n>BranchInst</span><span class=o>::</span><span class=n>Create</span><span class=p>(</span><span class=n>originalBBpart2</span><span class=p>,</span> <span class=n>alteredBB</span><span class=p>,</span> <span class=p>(</span><span class=n>Value</span> <span class=o>*</span><span class=p>)</span><span class=n>condition2</span><span class=p>,</span> <span class=n>originalBB</span><span class=p>);</span>
 <span class=p>}</span> <span class=c1>// end of addBogusFlow()
-</span></code></pre></div><p>尝试分析上面的函数逻辑：</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>尝试分析上面的函数逻辑：</p>
 <ol>
 <li>分割基本块，把 <code>phinode</code> 和调试信息之类的分割到原始块，新创建出来的块不包含 <code>phinode</code> 之类的东西。（<code>entry</code>）</li>
 <li>创建伪造分支。（<code>altered</code>）</li>
@@ -348,7 +581,198 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
 <p>混淆后的控制流长这样，两个 condition 都是恒真条件，原始块被分成了三个部分，<code>entry</code>、<code>origin</code>、<code>terminator</code> 。图中红色的部分是伪造块，包含垃圾指令，绿色的条件块都是恒真条件，只有绿色箭头的控制流能走通。蓝色节点是从原始基本块上分割出来的部分。</p>
 <h3 id=23-createalteredbasicblock>2.3 createAlteredBasicBlock</h3>
 <p>再看伪造块是如何生成的。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++>    <span class=cm>/* createAlteredBasicBlock
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>  1
+</span><span class=lnt>  2
+</span><span class=lnt>  3
+</span><span class=lnt>  4
+</span><span class=lnt>  5
+</span><span class=lnt>  6
+</span><span class=lnt>  7
+</span><span class=lnt>  8
+</span><span class=lnt>  9
+</span><span class=lnt> 10
+</span><span class=lnt> 11
+</span><span class=lnt> 12
+</span><span class=lnt> 13
+</span><span class=lnt> 14
+</span><span class=lnt> 15
+</span><span class=lnt> 16
+</span><span class=lnt> 17
+</span><span class=lnt> 18
+</span><span class=lnt> 19
+</span><span class=lnt> 20
+</span><span class=lnt> 21
+</span><span class=lnt> 22
+</span><span class=lnt> 23
+</span><span class=lnt> 24
+</span><span class=lnt> 25
+</span><span class=lnt> 26
+</span><span class=lnt> 27
+</span><span class=lnt> 28
+</span><span class=lnt> 29
+</span><span class=lnt> 30
+</span><span class=lnt> 31
+</span><span class=lnt> 32
+</span><span class=lnt> 33
+</span><span class=lnt> 34
+</span><span class=lnt> 35
+</span><span class=lnt> 36
+</span><span class=lnt> 37
+</span><span class=lnt> 38
+</span><span class=lnt> 39
+</span><span class=lnt> 40
+</span><span class=lnt> 41
+</span><span class=lnt> 42
+</span><span class=lnt> 43
+</span><span class=lnt> 44
+</span><span class=lnt> 45
+</span><span class=lnt> 46
+</span><span class=lnt> 47
+</span><span class=lnt> 48
+</span><span class=lnt> 49
+</span><span class=lnt> 50
+</span><span class=lnt> 51
+</span><span class=lnt> 52
+</span><span class=lnt> 53
+</span><span class=lnt> 54
+</span><span class=lnt> 55
+</span><span class=lnt> 56
+</span><span class=lnt> 57
+</span><span class=lnt> 58
+</span><span class=lnt> 59
+</span><span class=lnt> 60
+</span><span class=lnt> 61
+</span><span class=lnt> 62
+</span><span class=lnt> 63
+</span><span class=lnt> 64
+</span><span class=lnt> 65
+</span><span class=lnt> 66
+</span><span class=lnt> 67
+</span><span class=lnt> 68
+</span><span class=lnt> 69
+</span><span class=lnt> 70
+</span><span class=lnt> 71
+</span><span class=lnt> 72
+</span><span class=lnt> 73
+</span><span class=lnt> 74
+</span><span class=lnt> 75
+</span><span class=lnt> 76
+</span><span class=lnt> 77
+</span><span class=lnt> 78
+</span><span class=lnt> 79
+</span><span class=lnt> 80
+</span><span class=lnt> 81
+</span><span class=lnt> 82
+</span><span class=lnt> 83
+</span><span class=lnt> 84
+</span><span class=lnt> 85
+</span><span class=lnt> 86
+</span><span class=lnt> 87
+</span><span class=lnt> 88
+</span><span class=lnt> 89
+</span><span class=lnt> 90
+</span><span class=lnt> 91
+</span><span class=lnt> 92
+</span><span class=lnt> 93
+</span><span class=lnt> 94
+</span><span class=lnt> 95
+</span><span class=lnt> 96
+</span><span class=lnt> 97
+</span><span class=lnt> 98
+</span><span class=lnt> 99
+</span><span class=lnt>100
+</span><span class=lnt>101
+</span><span class=lnt>102
+</span><span class=lnt>103
+</span><span class=lnt>104
+</span><span class=lnt>105
+</span><span class=lnt>106
+</span><span class=lnt>107
+</span><span class=lnt>108
+</span><span class=lnt>109
+</span><span class=lnt>110
+</span><span class=lnt>111
+</span><span class=lnt>112
+</span><span class=lnt>113
+</span><span class=lnt>114
+</span><span class=lnt>115
+</span><span class=lnt>116
+</span><span class=lnt>117
+</span><span class=lnt>118
+</span><span class=lnt>119
+</span><span class=lnt>120
+</span><span class=lnt>121
+</span><span class=lnt>122
+</span><span class=lnt>123
+</span><span class=lnt>124
+</span><span class=lnt>125
+</span><span class=lnt>126
+</span><span class=lnt>127
+</span><span class=lnt>128
+</span><span class=lnt>129
+</span><span class=lnt>130
+</span><span class=lnt>131
+</span><span class=lnt>132
+</span><span class=lnt>133
+</span><span class=lnt>134
+</span><span class=lnt>135
+</span><span class=lnt>136
+</span><span class=lnt>137
+</span><span class=lnt>138
+</span><span class=lnt>139
+</span><span class=lnt>140
+</span><span class=lnt>141
+</span><span class=lnt>142
+</span><span class=lnt>143
+</span><span class=lnt>144
+</span><span class=lnt>145
+</span><span class=lnt>146
+</span><span class=lnt>147
+</span><span class=lnt>148
+</span><span class=lnt>149
+</span><span class=lnt>150
+</span><span class=lnt>151
+</span><span class=lnt>152
+</span><span class=lnt>153
+</span><span class=lnt>154
+</span><span class=lnt>155
+</span><span class=lnt>156
+</span><span class=lnt>157
+</span><span class=lnt>158
+</span><span class=lnt>159
+</span><span class=lnt>160
+</span><span class=lnt>161
+</span><span class=lnt>162
+</span><span class=lnt>163
+</span><span class=lnt>164
+</span><span class=lnt>165
+</span><span class=lnt>166
+</span><span class=lnt>167
+</span><span class=lnt>168
+</span><span class=lnt>169
+</span><span class=lnt>170
+</span><span class=lnt>171
+</span><span class=lnt>172
+</span><span class=lnt>173
+</span><span class=lnt>174
+</span><span class=lnt>175
+</span><span class=lnt>176
+</span><span class=lnt>177
+</span><span class=lnt>178
+</span><span class=lnt>179
+</span><span class=lnt>180
+</span><span class=lnt>181
+</span><span class=lnt>182
+</span><span class=lnt>183
+</span><span class=lnt>184
+</span><span class=lnt>185
+</span><span class=lnt>186
+</span><span class=lnt>187
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++>    <span class=cm>/* createAlteredBasicBlock
 </span><span class=cm>     *
 </span><span class=cm>     * This function return a basic block similar to a given one.
 </span><span class=cm>     * It&#39;s inserted just after the given basic block.
@@ -535,7 +959,9 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
       <span class=p>}</span>
       <span class=k>return</span> <span class=n>alteredBB</span><span class=p>;</span>
     <span class=p>}</span> <span class=c1>// end of createAlteredBasicBlock()
-</span></code></pre></div><p>主要是分两部分：</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>主要是分两部分：</p>
 <ol>
 <li>复制原始块，并修复伪造块的调试信息与元数据</li>
 <li>在伪造块中寻找二元运算、浮点运算、比较指令，在其中插入垃圾指令。</li>
@@ -564,7 +990,21 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
 <h4 id=phinode>PHINode：</h4>
 <p>参考文章：<a class=link href=http://mayuyu.io/2018/06/04/PhiNode-in-LLVM/ target=_blank rel=noopener>PhiNode in LLVM</a></p>
 <p>LLVM的指令类型中包含一种特殊节点叫 PhiNode，PhiNode 的存在是为了解决 LLVM IR 中因 SSA （静态单次赋值）引起的条件初始化问题。示例如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>int</span> <span class=nf>foooooo</span><span class=p>(</span><span class=kt>int</span> <span class=n>bar</span><span class=p>){</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>int</span> <span class=nf>foooooo</span><span class=p>(</span><span class=kt>int</span> <span class=n>bar</span><span class=p>){</span>
     <span class=kt>int</span> <span class=n>i</span><span class=o>=</span><span class=mi>0</span><span class=p>;</span>
     <span class=k>if</span><span class=p>(</span><span class=n>bar</span><span class=o>%</span><span class=mi>2</span><span class=o>==</span><span class=mi>0</span><span class=p>){</span>
         <span class=n>i</span><span class=o>=</span><span class=mi>1</span><span class=p>;</span> <span class=c1>//BasicBlock 1
@@ -574,8 +1014,24 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
 </span><span class=c1></span>    <span class=p>}</span>
     <span class=k>return</span> <span class=n>i</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>可以看到我们需要按 <code>bar</code> 的取值来初始化 <code>i</code>，但 SSA 要求 <code>i</code> 只能被赋值一次。PhiNode 允许根据基本块选择赋值。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>int</span> <span class=nf>foooooo</span><span class=p>(</span><span class=kt>int</span> <span class=n>bar</span><span class=p>)</span> <span class=p>{</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>可以看到我们需要按 <code>bar</code> 的取值来初始化 <code>i</code>，但 SSA 要求 <code>i</code> 只能被赋值一次。PhiNode 允许根据基本块选择赋值。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>int</span> <span class=nf>foooooo</span><span class=p>(</span><span class=kt>int</span> <span class=n>bar</span><span class=p>)</span> <span class=p>{</span>
     <span class=k>if</span><span class=p>(</span><span class=n>bar</span><span class=o>%</span><span class=mi>2</span><span class=o>==</span><span class=mi>0</span><span class=p>){</span>
         <span class=c1>//BasicBlock1
 </span><span class=c1></span>    <span class=p>}</span>
@@ -585,8 +1041,25 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
     <span class=kt>int</span> <span class=n>i</span><span class=o>=</span><span class=n>Phi</span><span class=p>([</span><span class=n>BasicBlock1</span><span class=p>,</span><span class=mi>1</span><span class=p>],[</span><span class=n>BasicBlock2</span><span class=p>,</span><span class=mi>2</span><span class=p>]);</span>
     <span class=k>return</span> <span class=n>i</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>上面的例子也可以改成在栈或堆上开辟空间，以类似指针的方式避开 SSA 约束。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>int</span> <span class=nf>foooooo</span><span class=p>(</span><span class=kt>int</span> <span class=n>bar</span><span class=p>)</span> <span class=p>{</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>上面的例子也可以改成在栈或堆上开辟空间，以类似指针的方式避开 SSA 约束。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>int</span> <span class=nf>foooooo</span><span class=p>(</span><span class=kt>int</span> <span class=n>bar</span><span class=p>)</span> <span class=p>{</span>
     <span class=kt>int</span><span class=o>*</span> <span class=n>i</span><span class=o>=</span><span class=n>malloc</span><span class=p>(</span><span class=k>sizeof</span><span class=p>(</span><span class=kt>int</span><span class=p>));</span>
     <span class=k>if</span><span class=p>(</span><span class=n>bar</span><span class=o>%</span><span class=mi>2</span><span class=o>==</span><span class=mi>0</span><span class=p>){</span>
         <span class=n>Store</span> <span class=n>Value</span> <span class=mi>1</span> <span class=n>to</span> <span class=n>the</span> <span class=n>memory</span> <span class=n>location</span> <span class=n>pointed</span> <span class=n>to</span> <span class=n>by</span> <span class=n>i</span><span class=p>;</span>
@@ -597,7 +1070,9 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
     <span class=kt>int</span> <span class=n>j</span><span class=o>=</span><span class=n>load</span> <span class=n>from</span> <span class=n>the</span> <span class=n>address</span> <span class=n>pointed</span> <span class=n>by</span> <span class=n>i</span><span class=p>;</span>
     <span class=k>return</span> <span class=n>j</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><h4 id=terminator>Terminator:</h4>
+</code></pre></td></tr></table>
+</div>
+</div><h4 id=terminator>Terminator:</h4>
 <p>参考文章：<a class=link href=https://www.quora.com/How-do-Terminators-work-in-the-LLVM-IR target=_blank rel=noopener>How do Terminator work in LLVM IR</a></p>
 <p>LLVM中，一个基本块 <em>BasicBlock</em> 总是以终结指令 <em>TerminatorInst</em> 结束的。终结指令不能出现在基本块末尾以外的任何地方。粗略地说，终结指令标识控制流在基本块结束后去往何方。</p>
 <p>每个终结指令都包含一定的后继基本块。</p>
@@ -635,7 +1110,35 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
 <p>最好再安装一个 graphviz，因为很多编程语言的命令行工具如果提供图形输出的话，大多是以 dot 形式提供（比如 go 的 pprof 和 LLVM opt 的 dot-cfg）。</p>
 <h3 id=33-runonfunction>3.3 runOnFunction</h3>
 <p>参考 OLLVM 的代码，抄出过滤函数。原理不明暂且不深究。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=kt>bool</span> <span class=nf>isObfuscateable</span><span class=p>(</span><span class=k>const</span> <span class=n>Function</span> <span class=o>&amp;</span><span class=n>fn</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=kt>bool</span> <span class=nf>isObfuscateable</span><span class=p>(</span><span class=k>const</span> <span class=n>Function</span> <span class=o>&amp;</span><span class=n>fn</span><span class=p>)</span> <span class=p>{</span>
     <span class=k>if</span> <span class=p>(</span><span class=n>fn</span><span class=p>.</span><span class=n>isDeclaration</span><span class=p>())</span> <span class=p>{</span>
         <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
     <span class=p>}</span>
@@ -659,8 +1162,55 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
     <span class=p>}</span>
     <span class=k>return</span> <span class=nb>true</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>然后在入口点简单过滤掉不能混淆的函数，接着遍历基本块，对每个基本块都进行一次混淆。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=kt>bool</span> <span class=nf>runOnFunction</span><span class=p>(</span><span class=n>Function</span><span class=o>&amp;</span> <span class=n>F</span><span class=p>)</span> <span class=p>{</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>然后在入口点简单过滤掉不能混淆的函数，接着遍历基本块，对每个基本块都进行一次混淆。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=kt>bool</span> <span class=nf>runOnFunction</span><span class=p>(</span><span class=n>Function</span><span class=o>&amp;</span> <span class=n>F</span><span class=p>)</span> <span class=p>{</span>
     <span class=k>if</span> <span class=p>(</span><span class=o>!</span><span class=n>isObfuscateable</span><span class=p>(</span><span class=n>F</span><span class=p>))</span> <span class=p>{</span>
         <span class=n>errs</span><span class=p>()</span><span class=o>&lt;&lt;</span><span class=s>&#34;function &#34;</span><span class=o>&lt;&lt;</span> <span class=n>F</span><span class=p>.</span><span class=n>getName</span><span class=p>()</span> <span class=o>&lt;&lt;</span><span class=s>&#34; is not obfuscateable</span><span class=se>\n</span><span class=s>&#34;</span><span class=p>;</span>
         <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
@@ -701,9 +1251,75 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
 
     <span class=k>return</span> <span class=nb>false</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>混淆过程非常简单，原始基本块分割成三个部分，清除<code>entry</code>和<code>original</code>的<code>terminator</code>并加入恒真条件跳转，false 分支都指定为 <code>altered</code> 即可。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>混淆过程非常简单，原始基本块分割成三个部分，清除<code>entry</code>和<code>original</code>的<code>terminator</code>并加入恒真条件跳转，false 分支都指定为 <code>altered</code> 即可。</p>
 <h3 id=34-createalteredbb>3.4 createAlteredBB</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=n>BasicBlock</span> <span class=o>*</span><span class=nf>createAlteredBB</span><span class=p>(</span><span class=n>BasicBlock</span> <span class=o>*</span><span class=n>original</span><span class=p>,</span> <span class=n>Function</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=n>BasicBlock</span> <span class=o>*</span><span class=nf>createAlteredBB</span><span class=p>(</span><span class=n>BasicBlock</span> <span class=o>*</span><span class=n>original</span><span class=p>,</span> <span class=n>Function</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>)</span> <span class=p>{</span>
     <span class=c1>// 构造伪造块
 </span><span class=c1></span>    <span class=n>ValueToValueMapTy</span> <span class=n>VMap</span><span class=p>;</span>
     <span class=k>auto</span> <span class=n>altered</span> <span class=o>=</span> <span class=n>CloneBasicBlock</span><span class=p>(</span><span class=n>original</span><span class=p>,</span> <span class=n>VMap</span><span class=p>,</span> <span class=n>Twine</span><span class=p>(</span><span class=s>&#34;altered&#34;</span><span class=p>),</span> <span class=o>&amp;</span><span class=n>F</span><span class=p>);</span>
@@ -763,17 +1379,46 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
 
     <span class=k>return</span> <span class=n>altered</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>去除修复指令操作数和 PhiNode 的部分，其实就是复制了原始块的指令，然后将终结指令改成跳转到原始块而已。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>去除修复指令操作数和 PhiNode 的部分，其实就是复制了原始块的指令，然后将终结指令改成跳转到原始块而已。</p>
 <h3 id=35-编译和测试>3.5 编译和测试</h3>
 <p>使用 CMake 编译，在环境设置一节中已经说明了怎么配置，编译得到了 <code>Hello.dll</code> 后用下面的案例程序测试。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;stdio.h&gt;</span><span class=cp>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;stdio.h&gt;</span><span class=cp>
 </span><span class=cp></span>
 <span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
     <span class=n>printf</span><span class=p>(</span><span class=s>&#34;hello world&#34;</span><span class=p>);</span>
     <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>程序保存在 <code>sample/sample.c</code>，测试命令如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=c1># clang 编译得到 bitcode</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>程序保存在 <code>sample/sample.c</code>，测试命令如下。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=c1># clang 编译得到 bitcode</span>
 clang -emit-llvm .<span class=se>\s</span>ample<span class=se>\s</span>ample.c -c -o .<span class=se>\s</span>ample<span class=se>\s</span>ample.bc
 <span class=c1># opt 启用 hello pass 创建混淆后的新 bitcode</span>
 opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load .<span class=se>\b</span>uild<span class=se>\H</span>ello.dll -hello .<span class=se>\s</span>ample<span class=se>\s</span>ample.bc -o .<span class=se>\s</span>ample<span class=se>\s</span>ample-optimized.bc
@@ -784,9 +1429,18 @@ llvm-dis .<span class=se>\s</span>ample<span class=se>\s</span>ample-optimized.b
 llc .<span class=se>\s</span>ample<span class=se>\s</span>ample-optimized.bc -O0 -o .<span class=se>\s</span>ample.s
 <span class=c1># 用 clang 完成最后的汇编和链接</span>
 clang sample.s -o sample.exe
-</code></pre></div><p>也可以用 opt 来获得混淆后的代码控制流视图。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -dot-cfg -cfg-func-name<span class=o>=</span>main .<span class=se>\s</span>ample<span class=se>\s</span>ample-optimized.bc
-</code></pre></div><p><img src=/blog/p/learning-packer-08/main.png width=755 height=555 srcset="/blog/p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_1024x0_resize_box_3.png 1024w" loading=lazy alt=main class=gallery-image data-flex-grow=136 data-flex-basis=326px></p>
+</code></pre></td></tr></table>
+</div>
+</div><p>也可以用 opt 来获得混淆后的代码控制流视图。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -dot-cfg -cfg-func-name<span class=o>=</span>main .<span class=se>\s</span>ample<span class=se>\s</span>ample-optimized.bc
+</code></pre></td></tr></table>
+</div>
+</div><p><img src=/blog/p/learning-packer-08/main.png width=755 height=555 srcset="/blog/p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_1024x0_resize_box_3.png 1024w" loading=lazy alt=main class=gallery-image data-flex-grow=136 data-flex-basis=326px></p>
 <p>在IDA打开后看到的结果如下。</p>
 <p><img src=/blog/p/learning-packer-08/image-20211103141258015.png width=370 height=668 srcset="/blog/p/learning-packer-08/image-20211103141258015_hu6b9a1833094321916938f7c8374d48d6_60703_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/image-20211103141258015_hu6b9a1833094321916938f7c8374d48d6_60703_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211103141258015 class=gallery-image data-flex-grow=55 data-flex-basis=132px></p>
 <p>再来个更复杂的例子：<a class=link href=https://github.com/nnnewb/crackmes/blob/main/cm02/main.c target=_blank rel=noopener>main.c</a></p>
@@ -908,7 +1562,7 @@ clang sample.s -o sample.exe
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

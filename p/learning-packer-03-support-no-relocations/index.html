@@ -1,44 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 距离上一篇加壳原理已经过去挺久了，这段时间稍微折腾了一下 nasm，尝试手工制作了 PE32 文件，积累了一些基本的知识吧。
-所以现在继续学习加壳——如何对不支持 ASLR 的 PE32 程序进行加壳？
-0x01 关于ASLR ASLR是一项内存保护技术，用于防范内存损坏漏洞，比如缓冲区溢出。需要注意的是 ASLR 并不是 解决 了相关威胁，而是让利用相关的漏洞变得更加困难和具有挑战性。
-ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机化技术。一个典型的 PE32 程序在没有 ASLR 支持的情况下， 地址空间布局是确定的：程序镜像总会加载到固定的地址。这个地址会在文件头里指定。攻击者可以利用这一特点来构造恶意数据，让存在内存损坏漏洞的程序按攻击者意图跳过或执行特定逻辑，造成安全威胁。
-对应 ASLR 的地址空间布局随机化，程序需要再次编译来支持重定位 Relocation ，别无他法（大概）。
-0x02 思路 对于加壳一个没有重定位，不支持 ASLR 的 PE32 程序，假设这个程序的基址是 0x04000000，原先的 VirtualAlloc 方式分配内存是行不通的。加壳后程序若开启 ASLR，则 0x04000000 可能已经存在其他模块，并不能保证这个基址可用。所以加壳后的程序必须也使用 0x04000000 这个基址，而且标记为不支持 ASLR，避免基址已经被其他模块使用造成加载器无法工作。
-将加壳后程序的基址设置为固定的 0x04000000 又会产生新的问题：加载器的代码段不能放在 0x04000000 ，否则加载器运行时就会出现被被加载的代码覆盖的情况，导致程序跑飞。所以编译后的加载器所有 Section 都必须有一定的偏移，这个偏移值就是被加载程序的 Section 大小之和（对齐后）。而因此多出来的空间单独分成一个 Section ，正好用来放要加载的程序。
-另外，还必须确认文件头大小是否一致，因为我们需要将被加载程序的文件头覆盖加载器的文件头。而最开始预留的空间必须分配为一个 Section，让 Windows 的加载器能顺利加载程序而不报“不是有效的Win32程序”错误。
-内存布局示意图如下：
-所以加载器的加载步骤如下：
- 寻找被加载的 Section 。 复制文件头覆盖自己的文件头。 以自己的基址为被加载程序的基址，完成加载。  加壳机的加壳步骤如下："><title>加壳原理03 - 支持没有重定位的程序</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 距离上一篇加壳原理已经过去挺久了，这段时间稍微折腾了一下 nasm，尝试手工制作了 PE32 文件，积累了一些基本的知识吧。 所以现在继续学习加壳——"><title>加壳原理03 - 支持没有重定位的程序</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="加壳原理03 - 支持没有重定位的程序">
-<meta property="og:description" content="前言 距离上一篇加壳原理已经过去挺久了，这段时间稍微折腾了一下 nasm，尝试手工制作了 PE32 文件，积累了一些基本的知识吧。
-所以现在继续学习加壳——如何对不支持 ASLR 的 PE32 程序进行加壳？
-0x01 关于ASLR ASLR是一项内存保护技术，用于防范内存损坏漏洞，比如缓冲区溢出。需要注意的是 ASLR 并不是 解决 了相关威胁，而是让利用相关的漏洞变得更加困难和具有挑战性。
-ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机化技术。一个典型的 PE32 程序在没有 ASLR 支持的情况下， 地址空间布局是确定的：程序镜像总会加载到固定的地址。这个地址会在文件头里指定。攻击者可以利用这一特点来构造恶意数据，让存在内存损坏漏洞的程序按攻击者意图跳过或执行特定逻辑，造成安全威胁。
-对应 ASLR 的地址空间布局随机化，程序需要再次编译来支持重定位 Relocation ，别无他法（大概）。
-0x02 思路 对于加壳一个没有重定位，不支持 ASLR 的 PE32 程序，假设这个程序的基址是 0x04000000，原先的 VirtualAlloc 方式分配内存是行不通的。加壳后程序若开启 ASLR，则 0x04000000 可能已经存在其他模块，并不能保证这个基址可用。所以加壳后的程序必须也使用 0x04000000 这个基址，而且标记为不支持 ASLR，避免基址已经被其他模块使用造成加载器无法工作。
-将加壳后程序的基址设置为固定的 0x04000000 又会产生新的问题：加载器的代码段不能放在 0x04000000 ，否则加载器运行时就会出现被被加载的代码覆盖的情况，导致程序跑飞。所以编译后的加载器所有 Section 都必须有一定的偏移，这个偏移值就是被加载程序的 Section 大小之和（对齐后）。而因此多出来的空间单独分成一个 Section ，正好用来放要加载的程序。
-另外，还必须确认文件头大小是否一致，因为我们需要将被加载程序的文件头覆盖加载器的文件头。而最开始预留的空间必须分配为一个 Section，让 Windows 的加载器能顺利加载程序而不报“不是有效的Win32程序”错误。
-内存布局示意图如下：
-所以加载器的加载步骤如下：
- 寻找被加载的 Section 。 复制文件头覆盖自己的文件头。 以自己的基址为被加载程序的基址，完成加载。  加壳机的加壳步骤如下：">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="加壳原理03 - 支持没有重定位的程序">
+<meta property="og:description" content="前言 距离上一篇加壳原理已经过去挺久了，这段时间稍微折腾了一下 nasm，尝试手工制作了 PE32 文件，积累了一些基本的知识吧。 所以现在继续学习加壳——">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="c++"><meta property="article:tag" content="python"><meta property="article:tag" content="汇编"><meta property="article:tag" content="windows"><meta property="article:published_time" content="2021-10-20T10:25:00+08:00"><meta property="article:modified_time" content="2021-10-20T10:25:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/cover.jpg">
 <meta name=twitter:title content="加壳原理03 - 支持没有重定位的程序">
-<meta name=twitter:description content="前言 距离上一篇加壳原理已经过去挺久了，这段时间稍微折腾了一下 nasm，尝试手工制作了 PE32 文件，积累了一些基本的知识吧。
-所以现在继续学习加壳——如何对不支持 ASLR 的 PE32 程序进行加壳？
-0x01 关于ASLR ASLR是一项内存保护技术，用于防范内存损坏漏洞，比如缓冲区溢出。需要注意的是 ASLR 并不是 解决 了相关威胁，而是让利用相关的漏洞变得更加困难和具有挑战性。
-ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机化技术。一个典型的 PE32 程序在没有 ASLR 支持的情况下， 地址空间布局是确定的：程序镜像总会加载到固定的地址。这个地址会在文件头里指定。攻击者可以利用这一特点来构造恶意数据，让存在内存损坏漏洞的程序按攻击者意图跳过或执行特定逻辑，造成安全威胁。
-对应 ASLR 的地址空间布局随机化，程序需要再次编译来支持重定位 Relocation ，别无他法（大概）。
-0x02 思路 对于加壳一个没有重定位，不支持 ASLR 的 PE32 程序，假设这个程序的基址是 0x04000000，原先的 VirtualAlloc 方式分配内存是行不通的。加壳后程序若开启 ASLR，则 0x04000000 可能已经存在其他模块，并不能保证这个基址可用。所以加壳后的程序必须也使用 0x04000000 这个基址，而且标记为不支持 ASLR，避免基址已经被其他模块使用造成加载器无法工作。
-将加壳后程序的基址设置为固定的 0x04000000 又会产生新的问题：加载器的代码段不能放在 0x04000000 ，否则加载器运行时就会出现被被加载的代码覆盖的情况，导致程序跑飞。所以编译后的加载器所有 Section 都必须有一定的偏移，这个偏移值就是被加载程序的 Section 大小之和（对齐后）。而因此多出来的空间单独分成一个 Section ，正好用来放要加载的程序。
-另外，还必须确认文件头大小是否一致，因为我们需要将被加载程序的文件头覆盖加载器的文件头。而最开始预留的空间必须分配为一个 Section，让 Windows 的加载器能顺利加载程序而不报“不是有效的Win32程序”错误。
-内存布局示意图如下：
-所以加载器的加载步骤如下：
- 寻找被加载的 Section 。 复制文件头覆盖自己的文件头。 以自己的基址为被加载程序的基址，完成加载。  加壳机的加壳步骤如下："><meta name=twitter:card content="summary_large_image">
+<meta name=twitter:description content="前言 距离上一篇加壳原理已经过去挺久了，这段时间稍微折腾了一下 nasm，尝试手工制作了 PE32 文件，积累了一些基本的知识吧。 所以现在继续学习加壳——"><meta name=twitter:card content="summary_large_image">
 <meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/cover.jpg">
 </head>
 <body class=article-page>
@@ -60,7 +30,12 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -84,6 +59,11 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -118,7 +98,7 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 7 分钟
+阅读时长: 9 分钟
 </time>
 </div>
 </footer>
@@ -151,15 +131,77 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 <li>合并被加壳程序和加载器，生成被加壳程序。</li>
 </ol>
 <p>案例程序如下：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
 </span><span class=cp></span>
 <span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
   <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;Hello world!&#34;</span><span class=p>,</span> <span class=s>&#34;MSGBOX&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
   <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><h2 id=0x03-加载器修改>0x03 加载器修改</h2>
+</code></pre></td></tr></table>
+</div>
+</div><h2 id=0x03-加载器修改>0x03 加载器修改</h2>
 <p>加载器需要把 <code>VirtualAlloc</code> 改成 <code>GetModuleHandleA</code>，并解除当前程序文件头的写保护，并在随后的复制 Section 阶段同样用 <code>VirtualProtect</code> 解除写保护，添加执行权限。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>void</span> <span class=o>*</span><span class=nf>load_PE</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>PE_data</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>void</span> <span class=o>*</span><span class=nf>load_PE</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>PE_data</span><span class=p>)</span> <span class=p>{</span>
   <span class=n>IMAGE_DOS_HEADER</span> <span class=o>*</span><span class=n>p_DOS_header</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_DOS_HEADER</span> <span class=o>*</span><span class=p>)</span><span class=n>PE_data</span><span class=p>;</span>
   <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=p>)(</span><span class=n>PE_data</span> <span class=o>+</span> <span class=n>p_DOS_header</span><span class=o>-&gt;</span><span class=n>e_lfanew</span><span class=p>);</span>
 
@@ -205,9 +247,25 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
     
     <span class=c1>// ...
 </span><span class=c1></span><span class=p>}</span>
-</code></pre></div><p>此外还有一个坑：不知道为啥，我用 lief python 生成的 DataDirectories 实际只有15个元素（包括最后一个 null 元素），但 <code>winnt.h</code> 里定义的 DataDirectories 是固定长度 16 个元素，所以直接算 <code>p_NT_header + 1</code> 得到的偏移值会比预期的大 8 个字节，导致报找不到 <code>.packed</code> 。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>此外还有一个坑：不知道为啥，我用 lief python 生成的 DataDirectories 实际只有15个元素（包括最后一个 null 元素），但 <code>winnt.h</code> 里定义的 DataDirectories 是固定长度 16 个元素，所以直接算 <code>p_NT_header + 1</code> 得到的偏移值会比预期的大 8 个字节，导致报找不到 <code>.packed</code> 。</p>
 <p>改成这样。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>int</span> <span class=nf>_start</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>int</span> <span class=nf>_start</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
   <span class=kt>char</span> <span class=o>*</span><span class=n>unpacker_VA</span> <span class=o>=</span> <span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=p>)</span><span class=n>GetModuleHandleA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>);</span>
 
   <span class=n>IMAGE_DOS_HEADER</span> <span class=o>*</span><span class=n>p_DOS_header</span> <span class=o>=</span> <span class=p>(</span><span class=n>PIMAGE_DOS_HEADER</span><span class=p>)</span><span class=n>unpacker_VA</span><span class=p>;</span>
@@ -217,18 +275,43 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 </span><span class=c1></span>  <span class=n>sections</span> <span class=o>=</span> <span class=p>(</span><span class=n>PIMAGE_SECTION_HEADER</span><span class=p>)((</span><span class=kt>char</span> <span class=o>*</span><span class=p>)</span><span class=n>sections</span> <span class=o>-</span> <span class=p>(</span><span class=n>IMAGE_NUMBEROF_DIRECTORY_ENTRIES</span> <span class=o>-</span>
                                                          <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>NumberOfRvaAndSizes</span><span class=p>)</span> <span class=o>*</span>
                                                             <span class=k>sizeof</span><span class=p>(</span><span class=n>IMAGE_DATA_DIRECTORY</span><span class=p>));</span>
-</code></pre></div><h2 id=0x04-加壳器>0x04 加壳器</h2>
+</code></pre></td></tr></table>
+</div>
+</div><h2 id=0x04-加壳器>0x04 加壳器</h2>
 <p>加壳器这次用 python 写，MinGW 下又要重新编译 LIEF 太折磨人了。</p>
 <h3 id=41-工具函数>4.1 工具函数</h3>
 <p>先是导入和定义必要的工具。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=kn>import</span> <span class=nn>lief</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=kn>import</span> <span class=nn>lief</span>
 
 <span class=k>def</span> <span class=nf>align</span><span class=p>(</span><span class=n>x</span><span class=p>,</span> <span class=n>al</span><span class=p>):</span>
     <span class=s2>&#34;&#34;&#34; return &lt;x&gt; aligned to &lt;al&gt; &#34;&#34;&#34;</span>
     <span class=k>return</span> <span class=p>((</span><span class=n>x</span><span class=o>+</span><span class=p>(</span><span class=n>al</span><span class=o>-</span><span class=mi>1</span><span class=p>))</span><span class=o>//</span><span class=n>al</span><span class=p>)</span><span class=o>*</span><span class=n>al</span>
-</code></pre></div><h3 id=42-解析>4.2 解析</h3>
+</code></pre></td></tr></table>
+</div>
+</div><h3 id=42-解析>4.2 解析</h3>
 <p>先分析案例程序，获得必要的数据。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=n>binary</span> <span class=o>=</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>parse</span><span class=p>(</span><span class=s1>&#39;example.exe&#39;</span><span class=p>)</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=n>binary</span> <span class=o>=</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>parse</span><span class=p>(</span><span class=s1>&#39;example.exe&#39;</span><span class=p>)</span>
 
 <span class=c1># calculate shift offset and reserved section size</span>
 <span class=n>image_base</span> <span class=o>=</span> <span class=n>binary</span><span class=o>.</span><span class=n>optional_header</span><span class=o>.</span><span class=n>imagebase</span>
@@ -236,11 +319,44 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 <span class=n>highest_rva</span> <span class=o>=</span> <span class=nb>max</span><span class=p>([</span><span class=n>s</span><span class=o>.</span><span class=n>virtual_address</span> <span class=o>+</span> <span class=n>s</span><span class=o>.</span><span class=n>size</span> <span class=k>for</span> <span class=n>s</span> <span class=ow>in</span> <span class=n>binary</span><span class=o>.</span><span class=n>sections</span><span class=p>])</span>
 <span class=n>sect_alignment</span> <span class=o>=</span> <span class=n>binary</span><span class=o>.</span><span class=n>optional_header</span><span class=o>.</span><span class=n>section_alignment</span>
 <span class=nb>print</span><span class=p>(</span><span class=s1>&#39;[+] analyze origin demo program binary success.&#39;</span><span class=p>)</span>
-</code></pre></div><p>取得基址、所有 section 中最低的起始 rva 和最高的结束 rva，得到整个 PE 镜像的 Sections 覆盖的内存范围。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>取得基址、所有 section 中最低的起始 rva 和最高的结束 rva，得到整个 PE 镜像的 Sections 覆盖的内存范围。</p>
 <h3 id=43-构造加载器>4.3 构造加载器</h3>
 <p>使用 MinGW 来完成加载器构造——当然有其他更好的做法，加壳还要装一个 MinGW 未免太麻烦，但我也不知道该怎么做就是了（我猜的话，大概拿 nasm 应该就刑。）</p>
 <p>编译命令在 Python 脚本里生成并执行。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># compile shifted loader program</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># compile shifted loader program</span>
 <span class=n>compile_args</span> <span class=o>=</span> <span class=p>[</span>
     <span class=s1>&#39;loader.c&#39;</span><span class=p>,</span>
     <span class=s1>&#39;-m32&#39;</span><span class=p>,</span>
@@ -267,14 +383,30 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 <span class=n>shifted_loader</span> <span class=o>=</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>parse</span><span class=p>(</span><span class=s1>&#39;shifted-loader.exe&#39;</span><span class=p>)</span>
 <span class=n>sect_alignment</span> <span class=o>=</span> <span class=n>shifted_loader</span><span class=o>.</span><span class=n>optional_header</span><span class=o>.</span><span class=n>section_alignment</span>
 <span class=n>file_alignment</span> <span class=o>=</span> <span class=n>shifted_loader</span><span class=o>.</span><span class=n>optional_header</span><span class=o>.</span><span class=n>file_alignment</span>
-</code></pre></div><p><code>-luser32</code> 是因为我添加了一个 <code>MessageBoxA</code> 的调用。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p><code>-luser32</code> 是因为我添加了一个 <code>MessageBoxA</code> 的调用。</p>
 <p><code>-Wl,--image-base=...</code> 设置了加载器的基址，确保加载器和被加壳的程序落在同一个基址上。</p>
 <p><code>-Wl,--section-start=...</code> 因为知道第一个 section 一定是 <code>.text</code> 所以只设置了第一个 section 的地址，之后的 section 会自动往后挪。</p>
 <p>其他参数不多解释了。</p>
 <p>编译完成后，再解析出加载器的对齐信息，准备用于构造完整的被加壳程序。</p>
 <h3 id=44-构造加壳程序>4.4 构造加壳程序</h3>
 <p>加载器和被加载的程序都已经就绪，接下来就是把加载器和程序合并成加壳后的程序了。这一步还是先在创建 lief 的PE32 对象，然后填充基址、Section 对齐、文件对齐，并且把 DLL Characteristics 重置到 0，目的是声明不支持 ASLR。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># create new binary from scratch</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># create new binary from scratch</span>
 <span class=n>output</span> <span class=o>=</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>Binary</span><span class=p>(</span><span class=s1>&#39;packed&#39;</span><span class=p>,</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>PE_TYPE</span><span class=o>.</span><span class=n>PE32</span><span class=p>)</span>
 
 <span class=c1># copy essential fields from shifted_loader</span>
@@ -284,8 +416,23 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 
 <span class=c1># disable ASLR</span>
 <span class=n>output</span><span class=o>.</span><span class=n>optional_header</span><span class=o>.</span><span class=n>dll_characteristics</span> <span class=o>=</span> <span class=mi>0</span>
-</code></pre></div><p>先准备这些文件头字段，接下来开始填充 Section ，最先填充的就是准备用作被加载程序内存空间的 <code>.alloc</code> 节。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># add .alloc section</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>先准备这些文件头字段，接下来开始填充 Section ，最先填充的就是准备用作被加载程序内存空间的 <code>.alloc</code> 节。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># add .alloc section</span>
 <span class=n>allocate_size</span> <span class=o>=</span> <span class=n>align</span><span class=p>(</span><span class=n>highest_rva</span><span class=o>-</span><span class=n>lowest_rva</span><span class=p>,</span> <span class=n>sect_alignment</span><span class=p>)</span>
 <span class=n>allocate_section</span> <span class=o>=</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>Section</span><span class=p>(</span><span class=s2>&#34;.alloc&#34;</span><span class=p>)</span>
 <span class=n>allocate_section</span><span class=o>.</span><span class=n>virtual_address</span> <span class=o>=</span> <span class=n>lowest_rva</span>
@@ -294,25 +441,65 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
                                     <span class=o>|</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>SECTION_CHARACTERISTICS</span><span class=o>.</span><span class=n>MEM_WRITE</span>
                                     <span class=o>|</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>SECTION_CHARACTERISTICS</span><span class=o>.</span><span class=n>CNT_UNINITIALIZED_DATA</span><span class=p>)</span>
 <span class=n>output</span><span class=o>.</span><span class=n>add_section</span><span class=p>(</span><span class=n>allocate_section</span><span class=p>)</span>
-</code></pre></div><p>将 <code>.alloc</code> 节起始点放置在低位，长度为被加载程序的节大小之和对齐。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>将 <code>.alloc</code> 节起始点放置在低位，长度为被加载程序的节大小之和对齐。</p>
 <p>之后开始复制加载器的节。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># copy sections</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># copy sections</span>
 <span class=k>for</span> <span class=n>s</span> <span class=ow>in</span> <span class=n>shifted_loader</span><span class=o>.</span><span class=n>sections</span><span class=p>:</span>
     <span class=c1># let lief recalculate section offset and sizeof raw data</span>
     <span class=n>s</span><span class=o>.</span><span class=n>offset</span> <span class=o>=</span> <span class=mi>0</span>
     <span class=n>s</span><span class=o>.</span><span class=n>sizeof_raw_data</span> <span class=o>=</span> <span class=mi>0</span>
     <span class=n>output</span><span class=o>.</span><span class=n>add_section</span><span class=p>(</span><span class=n>s</span><span class=p>)</span>
-</code></pre></div><p><strong>需要注意</strong> 把 <code>offset</code> 和 <code>sizeof_raw_data</code> 置零，让 <code>lief</code> 去计算偏移和大小，后面添加的一应节都按这样操作。新创建的 Section 还好，对于从加载器里复制的 Section，保留 <code>offset</code> 和 <code>sizeof_raw_data</code> 会导致最终成品的 Section 数据不正确，造成 <code>ntdll</code> 里加载PE文件时，读取PE数据结构时出错。可以自行用 x32dbg 验证。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p><strong>需要注意</strong> 把 <code>offset</code> 和 <code>sizeof_raw_data</code> 置零，让 <code>lief</code> 去计算偏移和大小，后面添加的一应节都按这样操作。新创建的 Section 还好，对于从加载器里复制的 Section，保留 <code>offset</code> 和 <code>sizeof_raw_data</code> 会导致最终成品的 Section 数据不正确，造成 <code>ntdll</code> 里加载PE文件时，读取PE数据结构时出错。可以自行用 x32dbg 验证。</p>
 <p>最后把被加载的文件打包进去。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># add packed section</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># add packed section</span>
 <span class=k>with</span> <span class=nb>open</span><span class=p>(</span><span class=s1>&#39;example.exe&#39;</span><span class=p>,</span> <span class=s1>&#39;rb&#39;</span><span class=p>)</span> <span class=k>as</span> <span class=n>f</span><span class=p>:</span>
     <span class=n>packed_section</span> <span class=o>=</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>Section</span><span class=p>(</span><span class=s1>&#39;.packed&#39;</span><span class=p>)</span>
     <span class=n>packed_section</span><span class=o>.</span><span class=n>content</span> <span class=o>=</span> <span class=nb>list</span><span class=p>(</span><span class=n>f</span><span class=o>.</span><span class=n>read</span><span class=p>())</span>
     <span class=n>packed_section</span><span class=o>.</span><span class=n>characteristics</span> <span class=o>=</span> <span class=p>(</span><span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>SECTION_CHARACTERISTICS</span><span class=o>.</span><span class=n>MEM_READ</span> <span class=o>|</span>
                                       <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>SECTION_CHARACTERISTICS</span><span class=o>.</span><span class=n>CNT_INITIALIZED_DATA</span><span class=p>)</span>
     <span class=n>output</span><span class=o>.</span><span class=n>add_section</span><span class=p>(</span><span class=n>packed_section</span><span class=p>)</span>
-</code></pre></div><p>同样，让 lief 去计算偏移和大小。复制好节，继续复制 Data Directories，这又有一个坑。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># copy data directories</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>同样，让 lief 去计算偏移和大小。复制好节，继续复制 Data Directories，这又有一个坑。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># copy data directories</span>
 <span class=k>for</span> <span class=n>i</span> <span class=ow>in</span> <span class=nb>range</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=mi>15</span><span class=p>):</span>
     <span class=n>src</span> <span class=o>=</span> <span class=n>shifted_loader</span><span class=o>.</span><span class=n>data_directories</span><span class=p>[</span><span class=n>i</span><span class=p>]</span>
     <span class=n>output</span><span class=o>.</span><span class=n>data_directories</span><span class=p>[</span><span class=n>i</span><span class=p>]</span><span class=o>.</span><span class=n>rva</span> <span class=o>=</span> <span class=n>src</span><span class=o>.</span><span class=n>rva</span>
@@ -321,21 +508,162 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 <span class=c1># correct number of data directories</span>
 <span class=c1># warning: size of data directories may disagree with IMAGE_NT_HEADERS.DataDirectory in winnt.h</span>
 <span class=n>output</span><span class=o>.</span><span class=n>optional_header</span><span class=o>.</span><span class=n>numberof_rva_and_size</span> <span class=o>=</span> <span class=nb>len</span><span class=p>(</span><span class=n>output</span><span class=o>.</span><span class=n>data_directories</span><span class=p>)</span>
-</code></pre></div><p>需要注意到，<strong>lief 的数据结构里，允许的 data_directories 只有 15 个</strong>！<strong>但 <code>winnt.h</code> 里定义的 DATA_DIRECTORIES 数组，是固定16个元素</strong>！</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>需要注意到，<strong>lief 的数据结构里，允许的 data_directories 只有 15 个</strong>！<strong>但 <code>winnt.h</code> 里定义的 DATA_DIRECTORIES 数组，是固定16个元素</strong>！</p>
 <p>如果直接 <code>range(16)</code> 去遍历，会出现 <code>IndexError</code> ，如果忽视这个长度问题，直接在加载器里采用 Windows SDK 的头文件定义的结构，会导致取节表指针的时候比预期的多偏移 8 个字节，造成问题。调试起来简直太折磨人了。</p>
 <p>之后再复制入口点和镜像大小。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># copy original address of entrypoint</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># copy original address of entrypoint</span>
 <span class=n>output</span><span class=o>.</span><span class=n>optional_header</span><span class=o>.</span><span class=n>addressof_entrypoint</span> <span class=o>=</span> <span class=n>shifted_loader</span><span class=o>.</span><span class=n>optional_header</span><span class=o>.</span><span class=n>addressof_entrypoint</span>
 <span class=c1># let lief recalculate size of image</span>
 <span class=n>output</span><span class=o>.</span><span class=n>optional_header</span><span class=o>.</span><span class=n>sizeof_image</span> <span class=o>=</span> <span class=mi>0</span>
-</code></pre></div><p>注意，入口点和镜像大小的字段必须在复制完 Section 之后再复制，不然 lief 会犯傻，原因不明，有兴趣可以自己改一改顺序看看结果。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>注意，入口点和镜像大小的字段必须在复制完 Section 之后再复制，不然 lief 会犯傻，原因不明，有兴趣可以自己改一改顺序看看结果。</p>
 <p>到这里，基本准备就绪，就可以把构造好的可执行文件写入硬盘了。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># build output binary</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># build output binary</span>
 <span class=n>builder</span> <span class=o>=</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>Builder</span><span class=p>(</span><span class=n>output</span><span class=p>)</span>
 <span class=n>builder</span><span class=o>.</span><span class=n>build</span><span class=p>()</span>
 <span class=n>builder</span><span class=o>.</span><span class=n>write</span><span class=p>(</span><span class=s1>&#39;packed.exe&#39;</span><span class=p>)</span>
-</code></pre></div><h3 id=45-完整代码>4.5 完整代码</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># %%</span>
+</code></pre></td></tr></table>
+</div>
+</div><h3 id=45-完整代码>4.5 完整代码</h3>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>  1
+</span><span class=lnt>  2
+</span><span class=lnt>  3
+</span><span class=lnt>  4
+</span><span class=lnt>  5
+</span><span class=lnt>  6
+</span><span class=lnt>  7
+</span><span class=lnt>  8
+</span><span class=lnt>  9
+</span><span class=lnt> 10
+</span><span class=lnt> 11
+</span><span class=lnt> 12
+</span><span class=lnt> 13
+</span><span class=lnt> 14
+</span><span class=lnt> 15
+</span><span class=lnt> 16
+</span><span class=lnt> 17
+</span><span class=lnt> 18
+</span><span class=lnt> 19
+</span><span class=lnt> 20
+</span><span class=lnt> 21
+</span><span class=lnt> 22
+</span><span class=lnt> 23
+</span><span class=lnt> 24
+</span><span class=lnt> 25
+</span><span class=lnt> 26
+</span><span class=lnt> 27
+</span><span class=lnt> 28
+</span><span class=lnt> 29
+</span><span class=lnt> 30
+</span><span class=lnt> 31
+</span><span class=lnt> 32
+</span><span class=lnt> 33
+</span><span class=lnt> 34
+</span><span class=lnt> 35
+</span><span class=lnt> 36
+</span><span class=lnt> 37
+</span><span class=lnt> 38
+</span><span class=lnt> 39
+</span><span class=lnt> 40
+</span><span class=lnt> 41
+</span><span class=lnt> 42
+</span><span class=lnt> 43
+</span><span class=lnt> 44
+</span><span class=lnt> 45
+</span><span class=lnt> 46
+</span><span class=lnt> 47
+</span><span class=lnt> 48
+</span><span class=lnt> 49
+</span><span class=lnt> 50
+</span><span class=lnt> 51
+</span><span class=lnt> 52
+</span><span class=lnt> 53
+</span><span class=lnt> 54
+</span><span class=lnt> 55
+</span><span class=lnt> 56
+</span><span class=lnt> 57
+</span><span class=lnt> 58
+</span><span class=lnt> 59
+</span><span class=lnt> 60
+</span><span class=lnt> 61
+</span><span class=lnt> 62
+</span><span class=lnt> 63
+</span><span class=lnt> 64
+</span><span class=lnt> 65
+</span><span class=lnt> 66
+</span><span class=lnt> 67
+</span><span class=lnt> 68
+</span><span class=lnt> 69
+</span><span class=lnt> 70
+</span><span class=lnt> 71
+</span><span class=lnt> 72
+</span><span class=lnt> 73
+</span><span class=lnt> 74
+</span><span class=lnt> 75
+</span><span class=lnt> 76
+</span><span class=lnt> 77
+</span><span class=lnt> 78
+</span><span class=lnt> 79
+</span><span class=lnt> 80
+</span><span class=lnt> 81
+</span><span class=lnt> 82
+</span><span class=lnt> 83
+</span><span class=lnt> 84
+</span><span class=lnt> 85
+</span><span class=lnt> 86
+</span><span class=lnt> 87
+</span><span class=lnt> 88
+</span><span class=lnt> 89
+</span><span class=lnt> 90
+</span><span class=lnt> 91
+</span><span class=lnt> 92
+</span><span class=lnt> 93
+</span><span class=lnt> 94
+</span><span class=lnt> 95
+</span><span class=lnt> 96
+</span><span class=lnt> 97
+</span><span class=lnt> 98
+</span><span class=lnt> 99
+</span><span class=lnt>100
+</span><span class=lnt>101
+</span><span class=lnt>102
+</span><span class=lnt>103
+</span><span class=lnt>104
+</span><span class=lnt>105
+</span><span class=lnt>106
+</span><span class=lnt>107
+</span><span class=lnt>108
+</span><span class=lnt>109
+</span><span class=lnt>110
+</span><span class=lnt>111
+</span><span class=lnt>112
+</span><span class=lnt>113
+</span><span class=lnt>114
+</span><span class=lnt>115
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># %%</span>
 <span class=kn>import</span> <span class=nn>lief</span>
 <span class=kn>from</span> <span class=nn>subprocess</span> <span class=kn>import</span> <span class=n>STDOUT</span><span class=p>,</span> <span class=n>CalledProcessError</span><span class=p>,</span> <span class=n>check_output</span>
 
@@ -450,7 +778,9 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 <span class=n>builder</span><span class=o>.</span><span class=n>write</span><span class=p>(</span><span class=s1>&#39;packed.exe&#39;</span><span class=p>)</span>
 <span class=nb>print</span><span class=p>(</span><span class=s1>&#39;[+] create packed binary success.&#39;</span><span class=p>)</span>
 
-</code></pre></div><p>只放一下加载器代码，一共三个代码文件托管在 Gist 上，需要安装 MinGW 和 LIEF，配置方式不赘述。还不会 C 和 Python 的话建议学一下先呢。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>只放一下加载器代码，一共三个代码文件托管在 Gist 上，需要安装 MinGW 和 LIEF，配置方式不赘述。还不会 C 和 Python 的话建议学一下先呢。</p>
 <p><a class=link href=https://gist.github.com/nnnewb/28ca24ed4ee53f446120d64570c7ad01 target=_blank rel=noopener>完整代码的 GIST</a></p>
 <h2 id=0x05-成果>0x05 成果</h2>
 <p>加壳机运行效果。</p>
@@ -459,7 +789,42 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 <p><img src=/blog/p/learning-packer-03-support-no-relocations/image-20211020095008599.png width=507 height=296 srcset="/blog/p/learning-packer-03-support-no-relocations/image-20211020095008599_hu133cb724811b185855f9a631cc001e91_10916_480x0_resize_box_3.png 480w, /blog/p/learning-packer-03-support-no-relocations/image-20211020095008599_hu133cb724811b185855f9a631cc001e91_10916_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211020095008599 class=gallery-image data-flex-grow=171 data-flex-basis=411px></p>
 <h2 id=结论>结论</h2>
 <p>整个过程里踩了不少坑，几乎都要靠 x32dbg 调试和 CFF Explorer 挨个文件头字段检查。有个比较实用的做法是拿 LIEF 解析好加壳后的文件，把输出结果和原始加载器对比。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=kn>import</span> <span class=nn>lief</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=kn>import</span> <span class=nn>lief</span>
 
 <span class=n>packed</span> <span class=o>=</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>parse</span><span class=p>(</span><span class=s1>&#39;packed.exe&#39;</span><span class=p>)</span>
 <span class=n>loader</span> <span class=o>=</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>parse</span><span class=p>(</span><span class=s1>&#39;shifted-loader.exe&#39;</span><span class=p>)</span>
@@ -490,9 +855,18 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
     <span class=k>for</span> <span class=n>s</span> <span class=ow>in</span> <span class=n>loader</span><span class=o>.</span><span class=n>sections</span><span class=p>:</span>
         <span class=nb>print</span><span class=p>(</span><span class=n>s</span><span class=p>,</span> <span class=n>file</span><span class=o>=</span><span class=n>out</span><span class=p>)</span>
 
-</code></pre></div><p>分析好之后就可以拿 vscode 去比较了。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>code -n -d packed-analysis.txt loader-analysis.txt
-</code></pre></div><p>比起直接拿 CFF Explorer 硬看字段哪儿不对，和编译器产生的正常文件比较能排除掉一些无关的字段。但也不是万能，比如说之前没有写 <code>section.offset=0</code>，结果生成的 PE32 文件导入表内容坏了，一直没意识到。直到 x32dbg 调试中发现 ntdll 里加载导入表时碰到了一个无效地址（我怎么知道是加载导入表时呢，胆大心细加上99%的运气&mldr;），然后看 CFF Explorer 才发现导入表完全挂了，再回头看节表才发现 <code>.idata</code> 的偏移和大小都是坏的&mldr;</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>分析好之后就可以拿 vscode 去比较了。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>code -n -d packed-analysis.txt loader-analysis.txt
+</code></pre></td></tr></table>
+</div>
+</div><p>比起直接拿 CFF Explorer 硬看字段哪儿不对，和编译器产生的正常文件比较能排除掉一些无关的字段。但也不是万能，比如说之前没有写 <code>section.offset=0</code>，结果生成的 PE32 文件导入表内容坏了，一直没意识到。直到 x32dbg 调试中发现 ntdll 里加载导入表时碰到了一个无效地址（我怎么知道是加载导入表时呢，胆大心细加上99%的运气&mldr;），然后看 CFF Explorer 才发现导入表完全挂了，再回头看节表才发现 <code>.idata</code> 的偏移和大小都是坏的&mldr;</p>
 <p>还有 data directories 的坑，也是靠 x32dbg，跳转到内存，才发现 <code>(IMAGE_SECTION_HEADER*)(PIMAGE_NT_HEADERS+1)</code> 算出来的偏移值多了8字节，冥思苦想这8字节怎么回事，胡乱分析，然后突然意识到 data directory 正好 8 字节，加壳机里又有个很迷惑的 <code>range(0,15)</code>，反复确认了几次才发现真的是 LIEF 就给了 15 个 Data directory —— 但 Windows SDK 里 <code>winnt.h</code> 定义的是 <strong>固定 16 个元素</strong> ，之后去翻 PE Format 文档才发现微软早就挖好了这个坑等你翻文档：</p>
 <blockquote>
 <p>Note that the number of directories is not fixed. Before looking for a specific directory, check the NumberOfRvaAndSizes field in the optional header.</p>
@@ -588,7 +962,7 @@ ASLR 的全名是 Address Space Layout Randomization ，地址空间布局随机
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

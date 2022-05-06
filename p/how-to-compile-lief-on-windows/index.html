@@ -1,32 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 惯例得有个前言。
-LIEF是一个二进制文件分析和操作库，官方推荐的是 Python 版本，确实更好用，就是类型的问题有点多，而且没附送 .pyi 导致不大好写。而C++版本就没这问题，C++版本有自己的问题=，=
-一个是官方提供下载的SDK是静态链接的，用到SDK的程序必须指定 /MT 不然编译器就会抱怨运行库不匹配。虽然看issue里已经有人解决了（-DLIEF_USE_CRT_{DEBUG,RELEASE}=MD/MT），但CI还是老样子，反正直接下载的SDK用起来就蛋疼，vcpkg 全都是 /MD 链接的，没法配合用。
-更别提 MinGW 了，就没官方的SDK。
-以上就是问题，解决问题的最简单办法就是自己编译了。
-0x01 Visual C++ 工具链 msbuild 代码下载下来之后，用 CMake 去编译。下面的命令都是 Powershell 下的，注意折行用的是反引号 backquote，就是波浪号那个键，和 bash 用 反斜杠不一样。直接复制到命令行是跑不起来的。
-cmake .. -G &amp;#34;Visual Studio 2019&amp;#34; # Generator，你的工具链，可以用 cmake --help 来看看有哪些可用的 -A Win32 # 选择 Visual C++ 工具链的情况下可以用 -A Win32 选择编译32位代码，或者 Win64 -DCMAKE_BUILD_TYPE=Debug # 常用的 Debug/Release/RelWithDebInfo -DLIEF_PYTHON_API=off # 不编译 Python 模块，这样就不用装 Python 了 -DLIEF_USE_CRT_DEBUG=MD # 使用 /MD 链接 msvcrt.dll 而不是 libcmt 这儿有个坑，用 Visual Studio 这个 Generator 的时候，虽然指定了 CMAKE_BUILD_TYPE，但实际没什么卵用，还得在编译的时候给参数 --config Debug 才会真的按 Debug 编译。"><title>编译LIEF的各种姿势</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 惯例得有个前言。 LIEF是一个二进制文件分析和操作库，官方推荐的是 Python 版本，确实更好用，就是类型的问题有点多，而且没附送 .pyi 导致不大好写。而"><title>编译LIEF的各种姿势</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/how-to-compile-lief-on-windows/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="编译LIEF的各种姿势">
-<meta property="og:description" content="前言 惯例得有个前言。
-LIEF是一个二进制文件分析和操作库，官方推荐的是 Python 版本，确实更好用，就是类型的问题有点多，而且没附送 .pyi 导致不大好写。而C++版本就没这问题，C++版本有自己的问题=，=
-一个是官方提供下载的SDK是静态链接的，用到SDK的程序必须指定 /MT 不然编译器就会抱怨运行库不匹配。虽然看issue里已经有人解决了（-DLIEF_USE_CRT_{DEBUG,RELEASE}=MD/MT），但CI还是老样子，反正直接下载的SDK用起来就蛋疼，vcpkg 全都是 /MD 链接的，没法配合用。
-更别提 MinGW 了，就没官方的SDK。
-以上就是问题，解决问题的最简单办法就是自己编译了。
-0x01 Visual C++ 工具链 msbuild 代码下载下来之后，用 CMake 去编译。下面的命令都是 Powershell 下的，注意折行用的是反引号 backquote，就是波浪号那个键，和 bash 用 反斜杠不一样。直接复制到命令行是跑不起来的。
-cmake .. -G &amp;#34;Visual Studio 2019&amp;#34; # Generator，你的工具链，可以用 cmake --help 来看看有哪些可用的 -A Win32 # 选择 Visual C++ 工具链的情况下可以用 -A Win32 选择编译32位代码，或者 Win64 -DCMAKE_BUILD_TYPE=Debug # 常用的 Debug/Release/RelWithDebInfo -DLIEF_PYTHON_API=off # 不编译 Python 模块，这样就不用装 Python 了 -DLIEF_USE_CRT_DEBUG=MD # 使用 /MD 链接 msvcrt.dll 而不是 libcmt 这儿有个坑，用 Visual Studio 这个 Generator 的时候，虽然指定了 CMAKE_BUILD_TYPE，但实际没什么卵用，还得在编译的时候给参数 --config Debug 才会真的按 Debug 编译。">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="编译LIEF的各种姿势">
+<meta property="og:description" content="前言 惯例得有个前言。 LIEF是一个二进制文件分析和操作库，官方推荐的是 Python 版本，确实更好用，就是类型的问题有点多，而且没附送 .pyi 导致不大好写。而">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/how-to-compile-lief-on-windows/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="c++"><meta property="article:tag" content="LIEF"><meta property="article:published_time" content="2021-10-08T16:25:00+08:00"><meta property="article:modified_time" content="2021-10-08T16:25:00+08:00">
 <meta name=twitter:title content="编译LIEF的各种姿势">
-<meta name=twitter:description content="前言 惯例得有个前言。
-LIEF是一个二进制文件分析和操作库，官方推荐的是 Python 版本，确实更好用，就是类型的问题有点多，而且没附送 .pyi 导致不大好写。而C++版本就没这问题，C++版本有自己的问题=，=
-一个是官方提供下载的SDK是静态链接的，用到SDK的程序必须指定 /MT 不然编译器就会抱怨运行库不匹配。虽然看issue里已经有人解决了（-DLIEF_USE_CRT_{DEBUG,RELEASE}=MD/MT），但CI还是老样子，反正直接下载的SDK用起来就蛋疼，vcpkg 全都是 /MD 链接的，没法配合用。
-更别提 MinGW 了，就没官方的SDK。
-以上就是问题，解决问题的最简单办法就是自己编译了。
-0x01 Visual C++ 工具链 msbuild 代码下载下来之后，用 CMake 去编译。下面的命令都是 Powershell 下的，注意折行用的是反引号 backquote，就是波浪号那个键，和 bash 用 反斜杠不一样。直接复制到命令行是跑不起来的。
-cmake .. -G &amp;#34;Visual Studio 2019&amp;#34; # Generator，你的工具链，可以用 cmake --help 来看看有哪些可用的 -A Win32 # 选择 Visual C++ 工具链的情况下可以用 -A Win32 选择编译32位代码，或者 Win64 -DCMAKE_BUILD_TYPE=Debug # 常用的 Debug/Release/RelWithDebInfo -DLIEF_PYTHON_API=off # 不编译 Python 模块，这样就不用装 Python 了 -DLIEF_USE_CRT_DEBUG=MD # 使用 /MD 链接 msvcrt.dll 而不是 libcmt 这儿有个坑，用 Visual Studio 这个 Generator 的时候，虽然指定了 CMAKE_BUILD_TYPE，但实际没什么卵用，还得在编译的时候给参数 --config Debug 才会真的按 Debug 编译。">
+<meta name=twitter:description content="前言 惯例得有个前言。 LIEF是一个二进制文件分析和操作库，官方推荐的是 Python 版本，确实更好用，就是类型的问题有点多，而且没附送 .pyi 导致不大好写。而">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -47,7 +29,12 @@ cmake .. -G &amp;#34;Visual Studio 2019&amp;#34; # Generator，你的工具链�
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -71,6 +58,11 @@ cmake .. -G &amp;#34;Visual Studio 2019&amp;#34; # Generator，你的工具链�
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -100,7 +92,7 @@ c++
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 2 分钟
+阅读时长: 3 分钟
 </time>
 </div>
 </footer>
@@ -115,42 +107,95 @@ c++
 <p>以上就是问题，解决问题的最简单办法就是自己编译了。</p>
 <h2 id=0x01-visual-c-工具链-msbuild>0x01 Visual C++ 工具链 msbuild</h2>
 <p>代码下载下来之后，用 CMake 去编译。下面的命令都是 Powershell 下的，注意折行用的是反引号 backquote，就是波浪号那个键，和 bash 用 反斜杠不一样。直接复制到命令行是跑不起来的。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>..</span> 
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>..</span> 
 	<span class=n>-G</span> <span class=s2>&#34;Visual Studio 2019&#34;</span> <span class=c># Generator，你的工具链，可以用 cmake --help 来看看有哪些可用的</span>
 	<span class=n>-A</span> <span class=n>Win32</span> <span class=c># 选择 Visual C++ 工具链的情况下可以用 -A Win32 选择编译32位代码，或者 Win64</span>
 	<span class=n>-DCMAKE_BUILD_TYPE</span><span class=p>=</span><span class=n>Debug</span> <span class=c># 常用的 Debug/Release/RelWithDebInfo</span>
 	<span class=n>-DLIEF_PYTHON_API</span><span class=p>=</span><span class=n>off</span> <span class=c># 不编译 Python 模块，这样就不用装 Python 了</span>
 	<span class=n>-DLIEF_USE_CRT_DEBUG</span><span class=p>=</span><span class=nb>MD </span><span class=c># 使用 /MD 链接 msvcrt.dll 而不是 libcmt</span>
-</code></pre></div><p>这儿有个坑，用 Visual Studio 这个 Generator 的时候，虽然指定了 <code>CMAKE_BUILD_TYPE</code>，但实际没什么卵用，还得在编译的时候给参数 <code>--config Debug</code> 才会真的按 Debug 编译。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>这儿有个坑，用 Visual Studio 这个 Generator 的时候，虽然指定了 <code>CMAKE_BUILD_TYPE</code>，但实际没什么卵用，还得在编译的时候给参数 <code>--config Debug</code> 才会真的按 Debug 编译。</p>
 <p>然后是编译命令：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>-</span><span class=n>-build</span> <span class=p>.</span> <span class=p>-</span><span class=n>-config</span> <span class=n>Debug</span> <span class=p>-</span><span class=n>-target</span> <span class=n>LIB_LIEF</span>
-</code></pre></div><p>默认用微软的 msbuild 会花很长时间去编译，不嫌麻烦的话可以用 Ninja。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>-</span><span class=n>-build</span> <span class=p>.</span> <span class=p>-</span><span class=n>-config</span> <span class=n>Debug</span> <span class=p>-</span><span class=n>-target</span> <span class=n>LIB_LIEF</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>默认用微软的 msbuild 会花很长时间去编译，不嫌麻烦的话可以用 Ninja。</p>
 <p>编译完还不能用，还得先“安装”到一个目录里。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>-</span><span class=n>-install</span> <span class=p>.</span> <span class=p>-</span><span class=n>-config</span> <span class=n>Debug</span> <span class=p>-</span><span class=n>-prefix</span> <span class=nb>LIEF-msvc</span><span class=n>-debug</span>
-</code></pre></div><p>这样就会把必要的文件给复制到 <code>LIEF-msvc-debug</code> 这个文件夹里了，参考 LIEF 官方的集成文档，把 <code>LIEF_DIR</code> 设置成这个文件夹的路径就可以用啦。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>-</span><span class=n>-install</span> <span class=p>.</span> <span class=p>-</span><span class=n>-config</span> <span class=n>Debug</span> <span class=p>-</span><span class=n>-prefix</span> <span class=nb>LIEF-msvc</span><span class=n>-debug</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>这样就会把必要的文件给复制到 <code>LIEF-msvc-debug</code> 这个文件夹里了，参考 LIEF 官方的集成文档，把 <code>LIEF_DIR</code> 设置成这个文件夹的路径就可以用啦。</p>
 <h2 id=0x02-visual-c-工具链-ninja>0x02 Visual C++ 工具链 ninja</h2>
 <p>使用 CMake + Ninja 的情况下没法用 <code>-A</code> 去控制编译32位还是64位了，你得先装好 Visual C++ 构建工具，然后打开开发者命令提示符。</p>
 <p><img src=/blog/image/how-to-compile-lief-on-windows/image-20211008160449880.png loading=lazy alt=image-20211008160449880></p>
 <p>比如想编译32位的就选 <code>x86 native tool command prompt</code> ，在这个命令提示符里用 cmake 构建。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>..</span> <span class=n>-G</span> <span class=n>Ninja</span> <span class=n>-DCMAKE_BUILD_TYPE</span><span class=p>=</span><span class=n>Debug</span> <span class=n>-DLIEF_PYTHON_API</span><span class=p>=</span><span class=n>off</span> <span class=n>-DLIEF_USE_CRT_DEBUG</span><span class=p>=</span><span class=nb>MD
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>..</span> <span class=n>-G</span> <span class=n>Ninja</span> <span class=n>-DCMAKE_BUILD_TYPE</span><span class=p>=</span><span class=n>Debug</span> <span class=n>-DLIEF_PYTHON_API</span><span class=p>=</span><span class=n>off</span> <span class=n>-DLIEF_USE_CRT_DEBUG</span><span class=p>=</span><span class=nb>MD
 </span><span class=nb></span><span class=n>cmake</span> <span class=p>-</span><span class=n>-build</span> <span class=p>.</span> <span class=p>-</span><span class=n>-target</span> <span class=n>LIB_LIEF</span>
 <span class=n>cmake</span> <span class=p>-</span><span class=n>-install</span> <span class=p>.</span> <span class=p>-</span><span class=n>-prefix</span> <span class=nb>LIEF-msvc</span><span class=n>-debug</span>
-</code></pre></div><p>其他和直接用 msvc 没啥区别。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>其他和直接用 msvc 没啥区别。</p>
 <h2 id=0x03-mingw-工具链-makefile>0x03 MinGW 工具链 makefile</h2>
 <p>MinGW 工具链其实和 msvc 差不太大。先装 MinGW，推荐 msys2，msys2装好后跑命令 <code>pacman -Sy mingw-w64-i686-toolchain</code> 就能装上32位的编译工具链了，包括了 <code>gcc</code>、<code>g++</code>、<code>mingw32-make</code> 这些必要的程序。</p>
 <p>完事后把 <code>MinGW</code> 工具链加到 <code>PATH</code> 里。一般来说，假如你把 msys2 装到 <code>C:\msys64</code> 下的话，那要加的路径就是 <code>C:\msys64\mingw32\bin</code>，自己看看要用的 gcc 放在哪儿呗。</p>
 <p>另外 <code>LIEF_USE_CRT_DEBUG</code> 这变量也用不到了，<code>MD</code>还是<code>MT</code> 这是专供 MSVC 的选择题，MinGW 不管这个。</p>
 <p>接着就可以用 CMake 了。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>..</span> <span class=n>-G</span> <span class=s2>&#34;MinGW Makefiles&#34;</span> <span class=n>-DCMAKE_BUILD_TYPE</span><span class=p>=</span><span class=n>Debug</span> <span class=n>-DLIEF_PYTHON_API</span><span class=p>=</span><span class=n>off</span> <span class=s1>&#39;-DCMAKE_C_FLAGS:STRING=&#34;-m32&#34;&#39;</span> <span class=s1>&#39;-DCMAKE_CXX_FLAGS:STRING=&#34;-m32&#34;&#39;</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>..</span> <span class=n>-G</span> <span class=s2>&#34;MinGW Makefiles&#34;</span> <span class=n>-DCMAKE_BUILD_TYPE</span><span class=p>=</span><span class=n>Debug</span> <span class=n>-DLIEF_PYTHON_API</span><span class=p>=</span><span class=n>off</span> <span class=s1>&#39;-DCMAKE_C_FLAGS:STRING=&#34;-m32&#34;&#39;</span> <span class=s1>&#39;-DCMAKE_CXX_FLAGS:STRING=&#34;-m32&#34;&#39;</span>
 <span class=n>cmake</span> <span class=p>-</span><span class=n>-build</span> <span class=p>.</span> <span class=p>-</span><span class=n>-target</span> <span class=n>LIB_LIEF</span>
 <span class=n>cmake</span> <span class=p>-</span><span class=n>-install</span> <span class=p>.</span> <span class=p>-</span><span class=n>-prefix</span> <span class=nb>LIEF-mingw32</span><span class=n>-debug</span>
-</code></pre></div><p>不用担心 CMake 选错工具链，用 <code>MinGW Makefiles</code> 的情况下会优先考虑 GCC 的。不过还有个老问题：怎么选32位还是64位。答案是设置下 <code>C_FLAGS</code> 和 <code>CXX_FLAGS</code> 这两个特殊变量，让编译器加上 <code>-m32</code> 这个参数，编译出来的就是32位代码了。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>不用担心 CMake 选错工具链，用 <code>MinGW Makefiles</code> 的情况下会优先考虑 GCC 的。不过还有个老问题：怎么选32位还是64位。答案是设置下 <code>C_FLAGS</code> 和 <code>CXX_FLAGS</code> 这两个特殊变量，让编译器加上 <code>-m32</code> 这个参数，编译出来的就是32位代码了。</p>
 <h2 id=0x04-mingw-工具链-ninja>0x04 MinGW 工具链 Ninja</h2>
 <p>和 <code>MinGW Makefiles</code> 差不太多，但是 <code>Ninja</code> 没那么聪明，不知道要用什么编译器，得手动指定。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>..</span> <span class=n>-G</span> <span class=n>Ninja</span> <span class=n>-DCMAKE_BUILD_TYPE</span><span class=p>=</span><span class=n>Debug</span> <span class=n>-DLIEF_PYTHON_API</span><span class=p>=</span><span class=n>off</span> <span class=n>-DCMAKE_C_COMPILER</span><span class=p>=</span><span class=n>gcc</span> <span class=n>-DCMAKE_CXX_COMPILER</span><span class=p>=</span><span class=n>g</span><span class=p>++</span> <span class=s1>&#39;-DCMAKE_C_FLAGS:STRING=&#34;-m32&#34;&#39;</span> <span class=s1>&#39;-DCMAKE_CXX_FLAGS:STRING=&#34;-m32&#34;&#39;</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-powershell data-lang=powershell><span class=n>cmake</span> <span class=p>..</span> <span class=n>-G</span> <span class=n>Ninja</span> <span class=n>-DCMAKE_BUILD_TYPE</span><span class=p>=</span><span class=n>Debug</span> <span class=n>-DLIEF_PYTHON_API</span><span class=p>=</span><span class=n>off</span> <span class=n>-DCMAKE_C_COMPILER</span><span class=p>=</span><span class=n>gcc</span> <span class=n>-DCMAKE_CXX_COMPILER</span><span class=p>=</span><span class=n>g</span><span class=p>++</span> <span class=s1>&#39;-DCMAKE_C_FLAGS:STRING=&#34;-m32&#34;&#39;</span> <span class=s1>&#39;-DCMAKE_CXX_FLAGS:STRING=&#34;-m32&#34;&#39;</span>
 <span class=n>cmake</span> <span class=p>-</span><span class=n>-build</span> <span class=p>.</span> <span class=p>-</span><span class=n>-target</span> <span class=n>LIB_LIEF</span>
 <span class=n>cmake</span> <span class=p>-</span><span class=n>-install</span> <span class=p>.</span> <span class=p>-</span><span class=n>-prefix</span> <span class=nb>LIEF-mingw32</span><span class=n>-debug</span>
-</code></pre></div><p>配置阶段多出来两个参数，<code>-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++</code>，目的就是告诉 CMake 放机灵点，用 <code>gcc/g++</code> 编译器，别瞎整。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>配置阶段多出来两个参数，<code>-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++</code>，目的就是告诉 CMake 放机灵点，用 <code>gcc/g++</code> 编译器，别瞎整。</p>
 <h2 id=总结>总结</h2>
 <p>也就这么回事吧。</p>
 </section>
@@ -221,7 +266,7 @@ c++
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

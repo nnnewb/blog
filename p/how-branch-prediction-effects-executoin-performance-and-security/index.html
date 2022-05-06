@@ -1,29 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 还是从 Igor Ostrvsky 的博客里发现的一篇有意思的文章，Fast and slow if-statements: branch prediction in modern processors 开始。
-分支预测对性能的影响 介绍 分支预测器 - Wikipedia 我直接抄一段。
- 在计算机体系结构中，分支预测器（英语：Branch predictor）是一种数字电路，在分支指令执行结束之前猜测哪一路分支将会被执行，以提高处理器的指令流水线的性能。使用分支预测器的目的，在于改善指令流水线的流程，就像一家公司的员工提前预测公司所需要的东西，即交付不同单位进行准备工作，而那各个部门之间的等待交办的时间大大地缩短，整个公司的效率就会提高了。现代使用指令流水线处理器的性能能够提高，分支预测器对于现今的指令流水线微处理器获得高性能是非常关键的技术。
- 现代 CPU 的分支预测没有 Igor Ostrvsky 的博客里写的分支预测器那么傻了，实际上，那篇博客里的代码在 i5-6600 的环境下跑起来，TTFF或者TTTTFFFF甚至比TTTT还要快。那篇博客创作于 2010 年， 而 Skylake 架构在 2015 年替代 Broadwell 架构，而现在是 2022年， Intel 已经发布了 GoldenCove ，AMD 也要发 Zen 4了。内容过时不可避免。
-所以这篇博客主要还是聊一下分支预测对性能的影响，但大概总结不出 Igor Ostrvsky 的博客里的规律。顺带一提，不要随便针对分支预测优化，要是有人看了 Igor Ostrvsky 那篇博客费了老大功夫优化成连续 T/F 分支，换上新 CPU 之后性能还倒退这能找谁说理去。针对微架构分支预测失败回退做优化我还在爆栈上看到个回答很有意思，avoid stalling pipeline by calculating conditional early ，很难想到还能用这种办法榨干 CPU 的每一滴性能。
-基准测试 这个基准测试的主要目的是体现出分支预测失败对执行时间的影响，测试方法是喂 10MB 的随机 T/F ，为 T 时计数器 +1。除了输入数据外测试代码一样。"><title>分支预测对执行效率和安全的影响</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 还是从 Igor Ostrvsky 的博客里发现的一篇有意思的文章，Fast and slow if-statements: branch prediction in modern processors 开始。 分支预测对性能的影响 介绍 分支预测器 - Wikipedia 我直接抄一段。 在计算机体系"><title>分支预测对执行效率和安全的影响</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/how-branch-prediction-effects-executoin-performance-and-security/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="分支预测对执行效率和安全的影响">
-<meta property="og:description" content="前言 还是从 Igor Ostrvsky 的博客里发现的一篇有意思的文章，Fast and slow if-statements: branch prediction in modern processors 开始。
-分支预测对性能的影响 介绍 分支预测器 - Wikipedia 我直接抄一段。
- 在计算机体系结构中，分支预测器（英语：Branch predictor）是一种数字电路，在分支指令执行结束之前猜测哪一路分支将会被执行，以提高处理器的指令流水线的性能。使用分支预测器的目的，在于改善指令流水线的流程，就像一家公司的员工提前预测公司所需要的东西，即交付不同单位进行准备工作，而那各个部门之间的等待交办的时间大大地缩短，整个公司的效率就会提高了。现代使用指令流水线处理器的性能能够提高，分支预测器对于现今的指令流水线微处理器获得高性能是非常关键的技术。
- 现代 CPU 的分支预测没有 Igor Ostrvsky 的博客里写的分支预测器那么傻了，实际上，那篇博客里的代码在 i5-6600 的环境下跑起来，TTFF或者TTTTFFFF甚至比TTTT还要快。那篇博客创作于 2010 年， 而 Skylake 架构在 2015 年替代 Broadwell 架构，而现在是 2022年， Intel 已经发布了 GoldenCove ，AMD 也要发 Zen 4了。内容过时不可避免。
-所以这篇博客主要还是聊一下分支预测对性能的影响，但大概总结不出 Igor Ostrvsky 的博客里的规律。顺带一提，不要随便针对分支预测优化，要是有人看了 Igor Ostrvsky 那篇博客费了老大功夫优化成连续 T/F 分支，换上新 CPU 之后性能还倒退这能找谁说理去。针对微架构分支预测失败回退做优化我还在爆栈上看到个回答很有意思，avoid stalling pipeline by calculating conditional early ，很难想到还能用这种办法榨干 CPU 的每一滴性能。
-基准测试 这个基准测试的主要目的是体现出分支预测失败对执行时间的影响，测试方法是喂 10MB 的随机 T/F ，为 T 时计数器 +1。除了输入数据外测试代码一样。">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="分支预测对执行效率和安全的影响">
+<meta property="og:description" content="前言 还是从 Igor Ostrvsky 的博客里发现的一篇有意思的文章，Fast and slow if-statements: branch prediction in modern processors 开始。 分支预测对性能的影响 介绍 分支预测器 - Wikipedia 我直接抄一段。 在计算机体系">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/how-branch-prediction-effects-executoin-performance-and-security/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="c++"><meta property="article:published_time" content="2022-02-16T16:00:00+08:00"><meta property="article:modified_time" content="2022-02-16T16:00:00+08:00">
 <meta name=twitter:title content="分支预测对执行效率和安全的影响">
-<meta name=twitter:description content="前言 还是从 Igor Ostrvsky 的博客里发现的一篇有意思的文章，Fast and slow if-statements: branch prediction in modern processors 开始。
-分支预测对性能的影响 介绍 分支预测器 - Wikipedia 我直接抄一段。
- 在计算机体系结构中，分支预测器（英语：Branch predictor）是一种数字电路，在分支指令执行结束之前猜测哪一路分支将会被执行，以提高处理器的指令流水线的性能。使用分支预测器的目的，在于改善指令流水线的流程，就像一家公司的员工提前预测公司所需要的东西，即交付不同单位进行准备工作，而那各个部门之间的等待交办的时间大大地缩短，整个公司的效率就会提高了。现代使用指令流水线处理器的性能能够提高，分支预测器对于现今的指令流水线微处理器获得高性能是非常关键的技术。
- 现代 CPU 的分支预测没有 Igor Ostrvsky 的博客里写的分支预测器那么傻了，实际上，那篇博客里的代码在 i5-6600 的环境下跑起来，TTFF或者TTTTFFFF甚至比TTTT还要快。那篇博客创作于 2010 年， 而 Skylake 架构在 2015 年替代 Broadwell 架构，而现在是 2022年， Intel 已经发布了 GoldenCove ，AMD 也要发 Zen 4了。内容过时不可避免。
-所以这篇博客主要还是聊一下分支预测对性能的影响，但大概总结不出 Igor Ostrvsky 的博客里的规律。顺带一提，不要随便针对分支预测优化，要是有人看了 Igor Ostrvsky 那篇博客费了老大功夫优化成连续 T/F 分支，换上新 CPU 之后性能还倒退这能找谁说理去。针对微架构分支预测失败回退做优化我还在爆栈上看到个回答很有意思，avoid stalling pipeline by calculating conditional early ，很难想到还能用这种办法榨干 CPU 的每一滴性能。
-基准测试 这个基准测试的主要目的是体现出分支预测失败对执行时间的影响，测试方法是喂 10MB 的随机 T/F ，为 T 时计数器 +1。除了输入数据外测试代码一样。">
+<meta name=twitter:description content="前言 还是从 Igor Ostrvsky 的博客里发现的一篇有意思的文章，Fast and slow if-statements: branch prediction in modern processors 开始。 分支预测对性能的影响 介绍 分支预测器 - Wikipedia 我直接抄一段。 在计算机体系">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -44,7 +29,12 @@
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -68,6 +58,11 @@
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -97,7 +92,7 @@ c++
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 5 分钟
+阅读时长: 8 分钟
 </time>
 </div>
 </footer>
@@ -116,7 +111,71 @@ c++
 <p>所以这篇博客主要还是聊一下分支预测对性能的影响，但大概总结不出 Igor Ostrvsky 的博客里的规律。顺带一提，不要随便针对分支预测优化，要是有人看了 Igor Ostrvsky 那篇博客费了老大功夫优化成连续 T/F 分支，换上新 CPU 之后性能还倒退这能找谁说理去。针对微架构分支预测失败回退做优化我还在爆栈上看到个回答很有意思，<a class=link href=https://stackoverflow.com/questions/49932119/avoid-stalling-pipeline-by-calculating-conditional-early target=_blank rel=noopener>avoid stalling pipeline by calculating conditional early</a> ，很难想到还能用这种办法榨干 CPU 的每一滴性能。</p>
 <h3 id=基准测试>基准测试</h3>
 <p>这个基准测试的主要目的是体现出分支预测失败对执行时间的影响，测试方法是喂 10MB 的随机 T/F ，为 T 时计数器 +1。除了输入数据外测试代码一样。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;functional&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;chrono&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;stdlib.h&gt;</span><span class=cp>
@@ -176,16 +235,37 @@ c++
     <span class=p>});</span>
     <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>使用 clang++ 编译</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=c1># clang version 13.0.0</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>使用 clang++ 编译</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=c1># clang version 13.0.0</span>
 <span class=c1># Target: x86_64-pc-windows-msvc</span>
 <span class=c1># Thread model: posix</span>
 <span class=c1># InstalledDir: C:\Program Files\LLVM\bin</span>
 clang++.exe -m32 -O0 -g -std<span class=o>=</span>c++20 .<span class=se>\b</span>ranch-prediction-1.cpp -o branch-prediction-1.exe
-</code></pre></div><p>统计平均、最佳、最差耗时，输出结果如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>always true avg: 120ms best: 116ms worst: 246ms total: 12056ms
+</code></pre></td></tr></table>
+</div>
+</div><p>统计平均、最佳、最差耗时，输出结果如下。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>always true avg: 120ms best: 116ms worst: 246ms total: 12056ms
 unpredictable avg: 191ms best: 184ms worst: 265ms total: 19115ms
-</code></pre></div><p>可以看到，数据量相同的情况下，输入数据是随机 T/F 的平均耗时比总为真的耗时高出 50%，总耗时多出 7 秒左右（差不多也是50%多一点）。可想而知，如果输入数据更有规律（比如前半段都是T后半段都是F），数据量不变的情况下，性能也会有相当不错的提高。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>可以看到，数据量相同的情况下，输入数据是随机 T/F 的平均耗时比总为真的耗时高出 50%，总耗时多出 7 秒左右（差不多也是50%多一点）。可想而知，如果输入数据更有规律（比如前半段都是T后半段都是F），数据量不变的情况下，性能也会有相当不错的提高。</p>
 <p>顺便我还要说一下这个基准测试不够好，应该每个测试循环都生成一次随机数输入的。</p>
 <h3 id=分支预测扮演的角色>分支预测扮演的角色</h3>
 <p>这还得从CPU执行指令的过程说起。这里聊的 CPU 执行一条指令需要经过下面的步骤，称作流水线。计算机组成原理课应该有说。</p>
@@ -201,12 +281,23 @@ unpredictable avg: 191ms best: 184ms worst: 265ms total: 19115ms
 <p><img src=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg.png width=500 height=479 srcset="/blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_480x0_resize_box_3.png 480w, /blog/p/how-branch-prediction-effects-executoin-performance-and-security/500pxPipeline_4_stage_svg_hu15edc282cd853d13d1b62dfc619067e7_33080_1024x0_resize_box_3.png 1024w" loading=lazy alt=4阶段流水线 class=gallery-image data-flex-grow=104 data-flex-basis=250px></p>
 <p>流水线处理器为了充分利用硬件，在译码上一条指令时，就开始取指下一条指令了，执行速度可以是单周期处理器的很多倍。显然流水线越长，每个阶段的耗时越短，整体执行的效率就越高。</p>
 <p>如果指令一直按顺序执行，流水线只要不断加长加快就能获得更高的性能，但“分支”打破了这个美梦。一个简短的例子如下。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>loop:</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>loop:</span>
 <span class=nf>inc</span> <span class=no>eax</span>
 <span class=nf>cmp</span> <span class=no>eax</span><span class=p>,</span><span class=no>ebx</span>
 <span class=nf>jne</span> <span class=no>loop</span>
 <span class=nf>call</span> <span class=no>exit</span>
-</code></pre></div><p>CPU 从 <code>cmp eax,ebx</code> 开始，取指 <code>jne loop</code>。译码 <code>jne loop</code> 时，问题来了，接下来是取指 <code>call exit</code> 还是 <code>inc eax</code>？</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>CPU 从 <code>cmp eax,ebx</code> 开始，取指 <code>jne loop</code>。译码 <code>jne loop</code> 时，问题来了，接下来是取指 <code>call exit</code> 还是 <code>inc eax</code>？</p>
 <p>此时我们还不知道 <code>cmp eax,ebx</code> 的结果，CPU 能做的事情只有：傻等(stall)，或者猜测下一条要执行的指令是什么(predict)。</p>
 <p>现代处理器的流水线长度可以达到几十，如果 CPU 遇到需要上一条指令的结果来继续下一条指令就开始等，那么流水线就不得不闲置到上一条指令完成，结果就是分支指令的代价会是其他指令的几十倍，对循环语句来说是个噩耗。</p>
 <p>影响流水线效率的还有其他元素，比如说上面的 取值-译码-执行-写回 过程里，四个阶段的执行速度也是不同的。通常取值和译码的速度更慢，执行写回更快。如何尽可能让每个执行单元都不浪费时间等待，也是个难题。</p>
@@ -216,7 +307,114 @@ unpredictable avg: 191ms best: 184ms worst: 265ms total: 19115ms
 <p>实话说我不确定这个代价有多大，因为没法控制失败率，不知道现在正在用的 CPU 的分支预测器是怎么工作的。</p>
 <p>直接构造随机的 T/F 序列是一种办法，前面的基准测试已经验证了随机 T/F 干扰分支预测会产生接近 50% 的多余开销。那么有没有办法降低分支预测失败的损失呢？怎么让 CPU 更早发现到分支预测失败，减少要抛弃、清空的流水线长度？</p>
 <p>参考前面爆栈的链接 <a class=link href=https://stackoverflow.com/questions/49932119/avoid-stalling-pipeline-by-calculating-conditional-early target=_blank rel=noopener>avoid stalling pipeline by calculating conditional early</a> ，我简单写一个基准测试看看。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>  1
+</span><span class=lnt>  2
+</span><span class=lnt>  3
+</span><span class=lnt>  4
+</span><span class=lnt>  5
+</span><span class=lnt>  6
+</span><span class=lnt>  7
+</span><span class=lnt>  8
+</span><span class=lnt>  9
+</span><span class=lnt> 10
+</span><span class=lnt> 11
+</span><span class=lnt> 12
+</span><span class=lnt> 13
+</span><span class=lnt> 14
+</span><span class=lnt> 15
+</span><span class=lnt> 16
+</span><span class=lnt> 17
+</span><span class=lnt> 18
+</span><span class=lnt> 19
+</span><span class=lnt> 20
+</span><span class=lnt> 21
+</span><span class=lnt> 22
+</span><span class=lnt> 23
+</span><span class=lnt> 24
+</span><span class=lnt> 25
+</span><span class=lnt> 26
+</span><span class=lnt> 27
+</span><span class=lnt> 28
+</span><span class=lnt> 29
+</span><span class=lnt> 30
+</span><span class=lnt> 31
+</span><span class=lnt> 32
+</span><span class=lnt> 33
+</span><span class=lnt> 34
+</span><span class=lnt> 35
+</span><span class=lnt> 36
+</span><span class=lnt> 37
+</span><span class=lnt> 38
+</span><span class=lnt> 39
+</span><span class=lnt> 40
+</span><span class=lnt> 41
+</span><span class=lnt> 42
+</span><span class=lnt> 43
+</span><span class=lnt> 44
+</span><span class=lnt> 45
+</span><span class=lnt> 46
+</span><span class=lnt> 47
+</span><span class=lnt> 48
+</span><span class=lnt> 49
+</span><span class=lnt> 50
+</span><span class=lnt> 51
+</span><span class=lnt> 52
+</span><span class=lnt> 53
+</span><span class=lnt> 54
+</span><span class=lnt> 55
+</span><span class=lnt> 56
+</span><span class=lnt> 57
+</span><span class=lnt> 58
+</span><span class=lnt> 59
+</span><span class=lnt> 60
+</span><span class=lnt> 61
+</span><span class=lnt> 62
+</span><span class=lnt> 63
+</span><span class=lnt> 64
+</span><span class=lnt> 65
+</span><span class=lnt> 66
+</span><span class=lnt> 67
+</span><span class=lnt> 68
+</span><span class=lnt> 69
+</span><span class=lnt> 70
+</span><span class=lnt> 71
+</span><span class=lnt> 72
+</span><span class=lnt> 73
+</span><span class=lnt> 74
+</span><span class=lnt> 75
+</span><span class=lnt> 76
+</span><span class=lnt> 77
+</span><span class=lnt> 78
+</span><span class=lnt> 79
+</span><span class=lnt> 80
+</span><span class=lnt> 81
+</span><span class=lnt> 82
+</span><span class=lnt> 83
+</span><span class=lnt> 84
+</span><span class=lnt> 85
+</span><span class=lnt> 86
+</span><span class=lnt> 87
+</span><span class=lnt> 88
+</span><span class=lnt> 89
+</span><span class=lnt> 90
+</span><span class=lnt> 91
+</span><span class=lnt> 92
+</span><span class=lnt> 93
+</span><span class=lnt> 94
+</span><span class=lnt> 95
+</span><span class=lnt> 96
+</span><span class=lnt> 97
+</span><span class=lnt> 98
+</span><span class=lnt> 99
+</span><span class=lnt>100
+</span><span class=lnt>101
+</span><span class=lnt>102
+</span><span class=lnt>103
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;functional&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;chrono&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;vector&gt;</span><span class=cp>
@@ -319,13 +517,53 @@ unpredictable avg: 191ms best: 184ms worst: 265ms total: 19115ms
 
     <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>输出结果</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>sentinel avg: 471ms best: 470ms worst: 502ms total: 47178ms
+</code></pre></td></tr></table>
+</div>
+</div><p>输出结果</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>sentinel avg: 471ms best: 470ms worst: 502ms total: 47178ms
 counter avg: 407ms best: 402ms worst: 512ms total: 40726ms
-</code></pre></div><p>这简直是黑魔法！<code>sum_counter</code>明显需要执行更多的指令，但执行速度比指令更少的<code>sum_sentinel</code>平均快70ms！</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>这简直是黑魔法！<code>sum_counter</code>明显需要执行更多的指令，但执行速度比指令更少的<code>sum_sentinel</code>平均快70ms！</p>
 <p>造成慢的原因是一样的，因为分支预测失败，我们以上面的4阶段流水线来分析，假设每个阶段要一个时钟周期，等CPU发现取错了指令（比如译码完了<code>add</code>，发现<code>cur!=nullptr</code>是F），于是浪费了两个时钟周期。这被称为 <em>front end bubble</em> 。参考 cloud flare 的这篇博客，<a class=link href=https://blog.cloudflare.com/branch-predictor/ target=_blank rel=noopener>branch predictor</a> 。这个 <em>front end</em> 指的是 CPU 微架构中流水线的前端，形象地看，流水线就像是一节一节的水管，指令填满每一节水管，流向下一节。分支预测失败就像是中间一节水管突然空了，后面的指令继续推着空气（预测错误的指令）往前走，就成了水管里的一个泡泡。</p>
 <p>但 <code>sum_counter</code> 快的原因更神奇：因为指令排列的顺序，让分支预测依赖的指令更早进入流水线，因此分支指令进入流水线后，分支预测会更快发现预测错误。见下面的汇编代码。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=err>&lt;</span><span class=nf>sum_sentinel</span><span class=p>(</span><span class=no>list_head</span><span class=p>)</span><span class=err>&gt;</span><span class=p>:</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=err>&lt;</span><span class=nf>sum_sentinel</span><span class=p>(</span><span class=no>list_head</span><span class=p>)</span><span class=err>&gt;</span><span class=p>:</span>
 <span class=nf>test</span>   <span class=no>rsi</span><span class=p>,</span><span class=no>rsi</span>
 <span class=nf>je</span>     <span class=mi>1</span><span class=no>fe</span> <span class=err>&lt;</span><span class=no>sum_sentinel</span><span class=p>(</span><span class=no>list_head</span><span class=p>)</span><span class=err>+</span><span class=mi>0x1e</span><span class=err>&gt;</span>
 <span class=nf>xor</span>    <span class=no>eax</span><span class=p>,</span><span class=no>eax</span>
@@ -351,7 +589,9 @@ counter avg: 407ms best: 402ms worst: 512ms total: 40726ms
 </span><span class=c></span><span class=no>jne</span>    <span class=no>loop</span><span class=p>:</span> <span class=c>; --- 5
 </span><span class=c></span><span class=no>cdqe</span>   <span class=c>; --- 6
 </span><span class=c></span><span class=no>ret</span>    
-</code></pre></div><p>想象有一颗 CPU 有 5 级流水线（<code>IF</code>、<code>ID</code>、<code>EX</code>、<code>MEM</code>、<code>WB</code>），如上标注的顺序执行。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>想象有一颗 CPU 有 5 级流水线（<code>IF</code>、<code>ID</code>、<code>EX</code>、<code>MEM</code>、<code>WB</code>），如上标注的顺序执行。</p>
 <p>在 <code>sum_sentinel</code> 中，开始对 (5) 取指时，(1)才完成写回。对(6)取指时，(2)才写回。等到(3)写回，CPU才发现错误，于是从(4)往后的4级流水线全部作废清空，空泡形成。按每一级1周期算的话，就浪费了4个周期。</p>
 <p>在<code>sum_counter</code>中，对(5)取指时，(1)已经写回。(4)依赖的寄存器数据就绪，立刻就能确定分支预测结果正确与否，没有浪费时钟周期。</p>
 <p>——以上都是想象中的 CPU ，想象中的流水线，实际上的流水线在哪个阶段才能发现分支预测错误，清空流水线，我也不知道。这里能提出的一个论点就是：尽早让分支依赖的数据就绪，尽快让 CPU 发现预测结果不正确，<strong>可能可以</strong>降低分支预测失败的损失。话不能说满。而且针对分支预测器做优化不值得，Igor Ostrvsky 的博客前车之鉴在那里，过几年新架构 CPU 分支预测器说不定就不是这个规律了也不一定。</p>
@@ -436,7 +676,7 @@ counter avg: 407ms best: 402ms worst: 512ms total: 40726ms
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

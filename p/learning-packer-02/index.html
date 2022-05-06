@@ -1,32 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成一个文件。
-这么说可能有点太简单化，大部分的工作其实就在这儿：如何处理被加载的程序？压缩？加密？混淆？加载器（或者叫壳程序）如何反调试？
-这里先写一个简单的加壳机，仅仅是把被加载的PE文件作为一个 Section，添加到壳程序里，让壳程序直接从这个 Section 加载并运行。其他花里胡哨的操作都先不整，仅作为证明工作原理的案例。
-0x01 壳程序 1.1 思路 和加载一个PE文件不同，既然被加载的程序就在 Section 里，那需要做的只有定位到 Section，然后把 Section 内容当读取进内存的 PE 文件内容处理就好了。
-壳程序应该尽量保持轻量，不在原始程序上添加太多东西（加完壳大小翻一倍还多了一堆DLL依赖那谁受得了啊），所以很多标准C库的函数也不能用了，像是memcpy、strcmp 都要自己简单实现一个。
-1.2 壳实现 绝大部分内容和之前文章中的 load_PE 一致，入口点修改为 _start，需要注意。
-#include &amp;lt;Windows.h&amp;gt;#include &amp;lt;winnt.h&amp;gt; void *load_PE(char *PE_data); void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers); void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers); int mystrcmp(const char *str1, const char *str2); void mymemcpy(char *dest, const char *src, size_t length); int _start(void) { char *unpacker_VA = (char *)GetModuleHandleA(NULL); IMAGE_DOS_HEADER *p_DOS_header = (IMAGE_DOS_HEADER *)unpacker_VA; IMAGE_NT_HEADERS *p_NT_headers = (IMAGE_NT_HEADERS *)(((char *)unpacker_VA) + p_DOS_header-&amp;gt;e_lfanew); IMAGE_SECTION_HEADER *sections = (IMAGE_SECTION_HEADER *)(p_NT_headers + 1); char *packed = NULL; char packed_section_name[] = &amp;#34;."><title>加壳原理02 - 简单加壳机</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成"><title>加壳原理02 - 简单加壳机</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-02/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="加壳原理02 - 简单加壳机">
-<meta property="og:description" content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成一个文件。
-这么说可能有点太简单化，大部分的工作其实就在这儿：如何处理被加载的程序？压缩？加密？混淆？加载器（或者叫壳程序）如何反调试？
-这里先写一个简单的加壳机，仅仅是把被加载的PE文件作为一个 Section，添加到壳程序里，让壳程序直接从这个 Section 加载并运行。其他花里胡哨的操作都先不整，仅作为证明工作原理的案例。
-0x01 壳程序 1.1 思路 和加载一个PE文件不同，既然被加载的程序就在 Section 里，那需要做的只有定位到 Section，然后把 Section 内容当读取进内存的 PE 文件内容处理就好了。
-壳程序应该尽量保持轻量，不在原始程序上添加太多东西（加完壳大小翻一倍还多了一堆DLL依赖那谁受得了啊），所以很多标准C库的函数也不能用了，像是memcpy、strcmp 都要自己简单实现一个。
-1.2 壳实现 绝大部分内容和之前文章中的 load_PE 一致，入口点修改为 _start，需要注意。
-#include &amp;lt;Windows.h&amp;gt;#include &amp;lt;winnt.h&amp;gt; void *load_PE(char *PE_data); void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers); void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers); int mystrcmp(const char *str1, const char *str2); void mymemcpy(char *dest, const char *src, size_t length); int _start(void) { char *unpacker_VA = (char *)GetModuleHandleA(NULL); IMAGE_DOS_HEADER *p_DOS_header = (IMAGE_DOS_HEADER *)unpacker_VA; IMAGE_NT_HEADERS *p_NT_headers = (IMAGE_NT_HEADERS *)(((char *)unpacker_VA) + p_DOS_header-&amp;gt;e_lfanew); IMAGE_SECTION_HEADER *sections = (IMAGE_SECTION_HEADER *)(p_NT_headers + 1); char *packed = NULL; char packed_section_name[] = &amp;#34;.">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="加壳原理02 - 简单加壳机">
+<meta property="og:description" content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-02/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="汇编"><meta property="article:tag" content="Windows"><meta property="article:published_time" content="2021-09-28T16:57:00+08:00"><meta property="article:modified_time" content="2021-09-28T16:57:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-02/cover.jpg">
 <meta name=twitter:title content="加壳原理02 - 简单加壳机">
-<meta name=twitter:description content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成一个文件。
-这么说可能有点太简单化，大部分的工作其实就在这儿：如何处理被加载的程序？压缩？加密？混淆？加载器（或者叫壳程序）如何反调试？
-这里先写一个简单的加壳机，仅仅是把被加载的PE文件作为一个 Section，添加到壳程序里，让壳程序直接从这个 Section 加载并运行。其他花里胡哨的操作都先不整，仅作为证明工作原理的案例。
-0x01 壳程序 1.1 思路 和加载一个PE文件不同，既然被加载的程序就在 Section 里，那需要做的只有定位到 Section，然后把 Section 内容当读取进内存的 PE 文件内容处理就好了。
-壳程序应该尽量保持轻量，不在原始程序上添加太多东西（加完壳大小翻一倍还多了一堆DLL依赖那谁受得了啊），所以很多标准C库的函数也不能用了，像是memcpy、strcmp 都要自己简单实现一个。
-1.2 壳实现 绝大部分内容和之前文章中的 load_PE 一致，入口点修改为 _start，需要注意。
-#include &amp;lt;Windows.h&amp;gt;#include &amp;lt;winnt.h&amp;gt; void *load_PE(char *PE_data); void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers); void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers); int mystrcmp(const char *str1, const char *str2); void mymemcpy(char *dest, const char *src, size_t length); int _start(void) { char *unpacker_VA = (char *)GetModuleHandleA(NULL); IMAGE_DOS_HEADER *p_DOS_header = (IMAGE_DOS_HEADER *)unpacker_VA; IMAGE_NT_HEADERS *p_NT_headers = (IMAGE_NT_HEADERS *)(((char *)unpacker_VA) + p_DOS_header-&amp;gt;e_lfanew); IMAGE_SECTION_HEADER *sections = (IMAGE_SECTION_HEADER *)(p_NT_headers + 1); char *packed = NULL; char packed_section_name[] = &amp;#34;."><meta name=twitter:card content="summary_large_image">
+<meta name=twitter:description content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成"><meta name=twitter:card content="summary_large_image">
 <meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-02/cover.jpg">
 </head>
 <body class=article-page>
@@ -48,7 +30,12 @@
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -72,6 +59,11 @@
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -106,7 +98,7 @@
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 6 分钟
+阅读时长: 5 分钟
 </time>
 </div>
 </footer>
@@ -123,7 +115,219 @@
 <p>壳程序应该尽量保持轻量，不在原始程序上添加太多东西（加完壳大小翻一倍还多了一堆DLL依赖那谁受得了啊），所以很多标准C库的函数也不能用了，像是<code>memcpy</code>、<code>strcmp</code> 都要自己简单实现一个。</p>
 <h3 id=12--壳实现>1.2 壳实现</h3>
 <p>绝大部分内容和之前文章中的 <code>load_PE</code> 一致，入口点修改为 <code>_start</code>，需要注意。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>  1
+</span><span class=lnt>  2
+</span><span class=lnt>  3
+</span><span class=lnt>  4
+</span><span class=lnt>  5
+</span><span class=lnt>  6
+</span><span class=lnt>  7
+</span><span class=lnt>  8
+</span><span class=lnt>  9
+</span><span class=lnt> 10
+</span><span class=lnt> 11
+</span><span class=lnt> 12
+</span><span class=lnt> 13
+</span><span class=lnt> 14
+</span><span class=lnt> 15
+</span><span class=lnt> 16
+</span><span class=lnt> 17
+</span><span class=lnt> 18
+</span><span class=lnt> 19
+</span><span class=lnt> 20
+</span><span class=lnt> 21
+</span><span class=lnt> 22
+</span><span class=lnt> 23
+</span><span class=lnt> 24
+</span><span class=lnt> 25
+</span><span class=lnt> 26
+</span><span class=lnt> 27
+</span><span class=lnt> 28
+</span><span class=lnt> 29
+</span><span class=lnt> 30
+</span><span class=lnt> 31
+</span><span class=lnt> 32
+</span><span class=lnt> 33
+</span><span class=lnt> 34
+</span><span class=lnt> 35
+</span><span class=lnt> 36
+</span><span class=lnt> 37
+</span><span class=lnt> 38
+</span><span class=lnt> 39
+</span><span class=lnt> 40
+</span><span class=lnt> 41
+</span><span class=lnt> 42
+</span><span class=lnt> 43
+</span><span class=lnt> 44
+</span><span class=lnt> 45
+</span><span class=lnt> 46
+</span><span class=lnt> 47
+</span><span class=lnt> 48
+</span><span class=lnt> 49
+</span><span class=lnt> 50
+</span><span class=lnt> 51
+</span><span class=lnt> 52
+</span><span class=lnt> 53
+</span><span class=lnt> 54
+</span><span class=lnt> 55
+</span><span class=lnt> 56
+</span><span class=lnt> 57
+</span><span class=lnt> 58
+</span><span class=lnt> 59
+</span><span class=lnt> 60
+</span><span class=lnt> 61
+</span><span class=lnt> 62
+</span><span class=lnt> 63
+</span><span class=lnt> 64
+</span><span class=lnt> 65
+</span><span class=lnt> 66
+</span><span class=lnt> 67
+</span><span class=lnt> 68
+</span><span class=lnt> 69
+</span><span class=lnt> 70
+</span><span class=lnt> 71
+</span><span class=lnt> 72
+</span><span class=lnt> 73
+</span><span class=lnt> 74
+</span><span class=lnt> 75
+</span><span class=lnt> 76
+</span><span class=lnt> 77
+</span><span class=lnt> 78
+</span><span class=lnt> 79
+</span><span class=lnt> 80
+</span><span class=lnt> 81
+</span><span class=lnt> 82
+</span><span class=lnt> 83
+</span><span class=lnt> 84
+</span><span class=lnt> 85
+</span><span class=lnt> 86
+</span><span class=lnt> 87
+</span><span class=lnt> 88
+</span><span class=lnt> 89
+</span><span class=lnt> 90
+</span><span class=lnt> 91
+</span><span class=lnt> 92
+</span><span class=lnt> 93
+</span><span class=lnt> 94
+</span><span class=lnt> 95
+</span><span class=lnt> 96
+</span><span class=lnt> 97
+</span><span class=lnt> 98
+</span><span class=lnt> 99
+</span><span class=lnt>100
+</span><span class=lnt>101
+</span><span class=lnt>102
+</span><span class=lnt>103
+</span><span class=lnt>104
+</span><span class=lnt>105
+</span><span class=lnt>106
+</span><span class=lnt>107
+</span><span class=lnt>108
+</span><span class=lnt>109
+</span><span class=lnt>110
+</span><span class=lnt>111
+</span><span class=lnt>112
+</span><span class=lnt>113
+</span><span class=lnt>114
+</span><span class=lnt>115
+</span><span class=lnt>116
+</span><span class=lnt>117
+</span><span class=lnt>118
+</span><span class=lnt>119
+</span><span class=lnt>120
+</span><span class=lnt>121
+</span><span class=lnt>122
+</span><span class=lnt>123
+</span><span class=lnt>124
+</span><span class=lnt>125
+</span><span class=lnt>126
+</span><span class=lnt>127
+</span><span class=lnt>128
+</span><span class=lnt>129
+</span><span class=lnt>130
+</span><span class=lnt>131
+</span><span class=lnt>132
+</span><span class=lnt>133
+</span><span class=lnt>134
+</span><span class=lnt>135
+</span><span class=lnt>136
+</span><span class=lnt>137
+</span><span class=lnt>138
+</span><span class=lnt>139
+</span><span class=lnt>140
+</span><span class=lnt>141
+</span><span class=lnt>142
+</span><span class=lnt>143
+</span><span class=lnt>144
+</span><span class=lnt>145
+</span><span class=lnt>146
+</span><span class=lnt>147
+</span><span class=lnt>148
+</span><span class=lnt>149
+</span><span class=lnt>150
+</span><span class=lnt>151
+</span><span class=lnt>152
+</span><span class=lnt>153
+</span><span class=lnt>154
+</span><span class=lnt>155
+</span><span class=lnt>156
+</span><span class=lnt>157
+</span><span class=lnt>158
+</span><span class=lnt>159
+</span><span class=lnt>160
+</span><span class=lnt>161
+</span><span class=lnt>162
+</span><span class=lnt>163
+</span><span class=lnt>164
+</span><span class=lnt>165
+</span><span class=lnt>166
+</span><span class=lnt>167
+</span><span class=lnt>168
+</span><span class=lnt>169
+</span><span class=lnt>170
+</span><span class=lnt>171
+</span><span class=lnt>172
+</span><span class=lnt>173
+</span><span class=lnt>174
+</span><span class=lnt>175
+</span><span class=lnt>176
+</span><span class=lnt>177
+</span><span class=lnt>178
+</span><span class=lnt>179
+</span><span class=lnt>180
+</span><span class=lnt>181
+</span><span class=lnt>182
+</span><span class=lnt>183
+</span><span class=lnt>184
+</span><span class=lnt>185
+</span><span class=lnt>186
+</span><span class=lnt>187
+</span><span class=lnt>188
+</span><span class=lnt>189
+</span><span class=lnt>190
+</span><span class=lnt>191
+</span><span class=lnt>192
+</span><span class=lnt>193
+</span><span class=lnt>194
+</span><span class=lnt>195
+</span><span class=lnt>196
+</span><span class=lnt>197
+</span><span class=lnt>198
+</span><span class=lnt>199
+</span><span class=lnt>200
+</span><span class=lnt>201
+</span><span class=lnt>202
+</span><span class=lnt>203
+</span><span class=lnt>204
+</span><span class=lnt>205
+</span><span class=lnt>206
+</span><span class=lnt>207
+</span><span class=lnt>208
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;winnt.h&gt;</span><span class=cp>
 </span><span class=cp></span>
 <span class=kt>void</span> <span class=o>*</span><span class=nf>load_PE</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>PE_data</span><span class=p>);</span>
@@ -331,11 +535,22 @@
     <span class=n>dest</span><span class=p>[</span><span class=n>i</span><span class=p>]</span> <span class=o>=</span> <span class=n>src</span><span class=p>[</span><span class=n>i</span><span class=p>];</span>
   <span class=p>}</span>
 <span class=p>}</span>
-</code></pre></div><p>构建参数（CMAKE）</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=nb>add_executable</span><span class=p>(</span><span class=s>loader_2</span> <span class=s>WIN32</span> <span class=s>loader_2.c</span><span class=p>)</span><span class=err>
+</code></pre></td></tr></table>
+</div>
+</div><p>构建参数（CMAKE）</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=nb>add_executable</span><span class=p>(</span><span class=s>loader_2</span> <span class=s>WIN32</span> <span class=s>loader_2.c</span><span class=p>)</span><span class=err>
 </span><span class=err></span><span class=nb>target_compile_options</span><span class=p>(</span><span class=s>loader_2</span> <span class=s>PRIVATE</span> <span class=s>/GS-</span><span class=p>)</span><span class=err>
 </span><span class=err></span><span class=nb>target_link_options</span><span class=p>(</span><span class=s>loader_2</span> <span class=s>PRIVATE</span> <span class=s>/NODEFAULTLIB</span> <span class=s>/ENTRY:_start</span><span class=p>)</span><span class=err>
-</span></code></pre></div><p>参数<code>/GS-</code>是为了避免在<code>/NODEFAULTLIB</code>下出现一些缓存区安全检查代码链接错误。参考<a class=link href="https://docs.microsoft.com/en-us/cpp/build/reference/gs-buffer-security-check?view=msvc-160" target=_blank rel=noopener>文档</a>。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>参数<code>/GS-</code>是为了避免在<code>/NODEFAULTLIB</code>下出现一些缓存区安全检查代码链接错误。参考<a class=link href="https://docs.microsoft.com/en-us/cpp/build/reference/gs-buffer-security-check?view=msvc-160" target=_blank rel=noopener>文档</a>。</p>
 <h2 id=0x02-加壳机>0x02 加壳机</h2>
 <p>相信已经发现了，上文并没有提到怎么把程序嵌入壳程序里。这是因为加壳并不是在壳程序编译时直接把文件嵌进去=，=虽然理论上来说也可以，但这里不讨论了。仅仅看加壳机加壳的场景吧。</p>
 <h3 id=21-加壳机原理>2.1 加壳机原理</h3>
@@ -356,7 +571,54 @@
 </ul>
 <p>反正看起来就很麻烦，不过幸好操作 PE 文件的库不少，GitHub 搜一搜就有。这里用 <a class=link href=https://github.com/lief-project/LIEF target=_blank rel=noopener>LIEF</a> 这个库，操作蛮简单的。</p>
 <h3 id=22-源码>2.2 源码</h3>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;LIEF/LIEF.hpp&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;vector&gt;</span><span class=cp>
 </span><span class=cp></span>
@@ -399,8 +661,36 @@
 
   <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>编译指令（CMAKE）参考 <a class=link href=https://lief-project.github.io//doc/latest/installation.html#cmake-integration target=_blank rel=noopener>LIEF 文档</a>。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=c># Custom path to the LIEF install directory
+</code></pre></td></tr></table>
+</div>
+</div><p>编译指令（CMAKE）参考 <a class=link href=https://lief-project.github.io//doc/latest/installation.html#cmake-integration target=_blank rel=noopener>LIEF 文档</a>。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=c># Custom path to the LIEF install directory
 </span><span class=c></span><span class=nb>set</span><span class=p>(</span><span class=s>LIEF_DIR</span> <span class=s>CACHE</span> <span class=s>PATH</span> <span class=o>${</span><span class=nv>CMAKE_INSTALL_PREFIX</span><span class=o>}</span><span class=p>)</span><span class=err>
 </span><span class=err>
 </span><span class=err></span><span class=c># Directory to &#39;FindLIEF.cmake&#39;
@@ -422,7 +712,9 @@
 			<span class=s>PROPERTY</span> <span class=s>CXX_STANDARD</span> <span class=s>11</span>
 			<span class=s>PROPERTY</span> <span class=s>CXX_STANDARD_REQUIRED</span> <span class=s>ON</span><span class=p>)</span><span class=err>
 </span><span class=err></span><span class=nb>target_link_libraries</span><span class=p>(</span><span class=s>packer</span> <span class=s>PRIVATE</span> <span class=o>${</span><span class=nv>LIEF_LIBRARIES</span><span class=o>}</span><span class=p>)</span><span class=err>
-</span></code></pre></div><p>我要顺便一提，LIEF有python包，但那玩意儿不知道为啥赋值content一直报 not supported，没解决。就干脆拿 c++ 写了。论简单快捷还是要看 python 版本的。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>我要顺便一提，LIEF有python包，但那玩意儿不知道为啥赋值content一直报 not supported，没解决。就干脆拿 c++ 写了。论简单快捷还是要看 python 版本的。</p>
 <h2 id=结论>结论</h2>
 <p>加壳程序反而平平无奇，正印证了那句台下功夫。</p>
 </section>
@@ -506,7 +798,7 @@
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

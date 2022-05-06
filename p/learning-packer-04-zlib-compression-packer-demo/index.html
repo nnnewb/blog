@@ -1,26 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。
-0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料：
- zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib  尝试了 zlib、lzo、Windows Compression API，对压缩和解压 API 的基本模式的基本认识大概是这样：
- 首先，你得有被压缩数据的大小（要么分块压缩，要么有整个压缩后的大小） 然后得有解压后的预期大小，这个能通过 尝试解压 的操作来实现。比如 Windows Compression API 和 lzo 都可以在解压 buffer 传 NULL，尝试取得解压后的大小，再分配好内存解压。 zlib 这样的流式压缩、解压处理文件比较友好，但全程在内存里进行的话，流式解压就会导致大量内存分配 =。= 除非一开始就分配足够的空间，不然一个一个内存块申请和合并会很蛋疼。  1.2 内存布局 压缩后的 .packed 节在头部留出 8 个字节，分别保存压缩后大小和压缩前大小，以便一次分配好内存完成解压。
-   偏移 大小 内容     0 DWORD 小端序，压缩后大小   4 DWORD 小端序，压缩前大小   8 可变 压缩后的数据    1."><title>加壳原理04 - zlib压缩壳案例</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。 0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料： zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib 尝试了 zlib、lzo、"><title>加壳原理04 - zlib压缩壳案例</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="加壳原理04 - zlib压缩壳案例">
-<meta property="og:description" content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。
-0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料：
- zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib  尝试了 zlib、lzo、Windows Compression API，对压缩和解压 API 的基本模式的基本认识大概是这样：
- 首先，你得有被压缩数据的大小（要么分块压缩，要么有整个压缩后的大小） 然后得有解压后的预期大小，这个能通过 尝试解压 的操作来实现。比如 Windows Compression API 和 lzo 都可以在解压 buffer 传 NULL，尝试取得解压后的大小，再分配好内存解压。 zlib 这样的流式压缩、解压处理文件比较友好，但全程在内存里进行的话，流式解压就会导致大量内存分配 =。= 除非一开始就分配足够的空间，不然一个一个内存块申请和合并会很蛋疼。  1.2 内存布局 压缩后的 .packed 节在头部留出 8 个字节，分别保存压缩后大小和压缩前大小，以便一次分配好内存完成解压。
-   偏移 大小 内容     0 DWORD 小端序，压缩后大小   4 DWORD 小端序，压缩前大小   8 可变 压缩后的数据    1.">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="加壳原理04 - zlib压缩壳案例">
+<meta property="og:description" content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。 0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料： zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib 尝试了 zlib、lzo、">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="汇编"><meta property="article:tag" content="c++"><meta property="article:tag" content="python"><meta property="article:tag" content="windows"><meta property="article:published_time" content="2021-10-20T16:07:00+08:00"><meta property="article:modified_time" content="2021-10-20T16:07:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.jpg">
 <meta name=twitter:title content="加壳原理04 - zlib压缩壳案例">
-<meta name=twitter:description content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。
-0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料：
- zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib  尝试了 zlib、lzo、Windows Compression API，对压缩和解压 API 的基本模式的基本认识大概是这样：
- 首先，你得有被压缩数据的大小（要么分块压缩，要么有整个压缩后的大小） 然后得有解压后的预期大小，这个能通过 尝试解压 的操作来实现。比如 Windows Compression API 和 lzo 都可以在解压 buffer 传 NULL，尝试取得解压后的大小，再分配好内存解压。 zlib 这样的流式压缩、解压处理文件比较友好，但全程在内存里进行的话，流式解压就会导致大量内存分配 =。= 除非一开始就分配足够的空间，不然一个一个内存块申请和合并会很蛋疼。  1.2 内存布局 压缩后的 .packed 节在头部留出 8 个字节，分别保存压缩后大小和压缩前大小，以便一次分配好内存完成解压。
-   偏移 大小 内容     0 DWORD 小端序，压缩后大小   4 DWORD 小端序，压缩前大小   8 可变 压缩后的数据    1."><meta name=twitter:card content="summary_large_image">
+<meta name=twitter:description content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。 0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料： zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib 尝试了 zlib、lzo、"><meta name=twitter:card content="summary_large_image">
 <meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.jpg">
 </head>
 <body class=article-page>
@@ -42,7 +30,12 @@
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -66,6 +59,11 @@
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -100,7 +98,7 @@
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 2 分钟
+阅读时长: 3 分钟
 </time>
 </div>
 </footer>
@@ -153,7 +151,28 @@
 </table></div>
 <h3 id=13-解压代码>1.3 解压代码</h3>
 <p>解压过程在加载 PE 之前，找到 <code>.packed</code> 节后，开始读取头部大小，并调用解压代码。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=k>if</span> <span class=p>(</span><span class=n>packed</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=k>if</span> <span class=p>(</span><span class=n>packed</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
     <span class=n>DWORD</span> <span class=n>compressed_size</span> <span class=o>=</span> <span class=o>*</span><span class=p>((</span><span class=n>DWORD</span> <span class=o>*</span><span class=p>)</span><span class=n>packed</span><span class=p>);</span>         <span class=c1>// compressed size little-endian
 </span><span class=c1></span>    <span class=n>DWORD</span> <span class=n>decompressed_size</span> <span class=o>=</span> <span class=o>*</span><span class=p>((</span><span class=n>DWORD</span> <span class=o>*</span><span class=p>)(</span><span class=n>packed</span> <span class=o>+</span> <span class=mi>4</span><span class=p>));</span> <span class=c1>// decompressed size little-endian
 </span><span class=c1></span>    <span class=kt>void</span> <span class=o>*</span><span class=n>compressed</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=p>)(</span><span class=n>packed</span> <span class=o>+</span> <span class=mi>8</span><span class=p>);</span>            <span class=c1>// compressed buffer
@@ -170,8 +189,34 @@
 
     <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>应该没有太多疑问。接下来的是解压代码。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>void</span> <span class=nf>decompress</span><span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=n>compressed</span><span class=p>,</span> <span class=n>size_t</span> <span class=n>length</span><span class=p>,</span> <span class=kt>void</span> <span class=o>*</span><span class=n>decompressed</span><span class=p>,</span> <span class=n>size_t</span> <span class=n>decompressed_length</span><span class=p>)</span> <span class=p>{</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>应该没有太多疑问。接下来的是解压代码。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>void</span> <span class=nf>decompress</span><span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=n>compressed</span><span class=p>,</span> <span class=n>size_t</span> <span class=n>length</span><span class=p>,</span> <span class=kt>void</span> <span class=o>*</span><span class=n>decompressed</span><span class=p>,</span> <span class=n>size_t</span> <span class=n>decompressed_length</span><span class=p>)</span> <span class=p>{</span>
   <span class=n>z_stream</span> <span class=n>inflate_stream</span><span class=p>;</span>
   <span class=n>inflate_stream</span><span class=p>.</span><span class=n>zalloc</span> <span class=o>=</span> <span class=n>Z_NULL</span><span class=p>;</span>
   <span class=n>inflate_stream</span><span class=p>.</span><span class=n>zfree</span> <span class=o>=</span> <span class=n>Z_NULL</span><span class=p>;</span>
@@ -191,7 +236,9 @@
   <span class=n>inflateEnd</span><span class=p>(</span><span class=o>&amp;</span><span class=n>inflate_stream</span><span class=p>);</span>
   <span class=k>return</span><span class=p>;</span>
 <span class=p>}</span>
-</code></pre></div><p>定义 inflate 流：</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>定义 inflate 流：</p>
 <ul>
 <li><code>avail_in</code> 是可用的输入 buffer 大小</li>
 <li><code>avail_out</code> 是可用的输出 buffer 大小</li>
@@ -206,10 +253,36 @@
 <p>因为使用 python 写加壳机，就不用这么麻烦了。</p>
 <p>在处理 <code>.packed</code> 节的时候，使用 <code>struct</code> 和 <code>zlib</code> 两个 python 自带的库就能完成压缩和填充头。</p>
 <p>在脚本头部添加两句 <code>import</code></p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=kn>import</span> <span class=nn>struct</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=kn>import</span> <span class=nn>struct</span>
 <span class=kn>import</span> <span class=nn>zlib</span>
-</code></pre></div><p>然后修改加壳代码中，添加 <code>.packed</code> 节的代码。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># add packed section</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>然后修改加壳代码中，添加 <code>.packed</code> 节的代码。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># add packed section</span>
 <span class=k>with</span> <span class=nb>open</span><span class=p>(</span><span class=s1>&#39;example.exe&#39;</span><span class=p>,</span> <span class=s1>&#39;rb&#39;</span><span class=p>)</span> <span class=k>as</span> <span class=n>f</span><span class=p>:</span>
     <span class=n>file_content</span> <span class=o>=</span> <span class=n>f</span><span class=o>.</span><span class=n>read</span><span class=p>()</span>
     <span class=n>origin_length</span> <span class=o>=</span> <span class=nb>len</span><span class=p>(</span><span class=n>file_content</span><span class=p>)</span>
@@ -223,7 +296,9 @@
     <span class=n>packed_section</span><span class=o>.</span><span class=n>characteristics</span> <span class=o>=</span> <span class=p>(</span><span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>SECTION_CHARACTERISTICS</span><span class=o>.</span><span class=n>MEM_READ</span> <span class=o>|</span>
                                       <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>SECTION_CHARACTERISTICS</span><span class=o>.</span><span class=n>CNT_INITIALIZED_DATA</span><span class=p>)</span>
     <span class=n>output</span><span class=o>.</span><span class=n>add_section</span><span class=p>(</span><span class=n>packed_section</span><span class=p>)</span>
-</code></pre></div><p>可以看到使用 <code>zlib.compress</code> 就完成了压缩，不用原始 zlib 流那么麻烦。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>可以看到使用 <code>zlib.compress</code> 就完成了压缩，不用原始 zlib 流那么麻烦。</p>
 <p><code>struct.pack</code> 指定了小端序，两个4字节int，分别填写压缩后大小和原始大小，连接压缩后的数据，填充进<code>.packed</code> 节。</p>
 <p>就这样，压缩功能成功完成。</p>
 <h2 id=0x03-成果展示>0x03 成果展示</h2>
@@ -324,7 +399,7 @@
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

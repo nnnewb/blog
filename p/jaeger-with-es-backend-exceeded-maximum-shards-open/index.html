@@ -1,20 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 jaeger 是一个比较常用的分布式追踪服务，后端可以选 es、cassandra 等存储，我司线上就是用了 es 作为 jaeger 存储。
-jaeger 用 es 做查询后端的时候有个坏毛病：它会自动按日期分割日志 span，一天一个 index。直接结果就是一段时间没管线上的 jaeger，过一段时间就会发现 jaege 里啥也查不出来了。翻 jaeger 的日志就会看到下面的内容：
-{ &amp;#34;level&amp;#34;: &amp;#34;error&amp;#34;, &amp;#34;ts&amp;#34;: 1649751249.9240348, &amp;#34;caller&amp;#34;: &amp;#34;config/config.go:141&amp;#34;, &amp;#34;msg&amp;#34;: &amp;#34;Elasticsearch part of bulk request failed&amp;#34;, &amp;#34;map-key&amp;#34;: &amp;#34;index&amp;#34;, &amp;#34;response&amp;#34;: { &amp;#34;_index&amp;#34;: &amp;#34;jaeger-span-2022-04-12&amp;#34;, &amp;#34;_type&amp;#34;: &amp;#34;_doc&amp;#34;, &amp;#34;status&amp;#34;: 400, &amp;#34;error&amp;#34;: { &amp;#34;type&amp;#34;: &amp;#34;illegal_argument_exception&amp;#34;, &amp;#34;reason&amp;#34;: &amp;#34;Validation Failed: 1: this action would add [10] total shards, but this cluster currently has [2998]/[3000] maximum shards open;&amp;#34; } }, &amp;#34;stacktrace&amp;#34;: &amp;#34;github."><title>记一次 jaeger es 后端出现 maximum shards open 错误排查</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 jaeger 是一个比较常用的分布式追踪服务，后端可以选 es、cassandra 等存储，我司线上就是用了 es 作为 jaeger 存储。 jaeger 用 es 做查询后端的时候有个坏毛"><title>记一次 jaeger es 后端出现 maximum shards open 错误排查</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="记一次 jaeger es 后端出现 maximum shards open 错误排查">
-<meta property="og:description" content="前言 jaeger 是一个比较常用的分布式追踪服务，后端可以选 es、cassandra 等存储，我司线上就是用了 es 作为 jaeger 存储。
-jaeger 用 es 做查询后端的时候有个坏毛病：它会自动按日期分割日志 span，一天一个 index。直接结果就是一段时间没管线上的 jaeger，过一段时间就会发现 jaege 里啥也查不出来了。翻 jaeger 的日志就会看到下面的内容：
-{ &amp;#34;level&amp;#34;: &amp;#34;error&amp;#34;, &amp;#34;ts&amp;#34;: 1649751249.9240348, &amp;#34;caller&amp;#34;: &amp;#34;config/config.go:141&amp;#34;, &amp;#34;msg&amp;#34;: &amp;#34;Elasticsearch part of bulk request failed&amp;#34;, &amp;#34;map-key&amp;#34;: &amp;#34;index&amp;#34;, &amp;#34;response&amp;#34;: { &amp;#34;_index&amp;#34;: &amp;#34;jaeger-span-2022-04-12&amp;#34;, &amp;#34;_type&amp;#34;: &amp;#34;_doc&amp;#34;, &amp;#34;status&amp;#34;: 400, &amp;#34;error&amp;#34;: { &amp;#34;type&amp;#34;: &amp;#34;illegal_argument_exception&amp;#34;, &amp;#34;reason&amp;#34;: &amp;#34;Validation Failed: 1: this action would add [10] total shards, but this cluster currently has [2998]/[3000] maximum shards open;&amp;#34; } }, &amp;#34;stacktrace&amp;#34;: &amp;#34;github.">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="记一次 jaeger es 后端出现 maximum shards open 错误排查">
+<meta property="og:description" content="前言 jaeger 是一个比较常用的分布式追踪服务，后端可以选 es、cassandra 等存储，我司线上就是用了 es 作为 jaeger 存储。 jaeger 用 es 做查询后端的时候有个坏毛">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="elasticsearch"><meta property="article:tag" content="kubernetes"><meta property="article:tag" content="jaeger"><meta property="article:published_time" content="2022-04-12T13:00:00+08:00"><meta property="article:modified_time" content="2022-04-12T13:00:00+08:00">
 <meta name=twitter:title content="记一次 jaeger es 后端出现 maximum shards open 错误排查">
-<meta name=twitter:description content="前言 jaeger 是一个比较常用的分布式追踪服务，后端可以选 es、cassandra 等存储，我司线上就是用了 es 作为 jaeger 存储。
-jaeger 用 es 做查询后端的时候有个坏毛病：它会自动按日期分割日志 span，一天一个 index。直接结果就是一段时间没管线上的 jaeger，过一段时间就会发现 jaege 里啥也查不出来了。翻 jaeger 的日志就会看到下面的内容：
-{ &amp;#34;level&amp;#34;: &amp;#34;error&amp;#34;, &amp;#34;ts&amp;#34;: 1649751249.9240348, &amp;#34;caller&amp;#34;: &amp;#34;config/config.go:141&amp;#34;, &amp;#34;msg&amp;#34;: &amp;#34;Elasticsearch part of bulk request failed&amp;#34;, &amp;#34;map-key&amp;#34;: &amp;#34;index&amp;#34;, &amp;#34;response&amp;#34;: { &amp;#34;_index&amp;#34;: &amp;#34;jaeger-span-2022-04-12&amp;#34;, &amp;#34;_type&amp;#34;: &amp;#34;_doc&amp;#34;, &amp;#34;status&amp;#34;: 400, &amp;#34;error&amp;#34;: { &amp;#34;type&amp;#34;: &amp;#34;illegal_argument_exception&amp;#34;, &amp;#34;reason&amp;#34;: &amp;#34;Validation Failed: 1: this action would add [10] total shards, but this cluster currently has [2998]/[3000] maximum shards open;&amp;#34; } }, &amp;#34;stacktrace&amp;#34;: &amp;#34;github.">
+<meta name=twitter:description content="前言 jaeger 是一个比较常用的分布式追踪服务，后端可以选 es、cassandra 等存储，我司线上就是用了 es 作为 jaeger 存储。 jaeger 用 es 做查询后端的时候有个坏毛">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -35,7 +29,12 @@ jaeger 用 es 做查询后端的时候有个坏毛病：它会自动按日期分
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -59,6 +58,11 @@ jaeger 用 es 做查询后端的时候有个坏毛病：它会自动按日期分
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -88,7 +92,7 @@ elasticsearch
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 6 分钟
+阅读时长: 10 分钟
 </time>
 </div>
 </footer>
@@ -98,7 +102,28 @@ elasticsearch
 <h2 id=前言>前言</h2>
 <p>jaeger 是一个比较常用的分布式追踪服务，后端可以选 es、cassandra 等存储，我司线上就是用了 es 作为 jaeger 存储。</p>
 <p>jaeger 用 es 做查询后端的时候有个坏毛病：它会自动按日期分割日志 span，一天一个 index。直接结果就是一段时间没管线上的 jaeger，过一段时间就会发现 jaege 里啥也查不出来了。翻 jaeger 的日志就会看到下面的内容：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-json data-lang=json><span class=p>{</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-json data-lang=json><span class=p>{</span>
     <span class=nt>&#34;level&#34;</span><span class=p>:</span> <span class=s2>&#34;error&#34;</span><span class=p>,</span>
     <span class=nt>&#34;ts&#34;</span><span class=p>:</span> <span class=mf>1649751249.9240348</span><span class=p>,</span>
     <span class=nt>&#34;caller&#34;</span><span class=p>:</span> <span class=s2>&#34;config/config.go:141&#34;</span><span class=p>,</span>
@@ -115,7 +140,9 @@ elasticsearch
     <span class=p>},</span>
     <span class=nt>&#34;stacktrace&#34;</span><span class=p>:</span> <span class=s2>&#34;github.com/jaegertracing/jaeger/pkg/es/config.(*Configuration).NewClient.func2\n\tgithub.com/jaegertracing/jaeger/pkg/es/config/config.go:141\ngithub.com/olivere/elastic.(*bulkWorker).commit\n\tgithub.com/olivere/elastic@v6.2.35+incompatible/bulk_processor.go:588\ngithub.com/olivere/elastic.(*bulkWorker).work\n\tgithub.com/olivere/elastic@v6.2.35+incompatible/bulk_processor.go:501&#34;</span>
 <span class=p>}</span>
-</code></pre></div><p>此时检查 <code>GET /_cat/shards</code> 或 <code>GET /_cat/allocation</code> 都能看到分片数量达到了日志里记录的 <code>2998</code> 个。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>此时检查 <code>GET /_cat/shards</code> 或 <code>GET /_cat/allocation</code> 都能看到分片数量达到了日志里记录的 <code>2998</code> 个。</p>
 <h2 id=原因>原因</h2>
 <h3 id=jaeger产生大量分片>jaeger产生大量分片</h3>
 <p><a class=link href=https://www.elastic.co/guide/en/elasticsearch/reference/current/size-your-shards.html target=_blank rel=noopener>elasticsearch 官方文档指出</a>，每个 index 会被切分成1或多个分片(shards)，每个分片都可能在节点间复制，以防硬件故障。</p>
@@ -123,7 +150,42 @@ elasticsearch
 <p>Each index in Elasticsearch is divided into one or more shards, each of which may be replicated across multiple nodes to protect against hardware failures.</p>
 </blockquote>
 <p>而据我观察（sorry，没有文档），jaeger 每天创建的 index 都包含至少 5 个 primary 分片，一个 replica 分片。可以通过请求<code>index/_settings</code>这个api端点来检查索引会分配的分片和冗余数量。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-http data-lang=http><span class=kr>HTTP</span><span class=o>/</span><span class=m>1.1</span> <span class=m>200</span> <span class=ne>OK</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-http data-lang=http><span class=kr>HTTP</span><span class=o>/</span><span class=m>1.1</span> <span class=m>200</span> <span class=ne>OK</span>
 <span class=n>content-encoding</span><span class=o>:</span> <span class=l>gzip</span>
 <span class=n>content-length</span><span class=o>:</span> <span class=l>239</span>
 <span class=n>content-type</span><span class=o>:</span> <span class=l>application/json; charset=UTF-8</span>
@@ -154,7 +216,9 @@ elasticsearch
         <span class=p>}</span>
     <span class=p>}</span>
 <span class=p>}</span>
-</code></pre></div><p>而检查 <code>GET /_cat/indices</code> 可以发现，<code>jaeger</code> 创建的 index 包括 <code>jaeger-service-yyyy-mm-dd</code> 和 <code>jaeger-span-yyyy-mm-dd</code> 两种，很容易算出预期每月可能产生 336~372 个新的分片。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>而检查 <code>GET /_cat/indices</code> 可以发现，<code>jaeger</code> 创建的 index 包括 <code>jaeger-service-yyyy-mm-dd</code> 和 <code>jaeger-span-yyyy-mm-dd</code> 两种，很容易算出预期每月可能产生 336~372 个新的分片。</p>
 <h3 id=es每个节点分片数量受限>es每个节点分片数量受限</h3>
 <p>关于节点分片数量限制，<a class=link href=https://www.elastic.co/guide/en/elasticsearch/reference/current/allocation-total-shards.html target=_blank rel=noopener>官方文档的说法</a>是这样的：</p>
 <blockquote>
@@ -176,8 +240,15 @@ elasticsearch
 <blockquote>
 <p><strong><code>cluster.max_shards_per_node</code></strong></p>
 <p>(<a class=link href=https://www.elastic.co/guide/en/elasticsearch/reference/8.1/settings.html#dynamic-cluster-setting target=_blank rel=noopener>Dynamic</a>) Limits the total number of primary and replica shards for the cluster. Elasticsearch calculates the limit as follows:</p>
-<pre><code>cluster.max_shards_per_node * number of non-frozen data nodes
-</code></pre><p>Shards for closed indices do not count toward this limit. Defaults to <code>1000</code>. A cluster with no data nodes is unlimited.</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>cluster.max_shards_per_node * number of non-frozen data nodes
+</code></pre></td></tr></table>
+</div>
+</div><p>Shards for closed indices do not count toward this limit. Defaults to <code>1000</code>. A cluster with no data nodes is unlimited.</p>
 </blockquote>
 <p>虽然字面上看就是一个节点可以assign的分片数量，但实际算的是 <code>total number of primary and replica shards for cluster</code>。可以简单算一下，单节点集群显然只有一个 <code>non-frozen data node</code>，所以集群的分片上限就是 <code>1000 * 1</code>。线上的 3 节点集群没有 <code>frozen data node</code>，所以全集群最多有 <code>1000*3</code> 个分片。</p>
 <p>好了问题来了，<code>max_shards_per_node</code> 和 <code>total_shards_per_node</code> 有啥区别？</p>
@@ -207,10 +278,24 @@ elasticsearch
 </blockquote>
 <p>没有任何未配置 es 日志轮转可能产生的问题的警告。我怎么知道<code>take special attention to</code>是指性能会在特定条件下拉胯，还是直接把 es 服务的 shards 占满，直接搞得 es 没法服务？<code>This article</code> 这个链接更离谱了，半句没提为什么后面有个 <code>elasticsearch rollover</code> 小结。</p>
 <p>好闲话少叙。我这里是 kubernetes 平台，docker-compose 用户或者真机部署的自己看着改。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>kubectl create job --image jaegertracing/jaeger-es-rollover:latest jaeger-es-rollover-init -- /go/bin/es-rollover init http://elasticsearch-es-http.elasticsearch.svc.cluster.local:9200 --es.username<span class=o>=</span>***censored*** --es.password<span class=o>=</span>***censored***
-</code></pre></div><p>换成 docker 命令就是</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>docker run -it --rm --net<span class=o>=</span>host jaegertracing/jaeger-es-rollover:latest init http://localhost:9200 --es.username<span class=o>=</span>***censored*** --es.password<span class=o>=</span>***censored***
-</code></pre></div><p>这一步会创建几个新的 index 和别名</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>kubectl create job --image jaegertracing/jaeger-es-rollover:latest jaeger-es-rollover-init -- /go/bin/es-rollover init http://elasticsearch-es-http.elasticsearch.svc.cluster.local:9200 --es.username<span class=o>=</span>***censored*** --es.password<span class=o>=</span>***censored***
+</code></pre></td></tr></table>
+</div>
+</div><p>换成 docker 命令就是</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>docker run -it --rm --net<span class=o>=</span>host jaegertracing/jaeger-es-rollover:latest init http://localhost:9200 --es.username<span class=o>=</span>***censored*** --es.password<span class=o>=</span>***censored***
+</code></pre></td></tr></table>
+</div>
+</div><p>这一步会创建几个新的 index 和别名</p>
 <p><img src=/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141559066.png width=1842 height=378 srcset="/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141559066_huf31b44a88e85ce036ecd9f25c7699fa0_33804_480x0_resize_box_3.png 480w, /blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141559066_huf31b44a88e85ce036ecd9f25c7699fa0_33804_1024x0_resize_box_3.png 1024w" loading=lazy alt="rollover init后" class=gallery-image data-flex-grow=487 data-flex-basis=1169px></p>
 <p>注意图中标记的部分。</p>
 <p>下一步修改 jaeger 的启动参数，我这里直接 <code>kubectl edit -n jaeger deployment jaeger</code> 编辑。</p>
@@ -219,16 +304,33 @@ elasticsearch
 <p>到这里 jaeger 部署的调整就完了，但问题还没解决：要是时间久了，会不会还创建一堆 indices？据我观察，应该不会再每天 2 个 index 的频率高强度创建 index 了（PS：因为第一天动手的时候没注意，jaeger 没加 <code>--es.use-aliases=true</code>，所以我也不敢说绝对不会，建议自己改了第二天看一眼。），新的 index 会写入到之前看到的 <code>jaeger-span-000001</code> 这种 index 里。</p>
 <p>文档里给了个从每日创建索引转到 rollover 的迁移方法：</p>
 <p><strong>这不会删除旧索引，只是把旧索引合并到了别名<code>jaeger-*-read</code>里，让 jaeger 能查询到旧的日志。</strong></p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>curl -ivX POST -H <span class=s2>&#34;Content-Type: application/json&#34;</span> localhost:9200/_aliases -d <span class=s1>&#39;{&#34;actions&#34; : [{ &#34;add&#34; : { &#34;index&#34; : &#34;jaeger-span-*-*-*&#34;, &#34;alias&#34; : &#34;jaeger-span-read&#34; } }, { &#34;add&#34; : { &#34;index&#34;:&#34;jaeger-service-*-*-*&#34;, &#34;alias&#34; : &#34;jaeger-service-read&#34; }}]}&#39;</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>curl -ivX POST -H <span class=s2>&#34;Content-Type: application/json&#34;</span> localhost:9200/_aliases -d <span class=s1>&#39;{&#34;actions&#34; : [{ &#34;add&#34; : { &#34;index&#34; : &#34;jaeger-span-*-*-*&#34;, &#34;alias&#34; : &#34;jaeger-span-read&#34; } }, { &#34;add&#34; : { &#34;index&#34;:&#34;jaeger-service-*-*-*&#34;, &#34;alias&#34; : &#34;jaeger-service-read&#34; }}]}&#39;</span>
 <span class=c1># archive indices</span>
 curl -ivX POST -H <span class=s2>&#34;Content-Type: application/json&#34;</span> localhost:9200/_aliases -d <span class=s1>&#39;{&#34;actions&#34; : [{ &#34;add&#34; : { &#34;index&#34; : &#34;jaeger-span-archive&#34;, &#34;alias&#34; : &#34;jaeger-span-archive-read&#34; } }]}&#39;</span>
-</code></pre></div><p>注意如果有归档的话用 第二条 curl 的同时还要给 <code>jaeger</code> 加上启动参数<code>--es.archive.use-aliases=true</code>。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>注意如果有归档的话用 第二条 curl 的同时还要给 <code>jaeger</code> 加上启动参数<code>--es.archive.use-aliases=true</code>。</p>
 <h4 id=轮转>轮转</h4>
 <p>到这里，问题解决了90%，但还有个问题：如果所有 jaeger 数据都放在一个 index 里，过上一段时间，数据量膨胀后会不会产生性能问题？这是很自然的想法，日志这种东西是很容易膨胀的，随时间流逝很可能堆成一座难以清理的大山：就像是你想在MySQL里往一个记录超亿级的表里插数据或删数据一样。</p>
 <p><code>jaeger-es-rollover</code> 真正的用途就是这个：轮转日志。一个 index 已经有 100M 了，那就换一个 index 吧。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=c1># 按 CONDITIONS 指定的规则轮转</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=c1># 按 CONDITIONS 指定的规则轮转</span>
 docker run -it --rm --net<span class=o>=</span>host -e <span class=nv>CONDITIONS</span><span class=o>=</span><span class=s1>&#39;{&#34;max_age&#34;: &#34;1s&#34;}&#39;</span> jaegertracing/jaeger-es-rollover:latest rollover  http://localhost:9200
-</code></pre></div><blockquote>
+</code></pre></td></tr></table>
+</div>
+</div><blockquote>
 <p>Rollover lets you configure when to roll over to a new index based on one or more of the following criteria:</p>
 <ul>
 <li><code>max_age</code> - the maximum age of the index. It uses <a class=link href=https://www.elastic.co/guide/en/elasticsearch/reference/master/common-options.html#time-units target=_blank rel=noopener>time units</a>: <code>d</code>, <code>h</code>, <code>m</code>.</li>
@@ -239,7 +341,42 @@ docker run -it --rm --net<span class=o>=</span>host -e <span class=nv>CONDITIONS
 <p>目前支持的条件就只有这些。rollover 并不能让 es <em>替你</em> 轮转索引，所以这个 rollover 命令只能自己定时执行。</p>
 <p>对于 docker-compose 用户或者 docker 用户我没啥好办法，也许你可以在宿主机里写一个 crontab 跑上面的<code>docker run</code>。</p>
 <p>对于我这样的 kubernetes 用户则可以选择用 kubernetes 的 cronjob 实现。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>apiVersion</span><span class=p>:</span><span class=w> </span><span class=l>batch/v1beta1</span><span class=w> </span><span class=c># 对于 kubernetes v1.21.x 已经不是 beta 了，改成 batch/v1</span><span class=w>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>apiVersion</span><span class=p>:</span><span class=w> </span><span class=l>batch/v1beta1</span><span class=w> </span><span class=c># 对于 kubernetes v1.21.x 已经不是 beta 了，改成 batch/v1</span><span class=w>
 </span><span class=w></span><span class=nt>kind</span><span class=p>:</span><span class=w> </span><span class=l>CronJob</span><span class=w>
 </span><span class=w></span><span class=nt>metadata</span><span class=p>:</span><span class=w>
 </span><span class=w>  </span><span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>jaeger-es-index-rollover</span><span class=w>
@@ -270,11 +407,20 @@ docker run -it --rm --net<span class=o>=</span>host -e <span class=nv>CONDITIONS
 </span><span class=w>                </span><span class=nt>cpu</span><span class=p>:</span><span class=w> </span><span class=l>100m</span><span class=w>
 </span><span class=w>                </span><span class=nt>memory</span><span class=p>:</span><span class=w> </span><span class=l>100Mi</span><span class=w>
 </span><span class=w>          </span><span class=nt>restartPolicy</span><span class=p>:</span><span class=w> </span><span class=l>Never</span><span class=w>
-</span></code></pre></div><p>好，问题解决99%了！</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>好，问题解决99%了！</p>
 <h4 id=删除>删除</h4>
 <p>最后就是删除不再需要的数据了，很简单啦。下面的命令中 <code>14</code> 表示保留最近14天的日志，同样支持 <code>--es.username</code>和<code>--es.password</code>参数。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>docker run -it --rm --net<span class=o>=</span>host -e <span class=nv>ROLLOVER</span><span class=o>=</span><span class=nb>true</span> jaegertracing/jaeger-es-index-cleaner:latest <span class=m>14</span> http://localhost:9200
-</code></pre></div><p><strong>注意，虽然文档说 <em>that is also used for daily indices</em>，但实际发现好像并不会删。</strong></p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>docker run -it --rm --net<span class=o>=</span>host -e <span class=nv>ROLLOVER</span><span class=o>=</span><span class=nb>true</span> jaegertracing/jaeger-es-index-cleaner:latest <span class=m>14</span> http://localhost:9200
+</code></pre></td></tr></table>
+</div>
+</div><p><strong>注意，虽然文档说 <em>that is also used for daily indices</em>，但实际发现好像并不会删。</strong></p>
 <p>我不确定是不是 <strong>ROLLOVER</strong> 这个环境变量的影响，建议自己试试。</p>
 <h3 id=elasticsearch-curator>elasticsearch-curator</h3>
 <p>好了，奇技淫巧环节。<a class=link href=https://github.com/elastic/curator target=_blank rel=noopener>curator</a> 是一个 elastic 公司开源的 python 包，介绍比较皮：</p>
@@ -285,7 +431,22 @@ docker run -it --rm --net<span class=o>=</span>host -e <span class=nv>CONDITIONS
 <p>对不起，没去过博物馆，也没做过馆长，Get 不到。</p>
 <p>简单地说，curator 是一个 indice 管理的工具，我们用这个工具实现找到旧索引并删除。</p>
 <p>curator 的命令行界面像这样：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>Usage: curator [OPTIONS] ACTION_FILE
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>Usage: curator [OPTIONS] ACTION_FILE
 
   Curator for Elasticsearch indices.
 
@@ -296,11 +457,30 @@ Options:
   --dry-run      Do not perform any changes.
   --version      Show the version and exit.
   --help         Show this message and exit.
-</code></pre></div><p>关于这个工具，我们主要关注官方文档里的两个部分：<a class=link href=https://www.elastic.co/guide/en/elasticsearch/client/curator/current/configfile.html target=_blank rel=noopener>configuration file</a> 和 <a class=link href=https://www.elastic.co/guide/en/elasticsearch/client/curator/current/actionfile.html target=_blank rel=noopener>action file</a>。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>关于这个工具，我们主要关注官方文档里的两个部分：<a class=link href=https://www.elastic.co/guide/en/elasticsearch/client/curator/current/configfile.html target=_blank rel=noopener>configuration file</a> 和 <a class=link href=https://www.elastic.co/guide/en/elasticsearch/client/curator/current/actionfile.html target=_blank rel=noopener>action file</a>。</p>
 <p>configuration file 保存的是关于连接 es 所需的配置如地址、用户名密码、验证方法等，以及工具本身的配置如日志。</p>
 <p>action file 保存的是我们希望 curator 帮我们完成的操作。</p>
 <p>action file 的格式如下：</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>actions</span><span class=p>:</span><span class=w>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>actions</span><span class=p>:</span><span class=w>
 </span><span class=w>  </span><span class=nt>1</span><span class=p>:</span><span class=w>
 </span><span class=w>    </span><span class=nt>action</span><span class=p>:</span><span class=w> </span><span class=l>ACTION1</span><span class=w>
 </span><span class=w>    </span><span class=nt>description</span><span class=p>:</span><span class=w> </span><span class=l>OPTIONAL DESCRIPTION</span><span class=w>
@@ -313,9 +493,37 @@ Options:
 </span><span class=w>      </span><span class=l>...</span><span class=w>
 </span><span class=w>  </span><span class=nt>2</span><span class=p>:</span><span class=w>
 </span><span class=w>    </span><span class=l>...</span><span class=w>
-</span></code></pre></div><p>其中 <code>action</code> 是我们希望 curator 做的事，<code>options</code> 和 <code>filters</code> 控制 <code>action</code> 的行为和行为的对象。<code>action</code>支持<a class=link href=https://www.elastic.co/guide/en/elasticsearch/client/curator/current/actions.html target=_blank rel=noopener>很多不同的操作</a>。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>其中 <code>action</code> 是我们希望 curator 做的事，<code>options</code> 和 <code>filters</code> 控制 <code>action</code> 的行为和行为的对象。<code>action</code>支持<a class=link href=https://www.elastic.co/guide/en/elasticsearch/client/curator/current/actions.html target=_blank rel=noopener>很多不同的操作</a>。</p>
 <p>好了，现在看实例。我们想删除名称符合 <code>jaeger-span-yyyy-mm-dd</code> 格式的 index，并且<code>yyyy-mm-dd</code>小于指定的日期。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=w>    </span><span class=nt>actions</span><span class=p>:</span><span class=w>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=w>    </span><span class=nt>actions</span><span class=p>:</span><span class=w>
 </span><span class=w>      </span><span class=nt>1</span><span class=p>:</span><span class=w>
 </span><span class=w>        </span><span class=nt>action</span><span class=p>:</span><span class=w> </span><span class=l>delete_indices</span><span class=w>
 </span><span class=w>        </span><span class=nt>description</span><span class=p>:</span><span class=w> </span><span class=p>&gt;-</span><span class=sd>
@@ -337,11 +545,81 @@ Options:
 </span><span class=w>            </span><span class=nt>unit</span><span class=p>:</span><span class=w> </span><span class=l>days</span><span class=w>
 </span><span class=w>            </span><span class=nt>unit_count</span><span class=p>:</span><span class=w> </span><span class=m>7</span><span class=w>
 </span><span class=w>            </span><span class=nt>exclude</span><span class=p>:</span><span class=w>
-</span></code></pre></div><p>动作：<code>delete_indices</code>；忽略空输入，即使异常也继续执行；要删除的对象以 <code>jaeger-span</code> 开头，并且名称包含 <code>%Y-%m-%d</code> 模式的日期，且早于 7 天前。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>动作：<code>delete_indices</code>；忽略空输入，即使异常也继续执行；要删除的对象以 <code>jaeger-span</code> 开头，并且名称包含 <code>%Y-%m-%d</code> 模式的日期，且早于 7 天前。</p>
 <p>done！把上面的配置复制一份套用到 <code>jaeger-service-yyyy-mm-dd</code> 上，删除 jaeger-span 的任务就算配置好了。</p>
 <p>接下来把删除工作配置成定时任务，这里还是用了 cronjob。</p>
 <p>先把配置保存成 ConfigMap。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nn>---</span><span class=w>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nn>---</span><span class=w>
 </span><span class=w></span><span class=c># https://kubernetes.io/docs/concepts/configuration/configmap/</span><span class=w>
 </span><span class=w></span><span class=nt>kind</span><span class=p>:</span><span class=w> </span><span class=l>ConfigMap</span><span class=w>
 </span><span class=w></span><span class=nt>apiVersion</span><span class=p>:</span><span class=w> </span><span class=l>v1</span><span class=w>
@@ -405,8 +683,47 @@ Options:
 </span><span class=sd>            unit: days
 </span><span class=sd>            unit_count: 7
 </span><span class=sd>            exclude:</span><span class=w>    
-</span></code></pre></div><p>再编写一个 CronJob</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>apiVersion</span><span class=p>:</span><span class=w> </span><span class=l>batch/v1beta1</span><span class=w>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>再编写一个 CronJob</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>apiVersion</span><span class=p>:</span><span class=w> </span><span class=l>batch/v1beta1</span><span class=w>
 </span><span class=w></span><span class=nt>kind</span><span class=p>:</span><span class=w> </span><span class=l>CronJob</span><span class=w>
 </span><span class=w></span><span class=nt>metadata</span><span class=p>:</span><span class=w>
 </span><span class=w>  </span><span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>jaeger-es-index-cleanup</span><span class=w>
@@ -439,7 +756,9 @@ Options:
 </span><span class=w>                  </span><span class=nt>cpu</span><span class=p>:</span><span class=w> </span><span class=l>100m</span><span class=w>
 </span><span class=w>                  </span><span class=nt>memory</span><span class=p>:</span><span class=w> </span><span class=l>100Mi</span><span class=w>
 </span><span class=w>            </span><span class=nt>restartPolicy</span><span class=p>:</span><span class=w> </span><span class=l>Never</span><span class=w>
-</span></code></pre></div><p>这里用了 <code>bitnami/elasticsearch-curator</code> 镜像，如果不信任的话可以自己写个 Dockerfile 也不会很麻烦。我主要看中 bitnami 镜像大小优化还不错（98M），要是我自己随便写一个的话可能就不止这么大了。看了眼镜像的 Dockerfile 没有什么可疑的地方就直接用啦。</p>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>这里用了 <code>bitnami/elasticsearch-curator</code> 镜像，如果不信任的话可以自己写个 Dockerfile 也不会很麻烦。我主要看中 bitnami 镜像大小优化还不错（98M），要是我自己随便写一个的话可能就不止这么大了。看了眼镜像的 Dockerfile 没有什么可疑的地方就直接用啦。</p>
 <p>对于需要立刻跑一次的情况，可以把 jobTemplate 下面的内容复制出来单独写个 Job 先跑起来。</p>
 <h3 id=手动>手动</h3>
 <p>手动法我说个思路。首先你得有个 kibana console 可以访问，或者能直接请求到 es 的 9200 端口。</p>
@@ -497,7 +816,7 @@ Options:
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

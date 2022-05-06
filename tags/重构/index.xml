@@ -13,7 +13,31 @@
 &lt;h2 id="事务管理重构">事务管理重构&lt;/h2>
 &lt;h3 id="痛点">痛点&lt;/h3>
 &lt;p>先看一段重构前的事务代码。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="nx">tx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">DB&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Begin&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="nx">tx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">DB&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Begin&lt;/span>&lt;span class="p">()&lt;/span>
 &lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>
 &lt;span class="p">}&lt;/span>
@@ -32,8 +56,28 @@
 &lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">tx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Commit&lt;/span>&lt;span class="p">();&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>还有第二种写法：&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">var&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>还有第二种写法：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">var&lt;/span> &lt;span class="p">(&lt;/span>
 &lt;span class="nx">sqlStmts&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">make&lt;/span>&lt;span class="p">([]&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">req&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">UserId&lt;/span>&lt;span class="p">))&lt;/span>
 &lt;span class="nx">params&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nb">make&lt;/span>&lt;span class="p">([][]&lt;/span>&lt;span class="kd">interface&lt;/span>&lt;span class="p">{},&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">req&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">UserId&lt;/span>&lt;span class="p">))&lt;/span>
 &lt;span class="p">)&lt;/span>
@@ -46,7 +90,9 @@
 &lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">DB&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ExecSqlInTxAndCommit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">sqlStmts&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">params&lt;/span>&lt;span class="p">);&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="k">return&lt;/span> &lt;span class="kc">nil&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>事务管理上最大的痛点有几个：&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>事务管理上最大的痛点有几个：&lt;/p>
 &lt;ul>
 &lt;li>手工&lt;code>Commit/Rollback&lt;/code>逻辑较复杂，需要辅助变量或命名返回值，还要处理 &lt;code>recover&lt;/code>。&lt;/li>
 &lt;li>手工&lt;code>Commit/Rollback&lt;/code>样板代码多。&lt;/li>
@@ -67,7 +113,26 @@
 &lt;p>所以先看看别的知名框架怎么处理的事务是个好主意。&lt;/p>
 &lt;h4 id="beego">beego&lt;/h4>
 &lt;p>&lt;code>beego&lt;/code>有两种事务管理方法，第一种是利用闭包：&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// Beego will manage the transaction&amp;#39;s lifecycle
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="c1">// Beego will manage the transaction&amp;#39;s lifecycle
 &lt;/span>&lt;span class="c1">// if the @param task return error, the transaction will be rollback
 &lt;/span>&lt;span class="c1">// or the transaction will be committed
 &lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">o&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">DoTx&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kd">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">txOrm&lt;/span> &lt;span class="nx">orm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">TxOrmer&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">error&lt;/span> &lt;span class="p">{&lt;/span>
@@ -81,49 +146,158 @@
 &lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// or it will be committed
 &lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">return&lt;/span> &lt;span class="nx">e&lt;/span>
 &lt;span class="p">})&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>具体实现是很好猜的，&lt;code>DoTx&lt;/code>里&lt;code>defer func(){}()&lt;/code>处理下返回值和&lt;code>recover&lt;/code>，没有错误就提交。这种写法很灵活，也能有效避免忘记&lt;code>defer&lt;/code>或者&lt;code>defer&lt;/code>考虑不够全面之类的问题。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>具体实现是很好猜的，&lt;code>DoTx&lt;/code>里&lt;code>defer func(){}()&lt;/code>处理下返回值和&lt;code>recover&lt;/code>，没有错误就提交。这种写法很灵活，也能有效避免忘记&lt;code>defer&lt;/code>或者&lt;code>defer&lt;/code>考虑不够全面之类的问题。&lt;/p>
 &lt;p>&lt;code>beego&lt;/code>的另一种事务管理方法就是手动&lt;code>Commit/Rollback&lt;/code>了，和直接用 &lt;code>sql.Tx&lt;/code> 差别不大，不细说了。&lt;/p>
 &lt;h4 id="gin">gin&lt;/h4>
 &lt;p>&lt;code>gin&lt;/code>没有官方的事务方案，不过我找到一个社区方案：利用中间件在 &lt;code>context&lt;/code> 里注入事务对象，业务代码里可以 &lt;code>GetTransactionFromContext(ctx)&lt;/code> 获取，后续处理没有错误就提交，和 &lt;code>beego&lt;/code> 的闭包法类似，不过就是把事务从业务代码提到了全局，进一步减少了侵入。&lt;/p>
 &lt;h4 id="django">django&lt;/h4>
 &lt;p>&lt;code>django&lt;/code> 是 python 的 web 框架，也有一定参考意义。&lt;/p>
 &lt;p>&lt;code>django&lt;/code>的事务主要是靠装饰器实现的：&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="kn">from&lt;/span> &lt;span class="nn">django.db&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">transaction&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="kn">from&lt;/span> &lt;span class="nn">django.db&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">transaction&lt;/span>
 &lt;span class="nd">@transaction&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">atomic&lt;/span>
 &lt;span class="k">def&lt;/span> &lt;span class="nf">viewfunc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">request&lt;/span>&lt;span class="p">):&lt;/span>
 &lt;span class="c1"># This code executes inside a transaction.&lt;/span>
 &lt;span class="n">do_stuff&lt;/span>&lt;span class="p">()&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>也可以用上下文管理器：&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="kn">from&lt;/span> &lt;span class="nn">django.db&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">transaction&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>也可以用上下文管理器：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;span class="lnt">9
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="kn">from&lt;/span> &lt;span class="nn">django.db&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">transaction&lt;/span>
 &lt;span class="k">def&lt;/span> &lt;span class="nf">viewfunc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">request&lt;/span>&lt;span class="p">):&lt;/span>
 &lt;span class="c1"># This code executes in autocommit mode (Django&amp;#39;s default).&lt;/span>
 &lt;span class="n">do_stuff&lt;/span>&lt;span class="p">()&lt;/span>
 &lt;span class="k">with&lt;/span> &lt;span class="n">transaction&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">atomic&lt;/span>&lt;span class="p">():&lt;/span>
 &lt;span class="c1"># This code executes inside a transaction.&lt;/span>
 &lt;span class="n">do_more_stuff&lt;/span>&lt;span class="p">()&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>关于Python的装饰器和上下文管理器，我简要解释下：&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>关于Python的装饰器和上下文管理器，我简要解释下：&lt;/p>
 &lt;p>装饰器：高阶函数，接受被装饰函数作为输入，返回新函数。比如&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">def&lt;/span> &lt;span class="nf">decorator&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">def&lt;/span> &lt;span class="nf">decorator&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">):&lt;/span>
 &lt;span class="k">def&lt;/span> &lt;span class="nf">wrapped&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="o">**&lt;/span>&lt;span class="n">kwargs&lt;/span>&lt;span class="p">):&lt;/span>
 &lt;span class="k">return&lt;/span> &lt;span class="n">f&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="o">**&lt;/span>&lt;span class="n">kwargs&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="k">return&lt;/span> &lt;span class="n">wrapped&lt;/span>
 &lt;span class="nd">@decorator&lt;/span>
 &lt;span class="k">def&lt;/span> &lt;span class="nf">fun&lt;/span>&lt;span class="p">():&lt;/span>
 &lt;span class="k">pass&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>本质上就是&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">def&lt;/span> &lt;span class="nf">decorator&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>本质上就是&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;span class="lnt">9
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="k">def&lt;/span> &lt;span class="nf">decorator&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">f&lt;/span>&lt;span class="p">):&lt;/span>
 &lt;span class="k">def&lt;/span> &lt;span class="nf">wrapped&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="o">**&lt;/span>&lt;span class="n">kwargs&lt;/span>&lt;span class="p">):&lt;/span>
 &lt;span class="k">return&lt;/span> &lt;span class="n">f&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="o">**&lt;/span>&lt;span class="n">kwargs&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="k">return&lt;/span> &lt;span class="n">wrapped&lt;/span>
 &lt;span class="k">def&lt;/span> &lt;span class="nf">fun&lt;/span>&lt;span class="p">():&lt;/span>
 &lt;span class="k">pass&lt;/span>
 &lt;span class="n">fun&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">decorator&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">fun&lt;/span>&lt;span class="p">)&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>至于上下文管理器，可以简单理解成 &lt;code>try {} finally {}&lt;/code>。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>至于上下文管理器，可以简单理解成 &lt;code>try {} finally {}&lt;/code>。&lt;/p>
 &lt;p>&lt;code>django&lt;/code>的思路和&lt;code>beego&lt;/code>、&lt;code>gin&lt;/code>是很相似的，因为&lt;code>python&lt;/code>的装饰器语法存在使得事务管理可以更灵活地在函数级作用域里使用，而不用侵入业务代码。&lt;/p>
 &lt;h4 id="springboot">springboot&lt;/h4>
 &lt;p>&lt;code>springboot&lt;/code>主要利用注解和一系列我也不懂的JVM机制添加事务，具体还是不说了，多说多错。随手搜的一篇参考文章：&lt;a class="link" href="https://juejin.cn/post/7003614270877335560" target="_blank" rel="noopener"
 >Springboot之@Transactional事务注解原理详解&lt;/a>&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-java" data-lang="java">&lt;span class="kd">public&lt;/span> &lt;span class="n">Object&lt;/span> &lt;span class="nf">invoke&lt;/span>&lt;span class="o">(&lt;/span>&lt;span class="n">MethodInvocation&lt;/span> &lt;span class="n">invocation&lt;/span>&lt;span class="o">)&lt;/span> &lt;span class="kd">throws&lt;/span> &lt;span class="n">Throwable&lt;/span> &lt;span class="o">{&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;span class="lnt">47
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-java" data-lang="java">&lt;span class="kd">public&lt;/span> &lt;span class="n">Object&lt;/span> &lt;span class="nf">invoke&lt;/span>&lt;span class="o">(&lt;/span>&lt;span class="n">MethodInvocation&lt;/span> &lt;span class="n">invocation&lt;/span>&lt;span class="o">)&lt;/span> &lt;span class="kd">throws&lt;/span> &lt;span class="n">Throwable&lt;/span> &lt;span class="o">{&lt;/span>
 &lt;span class="n">Class&lt;/span>&lt;span class="o">&amp;lt;?&amp;gt;&lt;/span> &lt;span class="n">targetClass&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">invocation&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="na">getThis&lt;/span>&lt;span class="o">()&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">null&lt;/span> &lt;span class="o">?&lt;/span> &lt;span class="n">AopUtils&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="na">getTargetClass&lt;/span>&lt;span class="o">(&lt;/span>&lt;span class="n">invocation&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="na">getThis&lt;/span>&lt;span class="o">())&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="kc">null&lt;/span>&lt;span class="o">;&lt;/span>
 &lt;span class="n">Method&lt;/span> &lt;span class="n">var10001&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">invocation&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="na">getMethod&lt;/span>&lt;span class="o">();&lt;/span>
 &lt;span class="n">invocation&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="na">getClass&lt;/span>&lt;span class="o">();&lt;/span>
@@ -166,7 +340,9 @@
 &lt;span class="k">return&lt;/span> &lt;span class="n">retVal&lt;/span>&lt;span class="o">;&lt;/span>
 &lt;span class="o">...&lt;/span>
 &lt;span class="o">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>可以看到排除 springboot 的机制外，思路依然是清晰易懂的：进入业务逻辑前准备好事务，业务逻辑后没有错误则提交，否则回滚。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>可以看到排除 springboot 的机制外，思路依然是清晰易懂的：进入业务逻辑前准备好事务，业务逻辑后没有错误则提交，否则回滚。&lt;/p>
 &lt;p>上述4种框架的处理方法都是在使用各种语言机制来应用 AOP 思想。&lt;/p>
 &lt;h3 id="方案">方案&lt;/h3>
 &lt;p>考虑到旧代码范围广，闭包模式需要对旧的用法做侵入式修改，工作量大；针对特定业务函数应用装饰器模式在go语言环境下水土不服；唯一可能的选择就是中间件了。&lt;/p>
@@ -178,7 +354,36 @@
 &lt;p>更进一步的抽象，比如 &lt;code>gokit&lt;/code> 架构设计中的对单个业务接口抽出 &lt;code>Endpoint&lt;/code> ，彻底把业务层和传输层分离，所需的工作量更是离谱。&lt;/p>
 &lt;p>最终出于review友好也对我的手指友好考虑，还是选择全局中间件，但加改变，同时注入&lt;code>sql.DB&lt;/code>，并且让事务懒启动，尽量避免多余的&lt;code>Begin/Commit/Rollback&lt;/code>拖长接口耗时。&lt;/p>
 &lt;p>这一方案落地为一个&lt;code>txmanager&lt;/code>包和一个 gRPC Interceptor ，&lt;code>txmanager&lt;/code> 定义数据库接口、事务接口，以及注册事务等工具函数；Interceptor 在&lt;code>context&lt;/code>注入数据库和事务，在业务执行完成后，&lt;code>defer&lt;/code>里 &lt;code>recover&lt;/code>并检查返回值，决定提交或回滚。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="k">defer&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="k">defer&lt;/span> &lt;span class="kd">func&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nx">txSet&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">ok&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">ctx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Value&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">txSetKey&lt;/span>&lt;span class="p">).(&lt;/span>&lt;span class="nx">mapset&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Set&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="k">if&lt;/span> &lt;span class="p">!&lt;/span>&lt;span class="nx">ok&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="k">return&lt;/span>
@@ -202,8 +407,33 @@
 &lt;span class="k">return&lt;/span>
 &lt;span class="p">}&lt;/span>
 &lt;span class="p">}()&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>考虑到旧的代码并不规范，所以一个 &lt;code>ctx&lt;/code> 是可以可以注入多个数据库和事务的，把事务绑定到上下文的工作只能在微服务代码下再单独写两个工具函数。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">GetBaseDB&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">sql&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DB&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>考虑到旧的代码并不规范，所以一个 &lt;code>ctx&lt;/code> 是可以可以注入多个数据库和事务的，把事务绑定到上下文的工作只能在微服务代码下再单独写两个工具函数。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">GetBaseDB&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">sql&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DB&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nx">v&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">ctx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Value&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">BaseDBKey&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="k">if&lt;/span> &lt;span class="nx">v&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nb">panic&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">errors&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">New&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;no database found in context&amp;#34;&lt;/span>&lt;span class="p">))&lt;/span>
@@ -220,12 +450,24 @@
 &lt;span class="p">}&lt;/span>
 &lt;span class="k">return&lt;/span> &lt;span class="nx">tx&lt;/span>&lt;span class="p">.(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">sql&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Tx&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>如此一来，在业务代码里，原本的 &lt;code>DB.Query&lt;/code>只要改成&lt;code>GetBaseDB(ctx).Query&lt;/code>即可，影响降至最低。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>如此一来，在业务代码里，原本的 &lt;code>DB.Query&lt;/code>只要改成&lt;code>GetBaseDB(ctx).Query&lt;/code>即可，影响降至最低。&lt;/p>
 &lt;p>而原本涉及事务的代码，也可以简单地改写成：&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="nx">tx&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nf">GetTxForBaseDB&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="nx">tx&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nf">GetTxForBaseDB&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="c1">// ...业务代码
 &lt;/span>&lt;span class="c1">// tx.ExecContext(ctx, query, args...)
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>原本复杂的&lt;code>defer&lt;/code>就可以直接省略了，&lt;code>sqlStmts&lt;/code>也可以去除，变成 &lt;code>tx.ExecContext()&lt;/code> ，读起来更清楚。&lt;/p>
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>原本复杂的&lt;code>defer&lt;/code>就可以直接省略了，&lt;code>sqlStmts&lt;/code>也可以去除，变成 &lt;code>tx.ExecContext()&lt;/code> ，读起来更清楚。&lt;/p>
 &lt;h3 id="效果评估">效果评估&lt;/h3>
 &lt;p>最明显的就是原本考虑不周的 &lt;code>defer&lt;/code> 里 &lt;code>Commit/Rollback&lt;/code> 被考虑更全面的中间件替代了，潜在的 &lt;code>panic&lt;/code>导致错误提交/回滚问题得到修正，相关代码去除后可读性有所改善。&lt;/p>
 &lt;p>其次是有机会在这个基础上统一封装一个分布式事务，把侵入业务代码的可能降到比较低的水平。&lt;/p>
@@ -234,7 +476,21 @@
 &lt;h2 id="配置管理重构">配置管理重构&lt;/h2>
 &lt;h3 id="痛点-1">痛点&lt;/h3>
 &lt;p>相信很多人写代码的时候习惯把第三方的服务的 key/secret 直接写成常量，然后用一个宏或者标志去控制用哪套配置，比如这样：&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#ifdef PRODUCTION
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="cp">#ifdef PRODUCTION
 &lt;/span>&lt;span class="cp"># define QINIU_AK &amp;#34;***ak***&amp;#34;
 &lt;/span>&lt;span class="cp"># define QINIU_SK &amp;#34;***SK***&amp;#34;
 &lt;/span>&lt;span class="cp">#elif defined(TESTING)
@@ -244,7 +500,9 @@
 &lt;/span>&lt;span class="cp"># define QINIU_AK &amp;#34;***ak***&amp;#34;
 &lt;/span>&lt;span class="cp"># define QINIU_SK &amp;#34;***SK***&amp;#34;
 &lt;/span>&lt;span class="cp">#endif
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>但这项目比较狗，选择用环境变量来配置。用环境变量也就算了，最大的问题是：不管什么东西都往环境变量里塞，所有微服务共用一套环境变量配置，结果环境变量配置足有一百多行，也不管谁在用，怎么用。&lt;/p>
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>但这项目比较狗，选择用环境变量来配置。用环境变量也就算了，最大的问题是：不管什么东西都往环境变量里塞，所有微服务共用一套环境变量配置，结果环境变量配置足有一百多行，也不管谁在用，怎么用。&lt;/p>
 &lt;p>这也就罢了&amp;hellip;&lt;/p>
 &lt;p>更离谱的是，连推送文案，居然也写到环境变量里&amp;hellip;我寻思这玩意儿不得让运营人员编辑的吗&amp;hellip;&lt;/p>
 &lt;p>在上一份工作里维护的项目就好得多，大部分配置放到了 etcd，比如第三方服务的ak/sk和一些业务配置，也做到了热重载，不需要开发/运维人员介入就能实时调很多东西。而现在的项目，属于是开发的时间不要钱，宁可随时 on call 也不安排写个配置编辑和热重载。&lt;/p>
@@ -278,7 +536,38 @@
 &lt;li>原本的全局变量全部改成 &lt;code>GetXxx() &amp;lt;type&amp;gt;&lt;/code> 形式定义。&lt;/li>
 &lt;li>实现一个&lt;code>config&lt;/code>包，定义&lt;code>ConfigReader&lt;/code>接口和初步实现，再给一个全局默认 &lt;code>ConfigReader&lt;/code> ，方便直接用 &lt;code>config.GetString(key)&lt;/code> 的形式读配置，降低使用门槛。&lt;code>ConfigReader&lt;/code>的实现内用一个标准&lt;code>map&lt;/code>和&lt;code>sync.RWMutex&lt;/code>管理配置项缓存，降低读操作的成本。&lt;/li>
 &lt;/ul>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">ConfigReader&lt;/span> &lt;span class="kd">interface&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">ConfigReader&lt;/span> &lt;span class="kd">interface&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nf">GetString&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">key&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nf">GetInt&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">key&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nf">GetInt32&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">key&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int32&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span>
@@ -304,8 +593,25 @@
 &lt;span class="nf">MustGetDuration&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">key&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nx">time&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Duration&lt;/span>
 &lt;span class="nf">MustGetBool&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">key&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">bool&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>以及配置提供者：&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">ConfigProvider&lt;/span> &lt;span class="kd">interface&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>以及配置提供者：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">ConfigProvider&lt;/span> &lt;span class="kd">interface&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nf">Lookup&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">key&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">([]&lt;/span>&lt;span class="kt">byte&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">bool&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nf">Get&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">key&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">([]&lt;/span>&lt;span class="kt">byte&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">error&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nf">Set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">key&lt;/span> &lt;span class="kt">string&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">val&lt;/span> &lt;span class="p">[]&lt;/span>&lt;span class="kt">byte&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="kt">error&lt;/span>
@@ -315,7 +621,9 @@
 &lt;span class="c1">// Optional, implementation may return nil chan
 &lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="nf">Watch&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">ctx&lt;/span> &lt;span class="nx">context&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;lt;-&lt;/span>&lt;span class="kd">chan&lt;/span> &lt;span class="nx">Change&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>最终指定 Provider 来创建 &lt;code>ConfigReader&lt;/code> 实例。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>最终指定 Provider 来创建 &lt;code>ConfigReader&lt;/code> 实例。&lt;/p>
 &lt;p>这个方案存在一个比较麻烦的问题：原始的全局变量并不都是 &lt;code>string&lt;/code> 类型，而是夹杂了 &lt;code>int&lt;/code>、&lt;code>int64&lt;/code>、&lt;code>bool&lt;/code>，初始化时有的是用了封装好的 &lt;code>GetEnv&lt;/code> ，有的使用 &lt;code>os.Getenv()&lt;/code>、&lt;code>strconv.Atoi&lt;/code> 等。将原本的全局变量替换成 &lt;code>GetXxx&lt;/code> 并不是一件简单的事——如果手动来的话。&lt;/p>
 &lt;p>幸好，Go 提供了 &lt;code>go/parser&lt;/code>，只需要写大概一两百行代码，处理下 &lt;code>GenDecl&lt;/code> 和 &lt;code>AssignStmt&lt;/code>，找出配置项，然后用 &lt;code>dave/jennifer&lt;/code> 生成对应的 Go 代码即可，最终生成 700多行代码，手工调整下部分结果就算完成了。&lt;/p>
 &lt;p>至于业务代码中的调用点，可以直接在 vscode 里全局正则表达式搜索 &lt;code>\benv.(\w+)\b&lt;/code> 替换。&lt;/p>

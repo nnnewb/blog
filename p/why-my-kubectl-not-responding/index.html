@@ -1,59 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="懒得分段了，就当做是讲个故事吧。
-背景大概是这样。
-内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。
-今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。
-所以，当当当~当~，整一个持续部署呗，反正是个纯前端项目，不用部署配套的后端代码，写个dockerfile再写个helm chart就差不多了，ci调了调构建镜像就完事，不过因为ci部署需要访问集群，所以又改了下.kube/config，删了之前尝试csr方式添加用户的时候加多的 user 和 context ，复制了一份挂载到 runner 容器里。
-然后&amp;hellip;&amp;hellip;问题就来了。
-同事忽然告诉我办公室的服务挂了，于是下意识地打出kgp，卡住。
-等了一会儿，还是卡住。
-又等了一会儿，坐不住了。试了下kubectl cluster-info，继续卡住。
-开始慌了，想起今天的机器有点卡，先看看 free -h 有没有内存泄漏之类的问题导致阻塞，结果发现并没有，于是继续看 htop，cpu使用率也比较正常。再看df -h | grep -vE 'shm|overlay'，发现硬盘使用率96%（估计硬盘主控想死的心都有了，揪着4%的可用空间想把PE数平均到各个区块恐怕不容易）。
-找到问题后松了口气，十有八九是又出现 evicted 了。二话不说直接 docker system df，看到30多G的 build cache 顿时惊了，肯定不是go的构建缓存（手动挂载优化了），那就是 node_modules 又立奇功了。node_modules=黑洞果然不是吹的。
-清理完使用率恢复到63%，但依然有种不安感萦绕于心，于是再次尝试kgp，卡住。
-等了一会儿，喝口水，继续卡着。
-又等了一会儿，淦。
-想了想，journalctl -r -u k3s看看日志，并没有什么发现，倒是注意到很多linkerd之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。
-6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07."><title>排查一个kubectl无反应的问题</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="懒得分段了，就当做是讲个故事吧。 背景大概是这样。 内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remo"><title>排查一个kubectl无反应的问题</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="排查一个kubectl无反应的问题">
-<meta property="og:description" content="懒得分段了，就当做是讲个故事吧。
-背景大概是这样。
-内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。
-今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。
-所以，当当当~当~，整一个持续部署呗，反正是个纯前端项目，不用部署配套的后端代码，写个dockerfile再写个helm chart就差不多了，ci调了调构建镜像就完事，不过因为ci部署需要访问集群，所以又改了下.kube/config，删了之前尝试csr方式添加用户的时候加多的 user 和 context ，复制了一份挂载到 runner 容器里。
-然后&amp;hellip;&amp;hellip;问题就来了。
-同事忽然告诉我办公室的服务挂了，于是下意识地打出kgp，卡住。
-等了一会儿，还是卡住。
-又等了一会儿，坐不住了。试了下kubectl cluster-info，继续卡住。
-开始慌了，想起今天的机器有点卡，先看看 free -h 有没有内存泄漏之类的问题导致阻塞，结果发现并没有，于是继续看 htop，cpu使用率也比较正常。再看df -h | grep -vE 'shm|overlay'，发现硬盘使用率96%（估计硬盘主控想死的心都有了，揪着4%的可用空间想把PE数平均到各个区块恐怕不容易）。
-找到问题后松了口气，十有八九是又出现 evicted 了。二话不说直接 docker system df，看到30多G的 build cache 顿时惊了，肯定不是go的构建缓存（手动挂载优化了），那就是 node_modules 又立奇功了。node_modules=黑洞果然不是吹的。
-清理完使用率恢复到63%，但依然有种不安感萦绕于心，于是再次尝试kgp，卡住。
-等了一会儿，喝口水，继续卡着。
-又等了一会儿，淦。
-想了想，journalctl -r -u k3s看看日志，并没有什么发现，倒是注意到很多linkerd之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。
-6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="排查一个kubectl无反应的问题">
+<meta property="og:description" content="懒得分段了，就当做是讲个故事吧。 背景大概是这样。 内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remo">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="linux运维"><meta property="article:tag" content="kubernetes"><meta property="article:published_time" content="2021-12-27T15:21:00+08:00"><meta property="article:modified_time" content="2021-12-27T15:21:00+08:00">
 <meta name=twitter:title content="排查一个kubectl无反应的问题">
-<meta name=twitter:description content="懒得分段了，就当做是讲个故事吧。
-背景大概是这样。
-内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。
-今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。
-所以，当当当~当~，整一个持续部署呗，反正是个纯前端项目，不用部署配套的后端代码，写个dockerfile再写个helm chart就差不多了，ci调了调构建镜像就完事，不过因为ci部署需要访问集群，所以又改了下.kube/config，删了之前尝试csr方式添加用户的时候加多的 user 和 context ，复制了一份挂载到 runner 容器里。
-然后&amp;hellip;&amp;hellip;问题就来了。
-同事忽然告诉我办公室的服务挂了，于是下意识地打出kgp，卡住。
-等了一会儿，还是卡住。
-又等了一会儿，坐不住了。试了下kubectl cluster-info，继续卡住。
-开始慌了，想起今天的机器有点卡，先看看 free -h 有没有内存泄漏之类的问题导致阻塞，结果发现并没有，于是继续看 htop，cpu使用率也比较正常。再看df -h | grep -vE 'shm|overlay'，发现硬盘使用率96%（估计硬盘主控想死的心都有了，揪着4%的可用空间想把PE数平均到各个区块恐怕不容易）。
-找到问题后松了口气，十有八九是又出现 evicted 了。二话不说直接 docker system df，看到30多G的 build cache 顿时惊了，肯定不是go的构建缓存（手动挂载优化了），那就是 node_modules 又立奇功了。node_modules=黑洞果然不是吹的。
-清理完使用率恢复到63%，但依然有种不安感萦绕于心，于是再次尝试kgp，卡住。
-等了一会儿，喝口水，继续卡着。
-又等了一会儿，淦。
-想了想，journalctl -r -u k3s看看日志，并没有什么发现，倒是注意到很多linkerd之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。
-6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.">
+<meta name=twitter:description content="懒得分段了，就当做是讲个故事吧。 背景大概是这样。 内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remo">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -74,7 +29,12 @@
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -98,6 +58,11 @@
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -127,7 +92,7 @@ kubernetes
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
-阅读时长: 2 分钟
+阅读时长: 5 分钟
 </time>
 </div>
 </footer>
@@ -149,7 +114,19 @@ kubernetes
 <p>等了一会儿，喝口水，继续卡着。</p>
 <p>又等了一会儿，淦。</p>
 <p>想了想，<code>journalctl -r -u k3s</code>看看日志，并没有什么发现，倒是注意到很多<code>linkerd</code>之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。</p>
-<pre><code class=language-log data-lang=log>    6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.685149     794 container_gc.go:85] attempting to delete unused containers
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>    6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.685149     794 container_gc.go:85] attempting to delete unused containers
     7 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.687723     794 image_gc_manager.go:321] attempting to delete unused images
     8 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.782390     794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
     9 12月 25 21:16:17 office k3s[794]: W1225 13:16:17.939242     794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
@@ -157,9 +134,18 @@ kubernetes
    11 12月 25 21:16:17 office k3s[794]: I1225 13:16:17.941771     794 image_gc_manager.go:321] attempting to delete unused images
    12 12月 25 21:16:18 office k3s[794]: I1225 13:16:18.033724     794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
    13 12月 25 21:16:28 office k3s[794]: W1225 13:16:28.214032     794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
-</code></pre><p>这个是老问题了，一直没去研究怎么解决。</p>
-<pre><code class=language-log data-lang=log>  154 12月 25 21:21:55 office k3s[794]: I1225 13:21:55.021937     794 image_gc_manager.go:304] [imageGCManager]: Disk usage on image filesystem is at 95% which is over the high threshold (85%). Trying to free 182  155 12月 25 21:21:55 office k3s[794]: E1225 13:21:55.025140     794 kubelet.go:1292] Image garbage collection failed multiple times in a row: failed to garbage collect required amount of images. Wanted to free
-</code></pre><p>这次搜了下，应该是 <code>docker system prune</code> 造成 <code>kubelet</code> 找不到可回收的镜像才报错（猜测），不过依然不能解释为啥 <code>kubectl</code> 没反应。于是继续翻了会儿日志，搜索错误，但始终没有什么结果。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>这个是老问题了，一直没去研究怎么解决。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>  154 12月 25 21:21:55 office k3s[794]: I1225 13:21:55.021937     794 image_gc_manager.go:304] [imageGCManager]: Disk usage on image filesystem is at 95% which is over the high threshold (85%). Trying to free 182  155 12月 25 21:21:55 office k3s[794]: E1225 13:21:55.025140     794 kubelet.go:1292] Image garbage collection failed multiple times in a row: failed to garbage collect required amount of images. Wanted to free
+</code></pre></td></tr></table>
+</div>
+</div><p>这次搜了下，应该是 <code>docker system prune</code> 造成 <code>kubelet</code> 找不到可回收的镜像才报错（猜测），不过依然不能解释为啥 <code>kubectl</code> 没反应。于是继续翻了会儿日志，搜索错误，但始终没有什么结果。</p>
 <p>但是同事还要干活，没辙了，先重启下服务器吧。群里说了一声要重启了，等了一会儿跑<code>sudo reboot</code>，重启完连接，继续<code>kgp</code>，卡住。</p>
 <p>嗯&mldr;&mldr;</p>
 <p>早有预料。</p>
@@ -245,7 +231,7 @@ kubernetes
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>

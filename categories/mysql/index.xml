@@ -1,11 +1,32 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>mysql on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/mysql/</link><description>Recent content in mysql on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 14 Mar 2022 12:30:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/mysql/index.xml" rel="self" type="application/rss+xml"/><item><title>记一次MySQL JOIN优化</title><link>https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/</link><pubDate>Mon, 14 Mar 2022 12:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png" alt="Featured image of post 记一次MySQL JOIN优化" />&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>长话短说，这个性能问题是上周修一个bug的时候企图偷懒引入的。因为 xorm 在连接查询的时候模型结构必须是和 &lt;code>join&lt;/code> 的顺序保持一致，中间还不能有遗漏，不然查询结果填充到结构里的时候就会错位。&lt;/p>
 &lt;p>而业务里这个条件又是可选的——用户不传的时候不需要 &lt;code>INNER JOIN&lt;/code>；但为了让 xorm 开心，同时尽量别把整个函数签名和返回类型都改了把影响范围搞太大，所以就偷了个懒：既然 xorm 要 &lt;code>JOIN&lt;/code> ，那就 &lt;code>LEFT JOIN&lt;/code>加个恒假的条件呗。于是就顺手写下了下面的代码。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">LEFT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">JOIN&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">tbl&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">ON&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">&amp;lt;&amp;gt;&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>没啥问题对吧？我当时也这么想的。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">LEFT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">JOIN&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">tbl&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">ON&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">&amp;lt;&amp;gt;&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>没啥问题对吧？我当时也这么想的。&lt;/p>
 &lt;h2 id="问题">问题&lt;/h2>
 &lt;p>好了，问题来了。先把整个 SQL写下来。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">SELECT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="w">
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">SELECT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="w">
 &lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">FROM&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">a&lt;/span>&lt;span class="w">
 &lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">INNER&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">JOIN&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">b&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">ON&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">a&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">resource_id&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">b&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">id&lt;/span>&lt;span class="w">
 &lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">LEFT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">JOIN&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">c&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">ON&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">&amp;lt;&amp;gt;&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w">
@@ -15,7 +36,9 @@
 &lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">a&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="k">result&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">!=&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="w">
 &lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">AND&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">b&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="n">resource_type&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="w">
 &lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">limit&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">10&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">offset&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>整个查询的实际耗时是 &lt;strong>919ms&lt;/strong>。&lt;/p>
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>整个查询的实际耗时是 &lt;strong>919ms&lt;/strong>。&lt;/p>
 &lt;p>&lt;em>why ?&lt;/em>&lt;/p>
 &lt;h2 id="性能分析">性能分析&lt;/h2>
 &lt;p>查询慢了第一反应还是是不是没索引，于是先看看 &lt;code>explain&lt;/code> 的结果。&lt;/p>
@@ -101,8 +124,15 @@
 &lt;p>网上随便搜的博客看到列区分度计算可以用 &lt;code>SELECT count(distinct col)/count(*) FROM tbl&lt;/code> 来计算，区分度越接近 1 则索引效果越好。&lt;code>result&lt;/code>的区分度只有&lt;code>0.0088&lt;/code>，个人感觉区别不大。这种情况下使用result索引滤出来的结果集会比较大，回表查询次数过多的话还不如就遍历一遍原表。&lt;/p>
 &lt;p>想归想，但还是老实加上了 &lt;code>result&lt;/code> 索引，再 &lt;code>explain&lt;/code> 了一次，结果是 &lt;code>possible keys&lt;/code> 里多了 &lt;code>IDX_a_result&lt;/code>，但最 &lt;code>type&lt;/code> 还是 &lt;code>ALL&lt;/code>，说明确实和 &lt;code>result&lt;/code> 字段有没有索引没关系。&lt;/p>
 &lt;p>再接着看下面，其他表基本不是主键就是二级索引，唯独 &lt;code>c&lt;/code> 表特立独行——也是&lt;code>ALL&lt;/code>。但这个表的 &lt;code>JOIN&lt;/code> 子句是这样的。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">LEFT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">JOIN&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">c&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">ON&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">&amp;lt;&amp;gt;&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>这为啥要遍历？&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">LEFT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">JOIN&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">c&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">ON&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">&amp;lt;&amp;gt;&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这为啥要遍历？&lt;/p>
 &lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314135914892.png"
 width="304"
 height="241"
@@ -120,11 +150,38 @@ data-flex-basis="302px"
 >sysstat&lt;/a>。大部分发行版都可以直接用内置包管理器安装，如 Debian/Ubuntu 可以用 &lt;code>apt-get install sysstat&lt;/code> 安装。&lt;/p>
 &lt;p>&lt;code>sysstat&lt;/code> 包含了各种在Unix、Linux环境下通用的工具，来监视系统性能和使用情况。这里面有很多好用的工具比如 &lt;code>sar&lt;/code>、&lt;code>iostat&lt;/code>、&lt;code>pidstat&lt;/code>。&lt;/p>
 &lt;p>安装&lt;code>sysstat&lt;/code>之后还需要配置。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">sudo dpkg-reconfigure sysstat
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后选 &lt;code>yes&lt;/code> 来启用定时任务自动收集数据到 &lt;code>/var/log/sysstat&lt;/code> ，这样 &lt;code>sar&lt;/code> 就可以导出报告了。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">sudo dpkg-reconfigure sysstat
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>然后选 &lt;code>yes&lt;/code> 来启用定时任务自动收集数据到 &lt;code>/var/log/sysstat&lt;/code> ，这样 &lt;code>sar&lt;/code> 就可以导出报告了。&lt;/p>
 &lt;p>&lt;code>sar&lt;/code> 是一个综合性的工具，可以收集、导出、保存系统活动数据，收集的数据包括：I/O、CPU、物理内存/Hugepage/Swap、虚拟内存、进程创建、中断、网络接口、socket、等等&amp;hellip;非常全面，基本能想到的都有。&lt;/p>
 &lt;p>放在这个场景里，用 &lt;code>sar&lt;/code> 可以看到运行查询时的磁盘使用情况：&lt;code>sudo sar -bd 1&lt;/code>&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">14时48分14秒 tps rtps wtps dtps bread/s bwrtn/s bdscd/s
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">14时48分14秒 tps rtps wtps dtps bread/s bwrtn/s bdscd/s
 14时48分15秒 40.00 1.00 39.00 0.00 8.00 312.00 0.00
 14时48分14秒 DEV tps rkB/s wkB/s dkB/s areq-sz aqu-sz await %util
 14时48分15秒 dev7-0 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00
@@ -139,18 +196,57 @@ data-flex-basis="302px"
 14时48分15秒 dev253-0 42.00 4.00 156.00 0.00 3.81 0.00 0.00 2.00
 14时48分15秒 dev7-8 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00
 14时48分15秒 dev7-9 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>不能说毫无波动，但显然和瓶颈应该扯不上关系了。但出于谨慎考虑，还是用 &lt;code>pidstat&lt;/code> 指定了 &lt;code>mysqld&lt;/code> 进程的 PID 来观察。这里多嘴一句，MySQL 是用 kubernetes 部署在办公室的服务器上的，我得提一嘴 &lt;code>sysstat&lt;/code> 是在宿主机上直接运行而不是容器里——这得说到容器隔离的原理，&lt;code>namespace&lt;/code>和&lt;code>cgroup&lt;/code>，在外层&lt;code>namespace&lt;/code>下是可以看到内层&lt;code>namespace&lt;/code>的进程的，但内层的&lt;code>namespace&lt;/code>看不到外层，是单向的隔离。所以可以直接在宿主机上用 &lt;code>ps&lt;/code> 看到 &lt;code>pause&lt;/code> 容器的进程以及 &lt;code>mysqld&lt;/code> 这种容器里的进程，也可以收集到各种使用率信息——因为共享宿主机的内核嘛。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">pidstat -d -p &lt;span class="m">11404&lt;/span> &lt;span class="m">1&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">14时57分19秒 UID PID kB_rd/s kB_wr/s kB_ccwr/s iodelay Command
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>不能说毫无波动，但显然和瓶颈应该扯不上关系了。但出于谨慎考虑，还是用 &lt;code>pidstat&lt;/code> 指定了 &lt;code>mysqld&lt;/code> 进程的 PID 来观察。这里多嘴一句，MySQL 是用 kubernetes 部署在办公室的服务器上的，我得提一嘴 &lt;code>sysstat&lt;/code> 是在宿主机上直接运行而不是容器里——这得说到容器隔离的原理，&lt;code>namespace&lt;/code>和&lt;code>cgroup&lt;/code>，在外层&lt;code>namespace&lt;/code>下是可以看到内层&lt;code>namespace&lt;/code>的进程的，但内层的&lt;code>namespace&lt;/code>看不到外层，是单向的隔离。所以可以直接在宿主机上用 &lt;code>ps&lt;/code> 看到 &lt;code>pause&lt;/code> 容器的进程以及 &lt;code>mysqld&lt;/code> 这种容器里的进程，也可以收集到各种使用率信息——因为共享宿主机的内核嘛。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">pidstat -d -p &lt;span class="m">11404&lt;/span> &lt;span class="m">1&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">14时57分19秒 UID PID kB_rd/s kB_wr/s kB_ccwr/s iodelay Command
 14时57分20秒 999 11404 -1.00 -1.00 -1.00 0 mysqld
 14时57分21秒 999 11404 -1.00 -1.00 -1.00 0 mysqld
 14时57分22秒 999 11404 -1.00 -1.00 -1.00 0 mysqld
 14时57分23秒 999 11404 -1.00 -1.00 -1.00 0 mysqld
 14时57分24秒 999 11404 -1.00 -1.00 -1.00 0 mysqld
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>这就只能说毫无波动了，说那么多，并没有卵用。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这就只能说毫无波动了，说那么多，并没有卵用。&lt;/p>
 &lt;h2 id="转折">转折&lt;/h2>
 &lt;p>一上午几乎都花费在这个查询上，终于在一次胡乱分析中注意到 CPU 使用率不同寻常：&lt;code>pidstat -p 11404 -d 1&lt;/code>&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">15时01分01秒 UID PID %usr %system %guest %wait %CPU CPU Command
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">15时01分01秒 UID PID %usr %system %guest %wait %CPU CPU Command
 15时01分02秒 999 11404 0.00 0.00 0.00 0.00 0.00 1 mysqld
 15时01分03秒 999 11404 0.00 0.00 0.00 0.00 0.00 1 mysqld
 15时01分04秒 999 11404 0.00 0.00 0.00 0.00 0.00 1 mysqld
@@ -164,7 +260,9 @@ data-flex-basis="302px"
 15时01分12秒 999 11404 85.00 0.00 0.00 0.00 85.00 6 mysqld
 15时01分13秒 999 11404 5.00 0.00 0.00 0.00 5.00 6 mysqld
 15时01分14秒 999 11404 0.00 0.00 0.00 0.00 0.00 6 mysqld
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png"
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png"
 width="756"
 height="310"
 srcset="https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314150141759_hu8ccdbbcbbb5906798b24061f7093764d_181309_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/note-of-mysql-join-optimize/image-20220314150141759_hu8ccdbbcbbb5906798b24061f7093764d_181309_1024x0_resize_box_3.png 1024w"
@@ -272,7 +370,92 @@ data-flex-basis="265px"
 &lt;p>一共需要实现8个接口，接口会尽量简化。&lt;/p>
 &lt;h2 id="4-框架构建">#4 框架构建&lt;/h2>
 &lt;p>创建好各个服务的样板（就是简单的用Gin把上面的接口定义好，写好主程序），接着写 Dockerfile 和 docker-compose.yml 把之前设计的服务划分实现出来。&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">version&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s1">&amp;#39;3.1&amp;#39;&lt;/span>&lt;span class="w">
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;span class="lnt">47
+&lt;/span>&lt;span class="lnt">48
+&lt;/span>&lt;span class="lnt">49
+&lt;/span>&lt;span class="lnt">50
+&lt;/span>&lt;span class="lnt">51
+&lt;/span>&lt;span class="lnt">52
+&lt;/span>&lt;span class="lnt">53
+&lt;/span>&lt;span class="lnt">54
+&lt;/span>&lt;span class="lnt">55
+&lt;/span>&lt;span class="lnt">56
+&lt;/span>&lt;span class="lnt">57
+&lt;/span>&lt;span class="lnt">58
+&lt;/span>&lt;span class="lnt">59
+&lt;/span>&lt;span class="lnt">60
+&lt;/span>&lt;span class="lnt">61
+&lt;/span>&lt;span class="lnt">62
+&lt;/span>&lt;span class="lnt">63
+&lt;/span>&lt;span class="lnt">64
+&lt;/span>&lt;span class="lnt">65
+&lt;/span>&lt;span class="lnt">66
+&lt;/span>&lt;span class="lnt">67
+&lt;/span>&lt;span class="lnt">68
+&lt;/span>&lt;span class="lnt">69
+&lt;/span>&lt;span class="lnt">70
+&lt;/span>&lt;span class="lnt">71
+&lt;/span>&lt;span class="lnt">72
+&lt;/span>&lt;span class="lnt">73
+&lt;/span>&lt;span class="lnt">74
+&lt;/span>&lt;span class="lnt">75
+&lt;/span>&lt;span class="lnt">76
+&lt;/span>&lt;span class="lnt">77
+&lt;/span>&lt;span class="lnt">78
+&lt;/span>&lt;span class="lnt">79
+&lt;/span>&lt;span class="lnt">80
+&lt;/span>&lt;span class="lnt">81
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">version&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s1">&amp;#39;3.1&amp;#39;&lt;/span>&lt;span class="w">
 &lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">services&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
 &lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">jaeger&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
 &lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">image&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">jaegertracing/all-in-one:1.29&lt;/span>&lt;span class="w">
@@ -353,10 +536,32 @@ data-flex-basis="265px"
 &lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">bank1&lt;/span>&lt;span class="w">
 &lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">bank2&lt;/span>&lt;span class="w">
 &lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">mysql&lt;/span>&lt;span class="w">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>其中 Bank1/Bank2 用的同一套代码，以命令行参数来区分连接不同的数据库。&lt;/p>
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>其中 Bank1/Bank2 用的同一套代码，以命令行参数来区分连接不同的数据库。&lt;/p>
 &lt;h2 id="5-tm-实现">#5 TM 实现&lt;/h2>
 &lt;h3 id="创建全局事务">创建全局事务&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">createGlobalTx&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">createGlobalTx&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nx">req&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">tm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CreateGlobalTxReq&lt;/span>&lt;span class="p">{}&lt;/span>
 &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">BindJSON&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">req&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nx">db&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">MustGet&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;db&amp;#34;&lt;/span>&lt;span class="p">).(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">sqlx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DB&lt;/span>&lt;span class="p">)&lt;/span>
@@ -370,9 +575,39 @@ data-flex-basis="265px"
 &lt;span class="s">&amp;#34;message&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s">&amp;#34;ok&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
 &lt;span class="p">})&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>暂时没有考虑更多全局事务的用法，只是单纯的保存。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>暂时没有考虑更多全局事务的用法，只是单纯的保存。&lt;/p>
 &lt;h3 id="注册本地事务">注册本地事务&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">registerLocalTx&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">registerLocalTx&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nx">req&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">tm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">RegisterLocalTxReq&lt;/span>&lt;span class="p">{}&lt;/span>
 &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">BindJSON&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">req&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nx">db&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">MustGet&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;db&amp;#34;&lt;/span>&lt;span class="p">).(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">sqlx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DB&lt;/span>&lt;span class="p">)&lt;/span>
@@ -394,9 +629,52 @@ data-flex-basis="265px"
 &lt;span class="s">&amp;#34;message&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s">&amp;#34;ok&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
 &lt;span class="p">})&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>本地事务需要记录下对应的全局事务ID和分支ID（就是这个本地事务的ID，用于回调的时候告诉RM提交哪个本地事务，在MySQL XA里就是XID 的 bqual 部分），以及回调的地址。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>本地事务需要记录下对应的全局事务ID和分支ID（就是这个本地事务的ID，用于回调的时候告诉RM提交哪个本地事务，在MySQL XA里就是XID 的 bqual 部分），以及回调的地址。&lt;/p>
 &lt;h3 id="提交全局事务">提交全局事务&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">commitGlobalTx&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">commitGlobalTx&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nx">req&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">tm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">CommitGlobalTxReq&lt;/span>&lt;span class="p">{}&lt;/span>
 &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">BindJSON&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">req&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nx">db&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">MustGet&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;db&amp;#34;&lt;/span>&lt;span class="p">).(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">sqlx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DB&lt;/span>&lt;span class="p">)&lt;/span>
@@ -429,14 +707,57 @@ data-flex-basis="265px"
 &lt;span class="s">&amp;#34;message&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s">&amp;#34;ok&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
 &lt;span class="p">})&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>全局事务的提交，本质是由TM负责逐个告知RM提交自己的本地事务，也是整个 XA 过程里最重要也最脆弱的一步。理论上来说这时的 XA 事务无论是提交还是回滚都应该无条件成功。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>全局事务的提交，本质是由TM负责逐个告知RM提交自己的本地事务，也是整个 XA 过程里最重要也最脆弱的一步。理论上来说这时的 XA 事务无论是提交还是回滚都应该无条件成功。&lt;/p>
 &lt;p>但TM本身，以及TM和RM之间的网络存在故障的可能。如果TM崩溃，或者TM和RM之间出现网络分区，导致TM无法发出提交或回滚的消息时，就会导致参与者陷入长时间的阻塞，直到TM恢复运行，或网络恢复畅通，参与者收到TM发出的Commit或Rollback消息为止。&lt;/p>
 &lt;p>更可能出现的情况是，一个或几个参与者出现网络分区或崩溃，没有收到 Commit 消息，只能继续阻塞等待，TM也需要不断重试。参与者不能依据超时时间武断提交或回滚，因为TM很可能发出了提交的指令，只是因为网络状况不佳等原因未能及时送达。这一情况也可以通过参与者之间互相询问来解决，等待超时的参与者可以询问其他参与者，如果有参与者未准备则可以确定需要回滚，如果有参与者已经提交，则也可以确定需要提交。但如果所有参与者都处于就绪状态，则无法判断TM的最终决策，只能继续傻等。&lt;/p>
 &lt;p>另外关于网络分区（就是CAP中的P），假如说消息发送者会不断重试发送，直到接收者告知成功，暂且认为多次发送消息产生的结果是幂等的，那么接收者因为网络原因未能接收到消息，和接收到了消息，但因为接收者本身的故障或资源不足等原因未能处理消息就崩溃重启的话，实质上和网络分区的结果是差不多的，都可以看作是接收者未能收到消息。举例来说就是一个HTTP请求在程序中间件里触发了崩溃，没有执行任何业务逻辑，直到压力缓解后才恢复，这种情况放在上面的场景（TM回调提交本地事务）里分析，和出现网络分区的情况是很接近的。（PS：开脑洞，别当真啊，应该和 P 还是不大一样的）&lt;/p>
 &lt;p>所以总结就是，TM要保证最终一致，所有的XA事务都被提交或回滚。一旦进入提交或回滚全局事务的状态，则&lt;strong>需要无限次尝试回调提交或回滚本地事务，直至全部成功&lt;/strong>。上面的案例代码是没有考虑重试的情况，实际应该在函数里不断重试，直到成功。或者直接放到后台去跑，返回个提交进行中也是一种办法。大部分情况下应该是不会有问题的，直接重试也还能接受。可以给个超时，如果出现部分失败就放到后台去慢慢跑，先返回个进行中。&lt;/p>
 &lt;p>虽然保证了一致性（CAP里的C），也容忍了叫参与者提交本地事务失败而产生的分区（P），但这样做必然是要舍弃一部分可用性（A）的。所以 XA 事务是一种保证 CP 的分布式事务解决方案。&lt;/p>
 &lt;h3 id="回滚本地事务">回滚本地事务&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">rollbackGlobalTx&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">rollbackGlobalTx&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nx">req&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">tm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">RollbackGlobalTxReq&lt;/span>&lt;span class="p">{}&lt;/span>
 &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">BindJSON&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">req&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nx">db&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">MustGet&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;db&amp;#34;&lt;/span>&lt;span class="p">).(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">sqlx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DB&lt;/span>&lt;span class="p">)&lt;/span>
@@ -469,10 +790,72 @@ data-flex-basis="265px"
 &lt;span class="s">&amp;#34;message&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s">&amp;#34;ok&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
 &lt;span class="p">})&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>回滚的逻辑和提交是一样的，不多做解释了。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>回滚的逻辑和提交是一样的，不多做解释了。&lt;/p>
 &lt;h2 id="6-bank-实现">#6 Bank 实现&lt;/h2>
 &lt;h3 id="转入">转入&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">transIn&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;span class="lnt">47
+&lt;/span>&lt;span class="lnt">48
+&lt;/span>&lt;span class="lnt">49
+&lt;/span>&lt;span class="lnt">50
+&lt;/span>&lt;span class="lnt">51
+&lt;/span>&lt;span class="lnt">52
+&lt;/span>&lt;span class="lnt">53
+&lt;/span>&lt;span class="lnt">54
+&lt;/span>&lt;span class="lnt">55
+&lt;/span>&lt;span class="lnt">56
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">transIn&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nx">req&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">bank&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">TransInReq&lt;/span>&lt;span class="p">{}&lt;/span>
 &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">BindJSON&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">req&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nx">db&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">MustGet&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;db&amp;#34;&lt;/span>&lt;span class="p">).(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">sqlx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DB&lt;/span>&lt;span class="p">)&lt;/span>
@@ -522,10 +905,73 @@ data-flex-basis="265px"
 &lt;span class="s">&amp;#34;message&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s">&amp;#34;ok&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
 &lt;span class="p">})&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>如果把MySQL视作RM的话，Bank服务就是连通TM和AP的桥梁。放到转账的场景里，假设AP是支付宝，那能指望支付宝去直接访问银行的数据库吗？比如支付宝从基金里提款，调用基金的提款接口和银行的转账，也是个类似的场景。当然具体业务不能直接套XA，就是举个例子。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>如果把MySQL视作RM的话，Bank服务就是连通TM和AP的桥梁。放到转账的场景里，假设AP是支付宝，那能指望支付宝去直接访问银行的数据库吗？比如支付宝从基金里提款，调用基金的提款接口和银行的转账，也是个类似的场景。当然具体业务不能直接套XA，就是举个例子。&lt;/p>
 &lt;p>转入的接口本身就是代理了一下 MySQL 的 &lt;code>update&lt;/code> 语句，实际业务场景里可能还会有更多业务逻辑上的判断。&lt;/p>
 &lt;h3 id="转出">转出&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">transOut&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;span class="lnt">47
+&lt;/span>&lt;span class="lnt">48
+&lt;/span>&lt;span class="lnt">49
+&lt;/span>&lt;span class="lnt">50
+&lt;/span>&lt;span class="lnt">51
+&lt;/span>&lt;span class="lnt">52
+&lt;/span>&lt;span class="lnt">53
+&lt;/span>&lt;span class="lnt">54
+&lt;/span>&lt;span class="lnt">55
+&lt;/span>&lt;span class="lnt">56
+&lt;/span>&lt;span class="lnt">57
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">transOut&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nx">req&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">bank&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">TransOutReq&lt;/span>&lt;span class="p">{}&lt;/span>
 &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">BindJSON&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">req&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nx">db&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">MustGet&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;db&amp;#34;&lt;/span>&lt;span class="p">).(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">sqlx&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">DB&lt;/span>&lt;span class="p">)&lt;/span>
@@ -576,10 +1022,111 @@ data-flex-basis="265px"
 &lt;span class="s">&amp;#34;message&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s">&amp;#34;ok&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
 &lt;span class="p">})&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>转出的代码其实有点问题，漏掉了检查余额，其他和转入的接口就没什么区别了。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>转出的代码其实有点问题，漏掉了检查余额，其他和转入的接口就没什么区别了。&lt;/p>
 &lt;h2 id="7-ap-实现">#7 AP 实现&lt;/h2>
 &lt;h3 id="转账">转账&lt;/h3>
-&lt;div class="highlight">&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">transfer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;span class="lnt">47
+&lt;/span>&lt;span class="lnt">48
+&lt;/span>&lt;span class="lnt">49
+&lt;/span>&lt;span class="lnt">50
+&lt;/span>&lt;span class="lnt">51
+&lt;/span>&lt;span class="lnt">52
+&lt;/span>&lt;span class="lnt">53
+&lt;/span>&lt;span class="lnt">54
+&lt;/span>&lt;span class="lnt">55
+&lt;/span>&lt;span class="lnt">56
+&lt;/span>&lt;span class="lnt">57
+&lt;/span>&lt;span class="lnt">58
+&lt;/span>&lt;span class="lnt">59
+&lt;/span>&lt;span class="lnt">60
+&lt;/span>&lt;span class="lnt">61
+&lt;/span>&lt;span class="lnt">62
+&lt;/span>&lt;span class="lnt">63
+&lt;/span>&lt;span class="lnt">64
+&lt;/span>&lt;span class="lnt">65
+&lt;/span>&lt;span class="lnt">66
+&lt;/span>&lt;span class="lnt">67
+&lt;/span>&lt;span class="lnt">68
+&lt;/span>&lt;span class="lnt">69
+&lt;/span>&lt;span class="lnt">70
+&lt;/span>&lt;span class="lnt">71
+&lt;/span>&lt;span class="lnt">72
+&lt;/span>&lt;span class="lnt">73
+&lt;/span>&lt;span class="lnt">74
+&lt;/span>&lt;span class="lnt">75
+&lt;/span>&lt;span class="lnt">76
+&lt;/span>&lt;span class="lnt">77
+&lt;/span>&lt;span class="lnt">78
+&lt;/span>&lt;span class="lnt">79
+&lt;/span>&lt;span class="lnt">80
+&lt;/span>&lt;span class="lnt">81
+&lt;/span>&lt;span class="lnt">82
+&lt;/span>&lt;span class="lnt">83
+&lt;/span>&lt;span class="lnt">84
+&lt;/span>&lt;span class="lnt">85
+&lt;/span>&lt;span class="lnt">86
+&lt;/span>&lt;span class="lnt">87
+&lt;/span>&lt;span class="lnt">88
+&lt;/span>&lt;span class="lnt">89
+&lt;/span>&lt;span class="lnt">90
+&lt;/span>&lt;span class="lnt">91
+&lt;/span>&lt;span class="lnt">92
+&lt;/span>&lt;span class="lnt">93
+&lt;/span>&lt;span class="lnt">94
+&lt;/span>&lt;span class="lnt">95
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">func&lt;/span> &lt;span class="nf">transfer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">c&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">gin&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Context&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
 &lt;span class="nx">req&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">TransferReq&lt;/span>&lt;span class="p">{}&lt;/span>
 &lt;span class="nx">c&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">BindJSON&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">req&lt;/span>&lt;span class="p">)&lt;/span>
 &lt;span class="nx">tmcli&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">client&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewTMClient&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;http://tm:5000&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
@@ -663,7 +1210,9 @@ data-flex-basis="265px"
 &lt;span class="s">&amp;#34;message&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s">&amp;#34;ok&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
 &lt;span class="p">})&lt;/span>
 &lt;span class="p">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>AP代码主要就是调各个RM，发起转入/转出操作，以及在出现问题的情况下回滚全局事务。&lt;/p>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>AP代码主要就是调各个RM，发起转入/转出操作，以及在出现问题的情况下回滚全局事务。&lt;/p>
 &lt;p>当然，AP回滚全局事务也会出现网络分区的情况，AP崩溃或者网络故障而无法连接TM，也就无法告诉TM是不是所有参与者都准备就绪，TM只能自己等超时后去回调参与者，让参与者回滚所有本地事务。&lt;/p>
 &lt;p>这里和参与者出现分区又不大一样，AP出现分区最多是导致原本该提交的事务被回滚，并不会破坏一致性，也就满足了CP。但事务被回滚，等于是失去了可用性，不满足CAP中的A。&lt;/p>
 &lt;h2 id="8-关于tcc">#8 关于TCC&lt;/h2>

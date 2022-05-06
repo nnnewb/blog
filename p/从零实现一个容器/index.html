@@ -1,26 +1,14 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 自从看了cocker项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。
-于是就动手试一试。
-核心技术 namespace 命名空间包装全局系统资源，让在命名空间中的进程看起来就像是有自己独立隔离的全局资源一样。命名空间中的全局资源对命名空间中的其他进程都是可见的，但对命名空间外的进程不可见。命名空间用途之一就是实现容器。
- Linux provides the following namespaces: Namespace Constant Isolates Cgroup CLONE_NEWCGROUP Cgroup root directory IPC CLONE_NEWIPC System V IPC, POSIX message queues Network CLONE_NEWNET Network devices, stacks, ports, etc. Mount CLONE_NEWNS Mount points PID CLONE_NEWPID Process IDs User CLONE_NEWUSER User and group IDs UTS CLONE_NEWUTS Hostname and NIS domain name   几个命名空间的 API
- clone setns unshare  不得不说 man 7 namespaces 对 namespace 的解释已经非常到位了。"><title>从零实现一个容器</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 自从看了cocker项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。 于是就动手试一试。 核心技术 namespace 命名"><title>从零实现一个容器</title>
 <link rel=canonical href=https://nnnewb.github.io/blog/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/>
-<link rel=stylesheet href=/blog/scss/style.min.b80bf249ce4a22cf55e8d7340a0b37a2f2c10f54f3a9a49cb94b694a2eb0bbea.css><meta property="og:title" content="从零实现一个容器">
-<meta property="og:description" content="前言 自从看了cocker项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。
-于是就动手试一试。
-核心技术 namespace 命名空间包装全局系统资源，让在命名空间中的进程看起来就像是有自己独立隔离的全局资源一样。命名空间中的全局资源对命名空间中的其他进程都是可见的，但对命名空间外的进程不可见。命名空间用途之一就是实现容器。
- Linux provides the following namespaces: Namespace Constant Isolates Cgroup CLONE_NEWCGROUP Cgroup root directory IPC CLONE_NEWIPC System V IPC, POSIX message queues Network CLONE_NEWNET Network devices, stacks, ports, etc. Mount CLONE_NEWNS Mount points PID CLONE_NEWPID Process IDs User CLONE_NEWUSER User and group IDs UTS CLONE_NEWUTS Hostname and NIS domain name   几个命名空间的 API
- clone setns unshare  不得不说 man 7 namespaces 对 namespace 的解释已经非常到位了。">
+<link rel=stylesheet href=/blog/scss/style.min.450926226e724574a6b936335ea06111f8aeb253d932c86cb2cc807341cd2889.css><meta property="og:title" content="从零实现一个容器">
+<meta property="og:description" content="前言 自从看了cocker项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。 于是就动手试一试。 核心技术 namespace 命名">
 <meta property="og:url" content="https://nnnewb.github.io/blog/p/%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E5%AE%B9%E5%99%A8/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="docker"><meta property="article:published_time" content="2021-05-31T16:16:52+08:00"><meta property="article:modified_time" content="2021-05-31T16:16:52+08:00">
 <meta name=twitter:title content="从零实现一个容器">
-<meta name=twitter:description content="前言 自从看了cocker项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。
-于是就动手试一试。
-核心技术 namespace 命名空间包装全局系统资源，让在命名空间中的进程看起来就像是有自己独立隔离的全局资源一样。命名空间中的全局资源对命名空间中的其他进程都是可见的，但对命名空间外的进程不可见。命名空间用途之一就是实现容器。
- Linux provides the following namespaces: Namespace Constant Isolates Cgroup CLONE_NEWCGROUP Cgroup root directory IPC CLONE_NEWIPC System V IPC, POSIX message queues Network CLONE_NEWNET Network devices, stacks, ports, etc. Mount CLONE_NEWNS Mount points PID CLONE_NEWPID Process IDs User CLONE_NEWUSER User and group IDs UTS CLONE_NEWUTS Hostname and NIS domain name   几个命名空间的 API
- clone setns unshare  不得不说 man 7 namespaces 对 namespace 的解释已经非常到位了。">
+<meta name=twitter:description content="前言 自从看了cocker项目的 ppt 之后就有点念念不忘的意思了，实现一个 docker 或 docker 的类似物看起来并不是做不到的事情。 于是就动手试一试。 核心技术 namespace 命名">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -41,7 +29,12 @@
 <h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
-</header><ol class=menu id=main-menu>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
 <li>
 <a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
@@ -65,6 +58,11 @@
 <li>
 <a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
 </a>
 </li>
 <div class=menu-bottom-section>
@@ -140,19 +138,44 @@ UTS         CLONE_NEWUTS      Hostname and NIS domain name
 <h3 id=mount>mount</h3>
 <p>也是 Linux 用户很熟悉的东西。老规矩，<code>man 2 mount</code> 看看文档。</p>
 <blockquote>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;sys/mount.h&gt;</span><span class=cp>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;sys/mount.h&gt;</span><span class=cp>
 </span><span class=cp></span>
 <span class=kt>int</span> <span class=nf>mount</span><span class=p>(</span><span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>source</span><span class=p>,</span> <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>target</span><span class=p>,</span>
     <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>filesystemtype</span><span class=p>,</span> <span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>mountflags</span><span class=p>,</span>
     <span class=k>const</span> <span class=kt>void</span> <span class=o>*</span><span class=n>data</span><span class=p>);</span>
-</code></pre></div><p>mount() attaches the filesystem specified by source (which is often a pathname referring to a device, but can also be the pathname of a directory or file, or a dummy string) to the location (a directory or file) specified by the pathname in target.</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>mount() attaches the filesystem specified by source (which is often a pathname referring to a device, but can also be the pathname of a directory or file, or a dummy string) to the location (a directory or file) specified by the pathname in target.</p>
 </blockquote>
 <p><code>mount</code> 会挂载(attaches) <code>source</code> 参数指定的文件系统（通常是设备路径，也可以是文件夹、文件的路径或虚拟字符串（如<code>proc</code>））到 <code>target</code> 指定的位置（目录或文件）。同样需要特权来执行。</p>
 <p><code>source</code>/<code>target</code> 都不难理解，<code>filesystemtype</code>可以从<code>/proc/filesystems</code>里读到可用值，或者自己搜一搜；比较重要的就是 <code>mountflags</code> 了，可以指定诸如<code>MS_RDONLY</code>之类的选项来挂载只读文件系统等等。具体还是自己查手册。</p>
 <h3 id=clone>clone</h3>
 <p>最后就是系统调用 <code>clone</code> 了。还是先 <code>man 2 clone</code>。</p>
 <blockquote>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cm>/* Prototype for the glibc wrapper function */</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cm>/* Prototype for the glibc wrapper function */</span>
 
 <span class=cp>#define _GNU_SOURCE
 </span><span class=cp>#include</span> <span class=cpf>&lt;sched.h&gt;</span><span class=cp>
@@ -162,12 +185,106 @@ UTS         CLONE_NEWUTS      Hostname and NIS domain name
           <span class=cm>/* pid_t *ptid, void *newtls, pid_t *ctid */</span> <span class=p>);</span>
 
 <span class=cm>/* For the prototype of the raw system call, see NOTES */</span>
-</code></pre></div><p>clone() creates a new process, in a manner similar to fork(2).</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>clone() creates a new process, in a manner similar to fork(2).</p>
 </blockquote>
 <p>总体类似于<code>fork()</code>，但可以指定一个入口函数，函数结束则子进程退出，也可以共享内存空间，所以行为也可以类似线程。看怎么用。</p>
 <p><code>flags</code>依然是关注的重点，<code>CLONE_NEWUTS</code>、<code>CLONE_NEWNS</code>、<code>CLONE_NEWPID</code>这些参数允许将子进程运行在独立的命名空间里。</p>
 <p><code>man 2 clone</code> 还提供了一个 C 语言编写的例子可以参考。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#define _GNU_SOURCE
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span><span class=lnt>71
+</span><span class=lnt>72
+</span><span class=lnt>73
+</span><span class=lnt>74
+</span><span class=lnt>75
+</span><span class=lnt>76
+</span><span class=lnt>77
+</span><span class=lnt>78
+</span><span class=lnt>79
+</span><span class=lnt>80
+</span><span class=lnt>81
+</span><span class=lnt>82
+</span><span class=lnt>83
+</span><span class=lnt>84
+</span><span class=lnt>85
+</span><span class=lnt>86
+</span><span class=lnt>87
+</span><span class=lnt>88
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#define _GNU_SOURCE
 </span><span class=cp>#include</span> <span class=cpf>&lt;sys/wait.h&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;sys/utsname.h&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;sched.h&gt;</span><span class=cp>
@@ -255,20 +372,72 @@ UTS         CLONE_NEWUTS      Hostname and NIS domain name
 
     <span class=n>exit</span><span class=p>(</span><span class=n>EXIT_SUCCESS</span><span class=p>);</span>
 <span class=p>}</span>
-</code></pre></div><p>把上面的代码保存到 <code>main.c</code> 之后，使用命令 <code>gcc main.c -o clone-demo</code> 编译。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>把上面的代码保存到 <code>main.c</code> 之后，使用命令 <code>gcc main.c -o clone-demo</code> 编译。</p>
 <p>编译完成后，<code>sudo ./clone-demo new-hostname</code> 执行。</p>
 <p>最终结果类似这样</p>
-<pre><code>DESKTOP-HEKKTQ9 :: ~/repos/container » sudo ./clone-demo new-hostname
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>DESKTOP-HEKKTQ9 :: ~/repos/container » sudo ./clone-demo new-hostname
 clone() returned 1515
 uts.nodename in child:  new-hostname
 uts.nodename in parent: DESKTOP-HEKKTQ9
 child has terminated
 DESKTOP-HEKKTQ9 :: ~/repos/container »
-</code></pre><h3 id=setns>setns</h3>
+</code></pre></td></tr></table>
+</div>
+</div><h3 id=setns>setns</h3>
 <p><code>setns</code> 把调用这个函数的线程加入指定 fd 的命名空间里。这个 <code>fd</code> 指的是 <code>/proc/1234/ns/uts</code> 这些特殊文件的文件描述符。</p>
 <p>举例来说，我们把 <code>clone-demo</code> 的源码里，<code>sleep(3)</code> 改为 <code>sleep(200)</code>，再执行<code>sudo clone-demo new-hostname &</code> 把进程放到后台。</p>
 <p>然后编译下面的代码并测试加入 clone-demo 的 uts 名称空间。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#define _GNU_SOURCE
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#define _GNU_SOURCE
 </span><span class=cp>#include</span> <span class=cpf>&lt;fcntl.h&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;sched.h&gt;</span><span class=cp>
 </span><span class=cp>#include</span> <span class=cpf>&lt;unistd.h&gt;</span><span class=cp>
@@ -302,8 +471,27 @@ DESKTOP-HEKKTQ9 :: ~/repos/container »
     <span class=n>execvp</span><span class=p>(</span><span class=n>argv</span><span class=p>[</span><span class=mi>2</span><span class=p>],</span> <span class=o>&amp;</span><span class=n>argv</span><span class=p>[</span><span class=mi>2</span><span class=p>]);</span> <span class=cm>/* Execute a command in namespace */</span>
     <span class=n>errExit</span><span class=p>(</span><span class=s>&#34;execvp&#34;</span><span class=p>);</span>
 <span class=p>}</span>
-</code></pre></div><p>最终结果如下</p>
-<pre><code>root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# ./clone-demo new-hostname &amp;
+</code></pre></td></tr></table>
+</div>
+</div><p>最终结果如下</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# ./clone-demo new-hostname &amp;
 [1] 1826
 clone() returned 1827
 uts.nodename in child:  new-hostname
@@ -316,17 +504,121 @@ root@new-hostname:/home/weakptr/repos/container# exit
 root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# exit
 DESKTOP-HEKKTQ9 :: ~/repos/container » uname -n
 DESKTOP-HEKKTQ9
-</code></pre><h3 id=unshare>unshare</h3>
+</code></pre></td></tr></table>
+</div>
+</div><h3 id=unshare>unshare</h3>
 <blockquote>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#define _GNU_SOURCE
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#define _GNU_SOURCE
 </span><span class=cp>#include</span> <span class=cpf>&lt;sched.h&gt;</span><span class=cp>
 </span><span class=cp></span>
 <span class=kt>int</span> <span class=nf>unshare</span><span class=p>(</span><span class=kt>int</span> <span class=n>flags</span><span class=p>);</span>
-</code></pre></div></blockquote>
+</code></pre></td></tr></table>
+</div>
+</div></blockquote>
 <p><code>unshare</code> 用于主动解除当前进程或线程从父进程继承的执行上下文（例如命名空间）。</p>
 <p><code>unshare</code>的主要用途就是在不创建新的进程的前提下，控制自己的共享执行上下文（还是指命名空间）。</p>
 <p>参数 <code>flags</code> 依然是 <code>CLONE_NEWNS</code> 这些常量。惯例还是有个 demo 。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cm>/* unshare.c
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span><span class=lnt>71
+</span><span class=lnt>72
+</span><span class=lnt>73
+</span><span class=lnt>74
+</span><span class=lnt>75
+</span><span class=lnt>76
+</span><span class=lnt>77
+</span><span class=lnt>78
+</span><span class=lnt>79
+</span><span class=lnt>80
+</span><span class=lnt>81
+</span><span class=lnt>82
+</span><span class=lnt>83
+</span><span class=lnt>84
+</span><span class=lnt>85
+</span><span class=lnt>86
+</span><span class=lnt>87
+</span><span class=lnt>88
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cm>/* unshare.c
 </span><span class=cm>
 </span><span class=cm>    A simple implementation of the unshare(1) command: unshare
 </span><span class=cm>    namespaces and execute a command.
@@ -414,9 +706,23 @@ DESKTOP-HEKKTQ9
         <span class=n>waitpid</span><span class=p>(</span><span class=n>pid</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>,</span> <span class=mi>0</span><span class=p>);</span>
     <span class=p>}</span>
 <span class=p>}</span>
-</code></pre></div><p>保存成 <code>unshare.c</code>，使用<code>gcc unshare.c -o unshare</code> 编译。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>保存成 <code>unshare.c</code>，使用<code>gcc unshare.c -o unshare</code> 编译。</p>
 <p>之后可以通过下面的命令来检查效果。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>sudo ./unshare -pm /bin/bash <span class=c1># 隔离 mount 和 pid 两个 namespace</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>sudo ./unshare -pm /bin/bash <span class=c1># 隔离 mount 和 pid 两个 namespace</span>
 waitpid <span class=m>2178</span>
 root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# mount -t proc proc /proc
 root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container# ps -ef
@@ -424,20 +730,46 @@ UID        PID  PPID  C STIME TTY          TIME CMD
 root         <span class=m>1</span>     <span class=m>0</span>  <span class=m>0</span> 15:22 pts/0    00:00:00 /bin/bash
 root         <span class=m>3</span>     <span class=m>1</span>  <span class=m>0</span> 15:22 pts/0    00:00:00 ps -ef
 root@DESKTOP-HEKKTQ9:/home/weakptr/repos/container#
-</code></pre></div><p>需要注意几个点：</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>需要注意几个点：</p>
 <ol>
 <li><code>unshare</code> 最后必须是 <code>fork</code> 新进程再 <code>execvp</code>，否则会出现 <code>cannot allocate memory</code> 错误</li>
 <li><code>unshare</code> 启动新的 <code>/bin/bash</code> 进程后，<code>/proc</code> 挂载点还没有真正隔离，此时可以手动使用 <code>mount -t proc proc /proc</code> 命令挂载当前命名空间的 <code>procfs</code>。</li>
 <li>mount namespace 中挂载事件传播，可以查看文档 <code>man 7 mount_namespaces</code>。</li>
 </ol>
 <p>debian 系的 Linux 发行版在 util-linux 包里提供了一个 <code>unshare</code> 程序，比上面的 demo 更强大，甚至可以用一行命令实现一个基本的<em>容器</em>。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=c1># 我在 workspace 目录里装了 busybox，所以能直接跑起来 chroot 和 /bin/ash</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=c1># 我在 workspace 目录里装了 busybox，所以能直接跑起来 chroot 和 /bin/ash</span>
 <span class=c1># busybox 的安装方法参考 busybox 源码目录下的 INSTALL 文件</span>
 <span class=c1># vim Config.in 修改 config STATIC 下的 default 为 y</span>
 <span class=c1># make defconfig &amp;&amp; make &amp;&amp; make install CONFIG_PREFIX=你的workspace目录</span>
 sudo unshare -pumf --mount-proc<span class=o>=</span>workspace/proc chroot workspace /bin/ash
-</code></pre></div><p>结果：</p>
-<pre><code>/ # ps -ef
+</code></pre></td></tr></table>
+</div>
+</div><p>结果：</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>/ # ps -ef
 PID   USER     TIME  COMMAND
     1 0         0:00 /bin/ash
     2 0         0:00 ps -ef
@@ -446,11 +778,84 @@ bin      linuxrc  proc     sbin     usr
 / # mount
 proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
 / #
-</code></pre><h2 id=用-go-实现>用 go 实现</h2>
+</code></pre></td></tr></table>
+</div>
+</div><h2 id=用-go-实现>用 go 实现</h2>
 <h3 id=syscall>syscall</h3>
 <p>go 对系统调用其实做了不少封装，基本在 <code>os</code> 和 <code>syscall</code> 下，但有很多区别。比如在 go 里找不到 <code>clone</code>、<code>setns</code> 这些接口，取而代之的是 <code>os/exec</code> 下的 <code>Cmd</code> 结构。不过 <code>syscall.Unshare</code> 倒是很忠实的还原了。诸如 <code>CLONE_NEWNS</code> 这些常量也可以找到对应的 <code>syscall.CLONE_NEWNS</code>。</p>
 <p>不重复上面的代码了，写一个简短的启动 busybox 容器的 go 程序。</p>
-<div class=highlight><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kn>package</span> <span class=nx>main</span>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kn>package</span> <span class=nx>main</span>
 
 <span class=kn>import</span> <span class=p>(</span>
 	<span class=s>&#34;flag&#34;</span>
@@ -517,9 +922,28 @@ proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
 
 	<span class=nf>runContainerizedCommand</span><span class=p>()</span>
 <span class=p>}</span>
-</code></pre></div><p>保存为 <code>demo.go</code> 后用 <code>go build -o demo demo.go</code> 编译，然后执行 <code>sudo ./demo</code> 。</p>
+</code></pre></td></tr></table>
+</div>
+</div><p>保存为 <code>demo.go</code> 后用 <code>go build -o demo demo.go</code> 编译，然后执行 <code>sudo ./demo</code> 。</p>
 <p>结果像是这样：</p>
-<pre><code>DESKTOP-HEKKTQ9 :: ~/repos/container » sudo ./demo
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>DESKTOP-HEKKTQ9 :: ~/repos/container » sudo ./demo
 starting current process 2954
 Start `busybox ash` in process 1
 / # ps -ef
@@ -532,7 +956,9 @@ proc on /proc type proc (rw,relatime)
 / #
 unmount proc
 DESKTOP-HEKKTQ9 :: ~/repos/container »
-</code></pre><h2 id=总结>总结</h2>
+</code></pre></td></tr></table>
+</div>
+</div><h2 id=总结>总结</h2>
 <p>上面的 demo 仅仅是创建了一个看起来像容器的玩具，连 cgroup 都没有，距离真正的 OCI 运行时还有不小差距。不过已经足够展示创建一个隔离的环境并不是特别困难的事情，这必须感谢 Linux 内核的开发者们让容器技术有了存在的可能，而且还能这么简单地使用。</p>
 <p>可以点击[这个链接](<a class=link href=https://github.com/opencontainers/runtime-spec/blob/master/spec.md target=_blank rel=noopener>runtime-spec/spec.md at master · opencontainers/runtime-spec (github.com)</a>)查看 OCI 运行时的规格说明。</p>
 <p>涉及概念：</p>
@@ -616,7 +1042,7 @@ DESKTOP-HEKKTQ9 :: ~/repos/container »
 <section class=powerby>
 GitHub Pages <br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.10.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 </section>
 </footer>
 <div class=pswp tabindex=-1 role=dialog aria-hidden=true>
