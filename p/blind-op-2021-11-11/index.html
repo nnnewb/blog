@@ -156,6 +156,71 @@ linux运维
 </div><p>发现 <code>enp0s3</code> 进入 <code>routable</code> 状态，大功告成。</p>
 <h3 id=总结>总结</h3>
 <p>我总结个蛋。</p>
+<blockquote>
+<p>2022年5月6日 补充</p>
+<p>发现问题本源是 netplan 配置未正确生成，dhclient 是暂时性解决。彻底解决的办法是在 <code>/etc/netplan</code> 添加 <code>01-netcfg.yaml</code>，内容如下：</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=nt>network</span><span class=p>:</span><span class=w>
+</span><span class=w>	</span><span class=nt>version</span><span class=p>:</span><span class=w> </span><span class=m>2</span><span class=w>
+</span><span class=w>	</span><span class=nt>renderer</span><span class=p>:</span><span class=w> </span><span class=l>networkd</span><span class=w>
+</span><span class=w>	</span><span class=nt>ethernets</span><span class=p>:</span><span class=w>
+</span><span class=w>		</span><span class=nt>enp0s3</span><span class=p>:</span><span class=w>
+</span><span class=w>			</span><span class=nt>dhcp4</span><span class=p>:</span><span class=w> </span><span class=kc>true</span><span class=w>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>注意 <code>enp0s3</code> 改成你自己的以太网连接名，用 <code>networkctl</code> 或者 <code>ip show addr</code> 都能列出来。</p>
+<p>文件添加好之后用命令：</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>sudo netplan generate
+sudo netplan apply
+</code></pre></td></tr></table>
+</div>
+</div><p>就好了。之后重启vm再运行</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>networkctl
+</code></pre></td></tr></table>
+</div>
+</div><p>可以看到</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>IDX LINK            TYPE     OPERATIONAL SETUP
+  1 lo              loopback carrier     unmanaged
+  2 enp0s3          ether    routable    configured
+  3 docker0         bridge   no-carrier  unmanaged
+  4 br-e2b0cf462af2 bridge   no-carrier  unmanaged
+
+4 links listed.
+</code></pre></td></tr></table>
+</div>
+</div><p>注意 <code>enp0s3</code> 已经变成了 <code>configured</code> 状态，确认问题彻底处理完毕。</p>
+</blockquote>
 </section>
 <footer class=article-footer>
 <section class=article-tags>
