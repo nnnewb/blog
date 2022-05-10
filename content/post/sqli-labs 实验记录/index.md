@@ -1,6 +1,6 @@
 ---
-title: sqli-labs 实验记录 #1
-slug: sqli-labs-traning-1
+title: 'sqli-labs 实验记录 #1'
+slug: sqli-labs-training-1
 date: 2022-05-09 17:14:46
 categories:
 - security
