@@ -1,0 +1,352 @@
+<!doctype html><html lang=zh-cn dir=ltr>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 从 sqli-labs 第 11 题开始。后续注入点不再是 query string，还是先拿 sqlmap 解决。题目数量很多区别较小，所以重复的思路可能就略了。 Less-11 Error Based 而且注入点是 POST 表单"><title>sqli-labs 实验记录 #3</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/sqli-labs-training-3/>
+<link rel=stylesheet href=/blog/scss/style.min.5c88a5bc75732c20b0a5ccc3be5c148f782b1c20e20b6c73b276723850a33d6b.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
+<script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
+<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="sqli-labs 实验记录 #3">
+<meta property="og:description" content="前言 从 sqli-labs 第 11 题开始。后续注入点不再是 query string，还是先拿 sqlmap 解决。题目数量很多区别较小，所以重复的思路可能就略了。 Less-11 Error Based 而且注入点是 POST 表单">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/sqli-labs-training-3/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="security"><meta property="article:tag" content="sqli"><meta property="article:tag" content="sqli-labs"><meta property="article:published_time" content="2022-05-11T16:36:31+08:00"><meta property="article:modified_time" content="2022-05-11T16:36:31+08:00">
+<meta name=twitter:title content="sqli-labs 实验记录 #3">
+<meta name=twitter:description content="前言 从 sqli-labs 第 11 题开始。后续注入点不再是 query string，还是先拿 sqlmap 解决。题目数量很多区别较小，所以重复的思路可能就略了。 Less-11 Error Based 而且注入点是 POST 表单">
+</head>
+<body class=article-page>
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
+</div>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<li>
+<a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+<li id=dark-mode-toggle><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span>
+</li>
+</div>
+</ol>
+</aside>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/security/>
+security
+</a>
+</header>
+<div class=article-title-wrapper>
+<h2 class=article-title>
+<a href=/blog/p/sqli-labs-training-3/>sqli-labs 实验记录 #3</a>
+</h2>
+</div>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published datetime=2022-05-11T16:36:31+08:00>2022年 5月 11日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 4 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>从 sqli-labs 第 11 题开始。后续注入点不再是 query string，还是先拿 sqlmap 解决。题目数量很多区别较小，所以重复的思路可能就略了。</p>
+<h2 id=less-11>Less-11</h2>
+<p>Error Based 而且注入点是 POST 表单。用<code>'</code>确认<code>password</code>字段也有注入后，尝试手工 bypass 验证：<code>' or 1=1;--</code> 注意注释符后跟一个空格，但不能在输入框写 <code>%20</code>，会被转义成<code>%%20</code>。</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511113730087.png width=802 height=572 srcset="/blog/p/sqli-labs-training-3/image-20220511113730087_hu4bd98b42bdbe57e685502990a5a5bcab_159599_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511113730087_hu4bd98b42bdbe57e685502990a5a5bcab_159599_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511113730087 class=gallery-image data-flex-grow=140 data-flex-basis=336px></p>
+<h2 id=less-12>Less-12</h2>
+<p>用<code>"</code>测出引号类型后根据报错内容补一个右括号，最终 payload <code>") or 1=1;--</code> 注意空格。</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511113913798.png width=784 height=530 srcset="/blog/p/sqli-labs-training-3/image-20220511113913798_hu1e88a9f782066603a0a6fb459a4f17e3_159074_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511113913798_hu1e88a9f782066603a0a6fb459a4f17e3_159074_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511113913798 class=gallery-image data-flex-grow=147 data-flex-basis=355px></p>
+<h2 id=less-13>Less-13</h2>
+<p>有报错，提示 double injection 。用<code>'</code>测出引号类型，根据错误信息补右括号，<code>') or 1=1;--</code> bypass 成功。</p>
+<p>也可以用上一篇博客提到的<code>rand</code>+<code>group by</code>报错的方式。但我是真的越来越不懂 double injection 到底是不是特指某种注入技巧了，还是说就没共识大家对 double injection 各自解释？</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511114447196.png width=773 height=515 srcset="/blog/p/sqli-labs-training-3/image-20220511114447196_hucf43289805919decf00eb1fd7c21b49d_157237_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511114447196_hucf43289805919decf00eb1fd7c21b49d_157237_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511114447196 class=gallery-image data-flex-grow=150 data-flex-basis=360px></p>
+<h2 id=less-14>Less-14</h2>
+<p>用<code>"</code>测出引号类型，根据报错不用补右括号，<code>" or 1=1;--</code> bypass 成功。</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511114639716.png width=851 height=561 srcset="/blog/p/sqli-labs-training-3/image-20220511114639716_hu4f41a74d132e4ef993bbd4055861bbbd_158192_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511114639716_hu4f41a74d132e4ef993bbd4055861bbbd_158192_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511114639716 class=gallery-image data-flex-grow=151 data-flex-basis=364px></p>
+<h2 id=less-15>Less-15</h2>
+<p>布尔盲注，测试<code>'</code>报错，<code>' or 1=1;--</code> bypass 成功。</p>
+<p>图就略了。</p>
+<h2 id=less-16>Less-16</h2>
+<p>时间盲注，测试<code>"</code>报错，<code>" or sleep(1);--</code>无效，补右括号，<code>") or sleep(1);--</code> 有效。</p>
+<h2 id=less-17>Less-17</h2>
+<p>这次的表单是更新密码，表单内容用户名和新密码，没有错误回显。</p>
+<p>提示 update 注入。update 注入的 SQL 格式化参数的位置一般在 <code>UPDATE tbl SET col=input col2=input ... WHERE ...</code> <code>SET</code> 后面和 <code>WHERE</code> 后面。这里显然 <code>WHERE</code> 后面的是用户名 <code>SET</code> 后面的是新密码。因为没有明确的目标，越权把 admin 用户的密码改了拉倒。</p>
+<p>先确认注入类型，尝试 <code>admin';-- </code>、<code>admin');-- </code>、<code>admin";-- </code>、<code>admin");-- </code>、<code>admin'));--</code>、<code>admin"));--</code>都无效。这就有点气人了。</p>
+<p>再试试密码能不能注入，<code>password';--</code>，直接把后面的<code>where</code>全注释掉。</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511144727654.png width=841 height=562 srcset="/blog/p/sqli-labs-training-3/image-20220511144727654_hufa25563151eb039af331c645b7a1808f_251245_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511144727654_hufa25563151eb039af331c645b7a1808f_251245_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511144727654 class=gallery-image data-flex-grow=149 data-flex-basis=359px></p>
+<p>直连 MySQL 验证确认注入生效。</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511144801988.png width=476 height=378 srcset="/blog/p/sqli-labs-training-3/image-20220511144801988_hu5fdde7b43b72f56a9f1f2b3c90b53817_165388_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511144801988_hu5fdde7b43b72f56a9f1f2b3c90b53817_165388_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511144801988 class=gallery-image data-flex-grow=125 data-flex-basis=302px></p>
+<p>另外也可以用 error based 方式在密码这里注入，爆出 admin 的密码，子查询就行。</p>
+<h2 id=less-18>Less-18</h2>
+<p>提示 Header Injection，尝试正常密码登陆 <code>admin</code>、<code>password</code> 成功。</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511145044686.png width=1326 height=455 srcset="/blog/p/sqli-labs-training-3/image-20220511145044686_hu40d444a12dac525d8bc65febeb216a4e_167436_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511145044686_hu40d444a12dac525d8bc65febeb216a4e_167436_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511145044686 class=gallery-image data-flex-grow=291 data-flex-basis=699px></p>
+<p>界面上分别是 IP 地址和 UA，没有更多提示，也没找到自定义 HTTP 头，所以初步怀疑注入点是在 UA 里。可以选择用 httpie 或者 curl 发个请求测试。我用 httpie 试下。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>http --form POST <span class=s1>&#39;http://localhost/Less-18/&#39;</span> <span class=nv>uname</span><span class=o>=</span>admin <span class=nv>passwd</span><span class=o>=</span>password <span class=nv>submit</span><span class=o>=</span>Submit <span class=s2>&#34;User-Agent:sqli/1.0&#39;&#34;</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>返回</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-html data-lang=html><span class=p>&lt;</span><span class=nt>font</span> <span class=na>color</span><span class=o>=</span> <span class=s>&#34;#0000ff&#34;</span>  <span class=na>font</span> <span class=na>size </span><span class=o>=</span> <span class=s>3</span> <span class=p>&gt;</span>Your User Agent is: sqli/1.0&#39;<span class=p>&lt;/</span><span class=nt>font</span><span class=p>&gt;&lt;</span><span class=nt>br</span><span class=p>&gt;</span>You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near &#39;172.19.0.1&#39;, &#39;admin&#39;)&#39; at line 1<span class=p>&lt;</span><span class=nt>br</span><span class=p>&gt;&lt;</span><span class=nt>br</span><span class=p>&gt;</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>确认存在注入。剩下的事情就很简单了，写个 req.txt 用 <code>sqlmap -r req.txt -p User-Agent -T users --dump</code>爆出用户名密码。</p>
+<h2 id=less-19>Less-19</h2>
+<p>依然是 Header Injection，提示 <code>Your Referer is ...</code>，注入点应该在 <code>Referer</code> 里，直接把 Less-18 的命令稍微改下。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>http --form POST <span class=s1>&#39;http://localhost/Less-19/&#39;</span> <span class=nv>uname</span><span class=o>=</span>admin <span class=nv>passwd</span><span class=o>=</span>password <span class=nv>submit</span><span class=o>=</span>Submit <span class=s2>&#34;Referer:http://im.hacker/&#39;&#34;</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>返回</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-html data-lang=html><span class=p>&lt;</span><span class=nt>br</span><span class=p>&gt;</span>Your IP ADDRESS is: 172.19.0.1<span class=p>&lt;</span><span class=nt>br</span><span class=p>&gt;&lt;</span><span class=nt>font</span> <span class=na>color</span><span class=o>=</span> <span class=s>&#34;#FFFF00&#34;</span> <span class=na>font</span> <span class=na>size </span><span class=o>=</span> <span class=s>3</span> <span class=p>&gt;&lt;/</span><span class=nt>font</span><span class=p>&gt;&lt;</span><span class=nt>font</span> <span class=na>color</span><span class=o>=</span> <span class=s>&#34;#0000ff&#34;</span>  <span class=na>font</span> <span class=na>size </span><span class=o>=</span> <span class=s>3</span> <span class=p>&gt;</span>Your Referer is: http://im.hacker/&#39;<span class=p>&lt;/</span><span class=nt>font</span><span class=p>&gt;&lt;</span><span class=nt>br</span><span class=p>&gt;</span>You have an error in your SQL syntax; check  the manual that corresponds to your MySQL server version for the right syntax to use near &#39;172.19.0.1&#39;)&#39;  at line 1<span class=p>&lt;</span><span class=nt>br</span><span class=p>&gt;&lt;</span><span class=nt>br</span><span class=p>&gt;&lt;</span><span class=nt>img</span> <span class=na>src</span><span class=o>=</span><span class=s>&#34;../images/flag.jpg&#34;</span> <span class=p>/&gt;&lt;</span><span class=nt>br</span><span class=p>&gt;</span>
+</code></pre></td></tr></table>
+</div>
+</div><p>确认注入ok，接着用 sqlmap 就行。</p>
+<h2 id=less-20>Less-20</h2>
+<p>提示 Cookie Injection，但是无论登陆成功失败都没有设置 Cookie。尝试随便设置一个 cookie <code>id=...</code>，再刷新页面，并无效果，于是开始怀疑是不是说的 <code>PHPSESSID</code>，再次尝试<code>PHPSESSID=1'"</code>，依然没有作用。发愁。</p>
+<p>看了眼 Less-20 的源码，发现代码里明确写了 <code>!isset($_COOKIE['uname'])</code>，再试一次<code>uname=admin'</code>。</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511153246874.png width=1034 height=484 srcset="/blog/p/sqli-labs-training-3/image-20220511153246874_hu2f31f2a7d2b8d032615a7d3377928641_25660_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511153246874_hu2f31f2a7d2b8d032615a7d3377928641_25660_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511153246874 class=gallery-image data-flex-grow=213 data-flex-basis=512px></p>
+<p>有效果，问题变成了如何完成注入。审阅源码得知只有满足 <code>isset($_COOKIE['uname'])</code> 和 <code>!isset($_POST['submit'])</code> 的情况下才会进入带查询的分支。所以只需要在这个页面不用<code>ctrl+r</code>（因为会重新POST表单），点地址栏再回车就进入了带查询的页面。</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511160609383.png width=1756 height=299 srcset="/blog/p/sqli-labs-training-3/image-20220511160609383_hu5abf0d1e914b80362d218ae596ff943f_230809_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511160609383_hu5abf0d1e914b80362d218ae596ff943f_230809_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511160609383 class=gallery-image data-flex-grow=587 data-flex-basis=1409px></p>
+<p>可以看到下方有MySQL的错误信息，接下来只需要用 sqlmap 或者手工构造个 error based 爆破即可。</p>
+<h2 id=less-21>Less-21</h2>
+<p>依然是 Cookie 注入，但是是 <code>complex</code> 版本，我倒要看看有多复杂。直接上 Less-20 的 <code>uname=admin'</code>。</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511161052493.png width=1826 height=456 srcset="/blog/p/sqli-labs-training-3/image-20220511161052493_hu61dd0aa5ba2f1e5b56487313df680442_279311_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511161052493_hu61dd0aa5ba2f1e5b56487313df680442_279311_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511161052493 class=gallery-image data-flex-grow=400 data-flex-basis=961px></p>
+<p>注意有个特殊的错误信息。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>Issue with your mysql: Illegal mix of collations (gbk_chinese_ci,IMPLICIT) and (latin1_swedish_ci,COERCIBLE) for operation &#39;=&#39;
+</code></pre></td></tr></table>
+</div>
+</div><p>谷歌搜索可知这是因为查询的字符集有差异，尝试比较<code>gbk_chinese_ci</code>和<code>latin1</code>。这里我们了解下<code>gbk</code>是宽字符集，定长 2 字节，而 <code>latin1</code> 是一个极为特殊的字符集，<code>ascii</code>包括了<code>u+0001~u+0080</code>，<code>latin1</code>正好包括了<code>u+0080~u+00ff</code>，也就是单字节除了<code>0x00</code>外全部都可以解释成 <code>ascii</code> 和 <code>latin1</code> 而不出现编码错误，经常被当成默认字符编码。</p>
+<p>回到正题，测试中发现<code>'</code>没有报错，所以继续尝试<code>"</code>，依然没报错，问题变得奇怪起来了。直接开始审阅代码。</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511162312174.png width=762 height=92 srcset="/blog/p/sqli-labs-training-3/image-20220511162312174_hu4ef0d4381ebf42bd569d9e59e2965081_14037_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511162312174_hu4ef0d4381ebf42bd569d9e59e2965081_14037_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511162312174 class=gallery-image data-flex-grow=828 data-flex-basis=1987px></p>
+<p>发现有个 <code>base64_decode</code>，把 <code>payload</code> 编码一下：<code>YWRtaW4nCg</code></p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511162411345.png width=1826 height=339 srcset="/blog/p/sqli-labs-training-3/image-20220511162411345_hud870b9a61a73ac91f63091af877b397d_90354_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511162411345_hud870b9a61a73ac91f63091af877b397d_90354_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511162411345 class=gallery-image data-flex-grow=538 data-flex-basis=1292px></p>
+<p>报错成功。接下来手工构造一个 error based 注入或者 sqlmap 加上 base64 tamper 即可。</p>
+<h2 id=less-22>Less-22</h2>
+<p>21和22两题都没法从前端得到太多信息，还是直接看代码。</p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511163010736.png width=810 height=138 srcset="/blog/p/sqli-labs-training-3/image-20220511163010736_hu07dac01f7d23a8aa7d3161316428c4c9_21977_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511163010736_hu07dac01f7d23a8aa7d3161316428c4c9_21977_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511163010736 class=gallery-image data-flex-grow=586 data-flex-basis=1408px></p>
+<p>一个 <code>base64_decode</code> 加上 <code>""</code> 连接，我们编码一下 payload：<code>YWRtaW4iCg</code></p>
+<p><img src=/blog/p/sqli-labs-training-3/image-20220511163108492.png width=1737 height=422 srcset="/blog/p/sqli-labs-training-3/image-20220511163108492_hu50d70535ba4af8130891cc1d181a8148_280079_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image-20220511163108492_hu50d70535ba4af8130891cc1d181a8148_280079_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220511163108492 class=gallery-image data-flex-grow=411 data-flex-basis=987px></p>
+<p>报错成功，接下来手工构造 error based 注入或者 sqlmap 都行，不重复了。</p>
+<h2 id=总结>总结</h2>
+<p><img src=/blog/p/sqli-labs-training-3/image.png width=1140 height=1038 srcset="/blog/p/sqli-labs-training-3/image_hu15bdcbb5037c607898701ef384a9ee2b_81003_480x0_resize_box_3.png 480w, /blog/p/sqli-labs-training-3/image_hu15bdcbb5037c607898701ef384a9ee2b_81003_1024x0_resize_box_3.png 1024w" loading=lazy alt="sqli-labs page-1" class=gallery-image data-flex-grow=109 data-flex-basis=263px></p>
+<p>至此，整个 sqli-labs page-1 的所有题目就都做完了。</p>
+<p>自我感觉 sqli 的基础应该是掌握差不多了，也有了信心和耐心。考虑接下来是做 page-2 还是找 xss-labs ，打打 xss 的基础。或者一起来也行，预计 page-2 可能会稍难点，大概，做不过就试试 xss-labs。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/security/>security</a>
+<a href=/blog/tags/sqli/>sqli</a>
+<a href=/blog/tags/sqli-labs/>sqli-labs</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/sqli-labs-training-2/>
+<div class=article-details>
+<h2 class=article-title>sqli-labs 实验记录 #2</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/sqli-labs-training-1/>
+<div class=article-details>
+<h2 class=article-title>sqli-labs 实验记录 #1</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/redtiger-lab-training-note-2022-05-06/>
+<div class=article-details>
+<h2 class=article-title>red tiger 打靶日志</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/a-trick-that-was-a-bit-off/>
+<div class=article-details>
+<h2 class=article-title>一个有点离谱的trick</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/redtiger-lab-training-notes/>
+<div class=article-details>
+<h2 class=article-title>redtiger靶场训练笔记</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
+<div id=vssue></div>
+<script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"sqli-labs 实验记录 #3",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 -
+2022 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#less-11>Less-11</a></li>
+<li><a href=#less-12>Less-12</a></li>
+<li><a href=#less-13>Less-13</a></li>
+<li><a href=#less-14>Less-14</a></li>
+<li><a href=#less-15>Less-15</a></li>
+<li><a href=#less-16>Less-16</a></li>
+<li><a href=#less-17>Less-17</a></li>
+<li><a href=#less-18>Less-18</a></li>
+<li><a href=#less-19>Less-19</a></li>
+<li><a href=#less-20>Less-20</a></li>
+<li><a href=#less-21>Less-21</a></li>
+<li><a href=#less-22>Less-22</a></li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>
