@@ -1,4 +1,336 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/post/</link><description>Recent content in Posts on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 12 May 2022 10:33:08 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/post/index.xml" rel="self" type="application/rss+xml"/><item><title>2022年5月12日 一件小事</title><link>https://nnnewb.github.io/blog/p/2022-5-12-one-small-thing/</link><pubDate>Thu, 12 May 2022 10:33:08 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/2022-5-12-one-small-thing/</guid><description>&lt;p>胡言乱语几句。&lt;/p>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/post/</link><description>Recent content in Posts on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 12 May 2022 17:23:32 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/post/index.xml" rel="self" type="application/rss+xml"/><item><title>sqli-labs 实验记录 #4</title><link>https://nnnewb.github.io/blog/p/sqli-labs-training-4/</link><pubDate>Thu, 12 May 2022 17:23:32 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/sqli-labs-training-4/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>惯例的前言，虽然没什么可说的。本篇从 page-2 开始，page-2 开头还是 21/22 这两题，base64 编码加上引号注入即可完成。正文从 23 开始。&lt;/p>
+&lt;h2 id="less-23">Less-23&lt;/h2>
+&lt;p>提示 error based, no comments。所以应该是屏蔽了 &lt;code>--&lt;/code>、&lt;code>#&lt;/code>和&lt;code>/**/&lt;/code>，所以注入要看SQL注入位置的后半句SQL怎么写的了。&lt;/p>
+&lt;p>尝试用 &lt;code>extractvalue&lt;/code> 攻击发现不行。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">?id=1&amp;#39; and extractvalue(1,concat(&amp;#39;~&amp;#39;,password)) or &amp;#39;1&amp;#39;=&amp;#39;1
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>错误：&lt;code>Only constant XPATH queries are supported&lt;/code>，&lt;code>updatexml&lt;/code>也是一样。换成 &lt;code>group by&lt;/code> 法攻击（仅限 MySQL &amp;lt; 5.7.36）。注入&lt;code>1'&lt;/code>确认后面跟着的是&lt;code>LIMIT 0,1&lt;/code>。&lt;/p>
+&lt;p>手工调试出一个预期的SQL：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">select&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">from&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="c1">-- 从 1&amp;#39; and 开始承接原查询
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">id&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s1">&amp;#39;1&amp;#39;&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">and&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">select&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">123&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="c1">-- 子查询包装，把子查询确保 payload 不影响原查询。
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">from&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">select&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">count&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="p">),&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">concat&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">select&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">concat&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">username&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="s1">&amp;#39;~&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="n">password&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">from&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">users&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">limit&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">),&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="c1">-- 拼接如 username~password 的字符串，limit 避免子查询返回多行出错，也可枚举所有行。目的都是确保能触发 duplicate entry
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s1">&amp;#39;~&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">floor&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">rand&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">14&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">from&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">select&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">union&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">all&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">select&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="c1">-- 构造个临时表，两行就够
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">group&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">by&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="c1">-- 在这里触发 duplicate entry 错误
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="c1">-- 避免 Every derived table must have its own alias 错误
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">and&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s1">&amp;#39;1&amp;#39;&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s1">&amp;#39;1&amp;#39;&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="c1">-- 承接原查询的单引号，后面就是原查询的剩余部分了。
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="k">limit&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>提取 Payload：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">?id=1&amp;#39; and (select 123 from (select count(*),concat((select concat(username,&amp;#39;~&amp;#39;,password) from users limit 0,1),&amp;#39;~&amp;#39;,floor(rand(14)*2)) x from (select 1 union all select 2) as t group by x) x) and &amp;#39;1&amp;#39;=&amp;#39;1
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512133709602.png"
+width="1218"
+height="435"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512133709602_hud8abda6fb5f8bd1652da864a56d4f695_198434_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512133709602_hud8abda6fb5f8bd1652da864a56d4f695_198434_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512133709602"
+class="gallery-image"
+data-flex-grow="280"
+data-flex-basis="672px"
+>&lt;/p>
+&lt;p>成功&lt;/p>
+&lt;h2 id="less-24">Less-24&lt;/h2>
+&lt;p>提示 second degree injections ，但谷歌没有找到这个说法，但有另一个说法叫 second-order injection。摘自 portswigger：&lt;/p>
+&lt;blockquote>
+&lt;p>Second-order SQL injection arises when user-supplied data is stored by the application and later incorporated into SQL queries in an unsafe way. To detect the vulnerability, it is normally necessary to submit suitable data in one location, and then use some other application function that processes the data in an unsafe way.&lt;/p>
+&lt;/blockquote>
+&lt;p>再看页面：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512134251988.png"
+width="1078"
+height="479"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512134251988_hu0f2b151fbf573c8051608f0a58f64beb_100741_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512134251988_hu0f2b151fbf573c8051608f0a58f64beb_100741_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512134251988"
+class="gallery-image"
+data-flex-grow="225"
+data-flex-basis="540px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512134257960.png"
+width="721"
+height="490"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512134257960_hu704286ccb7af4df42963ee95ae469ab7_119881_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512134257960_hu704286ccb7af4df42963ee95ae469ab7_119881_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512134257960"
+class="gallery-image"
+data-flex-grow="147"
+data-flex-basis="353px"
+>&lt;/p>
+&lt;p>分别有注册和登陆两个位置，从 second-order injection 的描述来看，如果存在于 Less-24 的话，可能的情况就是在注册接口允许特殊字符比如 &lt;code>admin' or 1=1&lt;/code> 作为用户名。&lt;/p>
+&lt;p>首先尝试了注册正常用户 &lt;code>test123&lt;/code> 并登陆，但登录后跳转&lt;code>login.php&lt;/code>却没有内容。看来没有更多提示了。&lt;/p>
+&lt;p>再注册用户 &lt;code>test123'&amp;quot;&lt;/code>并登陆，跳转&lt;code>login.php&lt;/code> 依然没有内容。这就不懂了，没辙，审下源码。&lt;/p>
+&lt;p>注册：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512140810273.png"
+width="742"
+height="241"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512140810273_huebf7869fb04f3ba97fd6e793e4b2c787_37392_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512140810273_huebf7869fb04f3ba97fd6e793e4b2c787_37392_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512140810273"
+class="gallery-image"
+data-flex-grow="307"
+data-flex-basis="738px"
+>&lt;/p>
+&lt;p>立刻注意到&lt;code>mysql_escape_string&lt;/code>，可能存在宽字符注入的问题，但和 second-order injection 好像搭不上关系，继续往下看。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512141813442.png"
+width="854"
+height="283"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512141813442_hu11baa8e074c48d8282ad32919836a806_42044_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512141813442_hu11baa8e074c48d8282ad32919836a806_42044_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512141813442"
+class="gallery-image"
+data-flex-grow="301"
+data-flex-basis="724px"
+>&lt;/p>
+&lt;p>并无特别之处。继续看登陆。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512142053554.png"
+width="868"
+height="428"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512142053554_huc050794fffb5892bb09f836cbad175b3_57123_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512142053554_huc050794fffb5892bb09f836cbad175b3_57123_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512142053554"
+class="gallery-image"
+data-flex-grow="202"
+data-flex-basis="486px"
+>&lt;/p>
+&lt;p>发现问题了。登陆成功应该设置 &lt;code>Auth&lt;/code> 这个 cookie 但我没找到。&lt;code>Location&lt;/code> 这个 HTTP 头也没有出现在响应里。这肯定不是正常的挑战，不审阅代码根本看不到这有个 &lt;code>Auth&lt;/code> cookie 要设置，还有登陆成功后跳转的位置是 &lt;code>logged-in.php&lt;/code>。&lt;/p>
+&lt;p>看起来是 sqli-labs 自己的 bug。页面上有几个 PHP 的警告：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512142824705.png"
+width="1682"
+height="137"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512142824705_hud2604bbbf213c899bb5235f8daa2f6d6_23424_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512142824705_hud2604bbbf213c899bb5235f8daa2f6d6_23424_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512142824705"
+class="gallery-image"
+data-flex-grow="1227"
+data-flex-basis="2946px"
+>&lt;/p>
+&lt;p>尝试修复。&lt;/p>
+&lt;ol>
+&lt;li>把&lt;code>Less-24/login.php&lt;/code>的&lt;code>&amp;lt;?php&lt;/code>标签放到最前，&lt;code>html&lt;/code>改成&lt;code>echo &amp;lt;&amp;lt;&amp;lt;END&lt;/code> heredoc 形式，放到登陆失败的 &lt;code>else&lt;/code> 分支里。&lt;/li>
+&lt;li>把&lt;code>sql-connections/sql-connect.php&lt;/code>的&lt;code>?&amp;gt;&lt;/code>删除&lt;/li>
+&lt;li>把&lt;code>sql-connections/db-creds.inc&lt;/code>的&lt;code>?&amp;gt;&lt;/code>删除&lt;/li>
+&lt;/ol>
+&lt;p>这和 php 如何发起 HTTP 响应有关系，HTTP 头只能出现在 body 前，如果解释器先遇到了 HTML 或者别的输出语句，那写 body 之前肯定是先把 header 给写完了。开始输出 body 部分后再调用 &lt;code>setcookie&lt;/code> 或 &lt;code>header&lt;/code> 就已经太迟了，HTTP 头已经发给客户端了。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512144304913.png"
+width="1092"
+height="566"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512144304913_hu4b244e74ae756690a2ee967cb6036017_186825_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512144304913_hu4b244e74ae756690a2ee967cb6036017_186825_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512144304913"
+class="gallery-image"
+data-flex-grow="192"
+data-flex-basis="463px"
+>&lt;/p>
+&lt;p>修复后成功进入登录后界面，是个修改密码的表单。审代码前盲猜是直接用了 &lt;code>$_SESSION['username']&lt;/code> 而没转义导致 second-order injection。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512144639504.png"
+width="998"
+height="235"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512144639504_hu32a2e110958d35600cb55959b0f398e7_42917_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512144639504_hu32a2e110958d35600cb55959b0f398e7_42917_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512144639504"
+class="gallery-image"
+data-flex-grow="424"
+data-flex-basis="1019px"
+>&lt;/p>
+&lt;p>猜对了。&lt;/p>
+&lt;p>接着用&lt;code>test123'&lt;/code>这个账号登陆试试，触发报错：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512144850227.png"
+width="345"
+height="49"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512144850227_hu3b147c4d85e7684d5cf3be4bdfc97e87_4728_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512144850227_hu3b147c4d85e7684d5cf3be4bdfc97e87_4728_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512144850227"
+class="gallery-image"
+data-flex-grow="704"
+data-flex-basis="1689px"
+>&lt;/p>
+&lt;p>这里形成的是一个 &lt;code>update&lt;/code> 注入，所以注册一个用户名为 &lt;code>test123' or username='admin&lt;/code> 的用户即可修改 admin 的密码。&lt;/p>
+&lt;h2 id="less-25">Less-25&lt;/h2>
+&lt;p>提示 all your &amp;lsquo;OR&amp;rsquo; and &amp;lsquo;AND&amp;rsquo; belongs to us，服务端过滤了 &lt;code>AND&lt;/code> 和 &lt;code>OR&lt;/code> 两个关键词，但 &lt;code>UNION ALL&lt;/code> 还能用。尝试 &lt;code>?id=0' union all select 1,username,3 from users where '1'='1&lt;/code> 成功。但 &lt;code>password&lt;/code> 里的 &lt;code>or&lt;/code> 也被过滤了。注意页面底部有个 hint 提示过滤后的文本是什么样。&lt;/p>
+&lt;p>尝试双写 bypass &lt;code>?id=0' union all select 1,username,passwoorrd from users where '1'='1&lt;/code>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512151638205.png"
+width="1079"
+height="399"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512151638205_hu0fc571f82d87cb839b319785f54001a6_37881_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512151638205_hu0fc571f82d87cb839b319785f54001a6_37881_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512151638205"
+class="gallery-image"
+data-flex-grow="270"
+data-flex-basis="649px"
+>&lt;/p>
+&lt;p>成功。&lt;/p>
+&lt;h2 id="less-26">Less-26&lt;/h2>
+&lt;p>提示 all your spaces and comments belongs to us，空格和注释会被过滤。&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>?id=1';--%20&lt;/code>，发现&lt;code>--&lt;/code>被过滤&lt;/li>
+&lt;li>&lt;code>?id=1';%23&lt;/code>，发现&lt;code>#&lt;/code>被过滤&lt;/li>
+&lt;li>&lt;code>?id=1';/*&lt;/code>，发现&lt;code>/*&lt;/code>被过滤。&lt;/li>
+&lt;/ul>
+&lt;p>三种注释符都被过滤了，尝试双写绕过。&lt;code>?id=1';//**&lt;/code> 依然被过滤。这就蛋疼了。审一下代码吧。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512154804832.png"
+width="807"
+height="215"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512154804832_hu59cb45eb6baf4f616cf0bc88b3adeb2e_38223_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512154804832_hu59cb45eb6baf4f616cf0bc88b3adeb2e_38223_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512154804832"
+class="gallery-image"
+data-flex-grow="375"
+data-flex-basis="900px"
+>&lt;/p>
+&lt;p>这些字符都被替换了&lt;code>/*-#\s\\&lt;/code>。经过谷歌发现一个绕过的方法，尝试用 ASCII 码表中的特殊空白符绕过。&lt;/p>
+&lt;p>&lt;a class="link" href="https://www.jianshu.com/p/ff72f2c6d99c" target="_blank" rel="noopener"
+>参考：Sqli-Labs：Less 26 - Less 26a&lt;/a>&lt;/p>
+&lt;p>先测一遍这些特殊字符：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-php" data-lang="php">&lt;span class="o">&amp;lt;?&lt;/span>&lt;span class="nx">php&lt;/span>
+&lt;span class="k">echo&lt;/span> &lt;span class="nx">preg_replace&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;/\s/&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="s1">&amp;#39;@&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="s2">&amp;#34;1&lt;/span>&lt;span class="se">\x09&lt;/span>&lt;span class="s2">2&lt;/span>&lt;span class="se">\x0a&lt;/span>&lt;span class="s2">3&lt;/span>&lt;span class="se">\x0c&lt;/span>&lt;span class="s2">4&lt;/span>&lt;span class="se">\x0b&lt;/span>&lt;span class="s2">5&lt;/span>&lt;span class="se">\x0d&lt;/span>&lt;span class="s2">6&lt;/span>&lt;span class="se">\xa0&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>发现只有&lt;code>\xa0&lt;/code>没有匹配到&lt;code>\s&lt;/code>这个正则，接着尝试 union 注入，用&lt;code>%a0&lt;/code>替代&lt;code>%20&lt;/code>。可以写个脚本把&lt;code>%00&lt;/code>到&lt;code>%ff&lt;/code>都试一遍看看哪些字符可用。&lt;/p>
+&lt;p>&lt;code>\xa0&lt;/code>不在 ascii 码表内，&lt;code>latin1&lt;/code>编码中表示&lt;code>non breaking space&lt;/code>。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">?id=0&amp;#39;%a0UNION%a0ALL%a0SELECT%a01,2,3%a0FROM%a0users%a0WHERE%a0&amp;#39;1&amp;#39;=&amp;#39;1
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512160235324.png"
+width="1080"
+height="410"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512160235324_hu0c21c5b5c9baab5021bff6d0bb98bef9_37435_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512160235324_hu0c21c5b5c9baab5021bff6d0bb98bef9_37435_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512160235324"
+class="gallery-image"
+data-flex-grow="263"
+data-flex-basis="632px"
+>&lt;/p>
+&lt;p>注入成功。&lt;/p>
+&lt;p>另外补充一下关于 AND OR 的绕过方法，使用 &lt;code>preg_replace&lt;/code> 替换的话双写就无法绕过了，但还可以考虑用逻辑运算，&lt;code>&amp;amp;&amp;amp;&lt;/code>、&lt;code>||&lt;/code>以及位运算&lt;code>|&lt;/code>、&lt;code>&amp;amp;&lt;/code>去组合条件，甚至是算数运算&lt;code>select * from users where (id=1)+(username='Dumb')=2;&lt;/code>。&lt;/p>
+&lt;p>以上就是空格和&lt;code>and&lt;/code>、&lt;code>or&lt;/code>过滤的绕过方法了。注释感觉没法绕，现在没思路，暂且不谈。&lt;/p>
+&lt;h2 id="less-27">Less-27&lt;/h2>
+&lt;p>提示 all your union and select belongs to us ，不能使用 union 注入。测试注入&lt;code>?id=1'&lt;/code>报错有回显，字符型注入。考虑限制了 select 查别的表会比较麻烦，先试试能不能绕过 &lt;code>?id=1' uniunionon seselectlect 1,2,3&lt;/code>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512165506110.png"
+width="576"
+height="50"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512165506110_hu3e8dab28ae6c757455369233587af676_3175_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512165506110_hu3e8dab28ae6c757455369233587af676_3175_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512165506110"
+class="gallery-image"
+data-flex-grow="1152"
+data-flex-basis="2764px"
+>&lt;/p>
+&lt;p>发现&lt;code>union&lt;/code>成功绕过，但&lt;code>select&lt;/code>没有幸免，同时发现空格也被过滤了。修改 payload &lt;code>?id=1'%a0uniunionon%a0SeselectLeCt%a01,2,3&lt;/code> 成功大小写绕过。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512165641965.png"
+width="680"
+height="54"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512165641965_hu6fd4d023623058a5158adbd868114adc_4749_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512165641965_hu6fd4d023623058a5158adbd868114adc_4749_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512165641965"
+class="gallery-image"
+data-flex-grow="1259"
+data-flex-basis="3022px"
+>&lt;/p>
+&lt;p>之后就是常规操作了 &lt;code>?id=0'%a0uniunionon%a0SeselectLeCt%a01,2,3%a0from%a0users%a0where%a0'a'='a&lt;/code>，成功。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512165932026.png"
+width="1100"
+height="398"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512165932026_huf400eb849f98557666dff2e60091d86c_37107_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-4/image-20220512165932026_huf400eb849f98557666dff2e60091d86c_37107_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220512165932026"
+class="gallery-image"
+data-flex-grow="276"
+data-flex-basis="663px"
+>&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>page-2 难度果然比 page-1 大很多，今天只做出来5道题，每题都要想一会儿查查资料。&lt;/p>
+&lt;p>几个意识到的知识点：&lt;/p>
+&lt;ol>
+&lt;li>直接拼接某些函数有问题，或者拼子查询有问题，可以考虑下用&lt;code>select 123 from (select ...)&lt;/code>包装一下说不定能省很多事。&lt;/li>
+&lt;li>second-order injection 的概念，用户输入可能过滤很好，但另一个地方用的时候没过滤，也会造成注入。&lt;/li>
+&lt;li>几种绕过过滤的方法
+&lt;ol>
+&lt;li>对&lt;code>and&lt;/code>、&lt;code>or&lt;/code>用运算符替代的方式绕过。但有经验的开发会屏蔽掉&lt;code>|&amp;amp;;$&lt;/code>之类的特殊字符，不一定好绕。&lt;/li>
+&lt;li>对空格过滤的绕过，&lt;code>latin1&lt;/code>编码的空格&lt;code>0xa0&lt;/code>。一般开发不容易注意到&lt;code>0xa0&lt;/code>能绕过&lt;code>\s&lt;/code>正则。&lt;/li>
+&lt;li>一般关键词用双写、大小写方式绕过，但不一定绕得过去，被禁用的情况下可以考虑下换别的方式。&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;/ol>
+&lt;p>再补充下如何安全开发。其实很简单，用 parameterized query 或者说 prepared statement/query 。目前是最有效的防 SQL 注入的方法，彻底摆脱了上面的过滤、转义等传统攻防对抗，web App 开发者可以从 SQL 注入漏洞的无底深渊里解放出来。&lt;/p>
+&lt;p>遗憾的是我随便翻了下 github 上的一些新 CMS，虽然有各种 ORM 可以用，现代 DBMS 也早支持了 parameterized query，但还有人在手动拼 SQL =。= 理由就不乱推测了。Go 的 sql 库还是很给力的，直接把 parameterized query 作为最佳实践了，就是还顶不住依然有人在拼字符串=。= 我也是大无语。&lt;/p>
+&lt;p>那就到这里结束了，辛苦我自己啦！&lt;/p></description></item><item><title>2022年5月12日 一件小事</title><link>https://nnnewb.github.io/blog/p/2022-5-12-one-small-thing/</link><pubDate>Thu, 12 May 2022 10:33:08 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/2022-5-12-one-small-thing/</guid><description>&lt;p>胡言乱语几句。&lt;/p>
 &lt;p>先分享一个比较开心的事情，下狠心拿一个月工资报了个机构自考本科，目标是把学位证也拿下，最好还能混到奖学金。顺便申请了继续教育退税，虽然退不了多少。也不指望还能靠这些把学费赚回来。&lt;/p>
 &lt;p>嗯，就是这样啦。&lt;/p>
 &lt;p>原本的想法是考个 CISP 之类的证（注意到培训价格也是8k+，而且是强制培训。CISP-PTE 更是快 2w。），后来因为同事报了个自考，想想这个价完全可以先把自考拿下，学历比这几个技能证有用多了，至少以后投简历不会那么轻易被筛掉了。&lt;/p>
