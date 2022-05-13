@@ -1,4 +1,319 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 12 May 2022 17:23:32 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>sqli-labs 实验记录 #4</title><link>https://nnnewb.github.io/blog/p/sqli-labs-training-4/</link><pubDate>Thu, 12 May 2022 17:23:32 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/sqli-labs-training-4/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>weakptr's 笔记</title><link>https://nnnewb.github.io/blog/</link><description>Recent content on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 13 May 2022 15:04:43 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>sqli-labs 实验记录 #5</title><link>https://nnnewb.github.io/blog/p/sqli-labs-training-5/</link><pubDate>Fri, 13 May 2022 15:04:43 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/sqli-labs-training-5/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>惯例。&lt;/p>
+&lt;p>随便刷两题。&lt;/p>
+&lt;h2 id="less-28">Less-28&lt;/h2>
+&lt;p>没有错误回显，有查询结果。提示 all your &amp;lsquo;union&amp;rsquo; and &amp;lsquo;select&amp;rsquo; belongs to us ，和 27 一样的提示，不同的是 union 和 select 加了引号。不知道想表达什么。&lt;/p>
+&lt;p>验证注入类型 &lt;code>?id=1' and '1'='1&lt;/code> + &lt;code>?id=1' and '1'='0&lt;/code> 确定是字符型注入，单引号。注意服务端可能有个类型转换导致 &lt;code>1 and 1=1&lt;/code> 这样的 payload 也有回显，通过构造为假的条件可以发现并不是数字型注入。&lt;/p>
+&lt;p>从提示看是过滤了 union 和 select 但不知道怎么过滤的，尝试双写 bypass，发现空格被过滤了。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513094655242.png"
+width="1172"
+height="244"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513094655242_huccd33fbbc1c70cf92076cd51502fa4a4_26879_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513094655242_huccd33fbbc1c70cf92076cd51502fa4a4_26879_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220513094655242"
+class="gallery-image"
+data-flex-grow="480"
+data-flex-basis="1152px"
+>&lt;/p>
+&lt;p>尝试&lt;code>/**/&lt;/code>替换空格 bypass ，发现依然无效。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513094741744.png"
+width="1158"
+height="246"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513094741744_hu4e8d6554a01e98a5ba4e8a820ad268ce_27124_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513094741744_hu4e8d6554a01e98a5ba4e8a820ad268ce_27124_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220513094741744"
+class="gallery-image"
+data-flex-grow="470"
+data-flex-basis="1129px"
+>&lt;/p>
+&lt;p>尝试 &lt;code>0xa0&lt;/code> 替换空格。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513095047414.png"
+width="1200"
+height="252"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513095047414_hue2fb6ad088b6e55ab603e637b9a99ad0_33575_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513095047414_hue2fb6ad088b6e55ab603e637b9a99ad0_33575_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220513095047414"
+class="gallery-image"
+data-flex-grow="476"
+data-flex-basis="1142px"
+>&lt;/p>
+&lt;p>看起来ok了，但看起来完全没过滤 union 和 select ，把双写去除后重试，依然没有回显，茫然。&lt;/p>
+&lt;p>好吧，重新整理思路。先测试下过滤了什么东西 &lt;code>?id=0'&amp;quot;;--%23/**/union,select&lt;/code>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513095828806.png"
+width="1045"
+height="254"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513095828806_hu3b595d65dcd9cc8de4a1ce7526d0d3b1_23651_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513095828806_hu3b595d65dcd9cc8de4a1ce7526d0d3b1_23651_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220513095828806"
+class="gallery-image"
+data-flex-grow="411"
+data-flex-basis="987px"
+>&lt;/p>
+&lt;p>注意到只剩下了 &lt;code>'&amp;quot;;&lt;/code> 幸存，前面有个双写和&lt;code>%a0union%a0&lt;/code>没被替换，所以初步怀疑正则可能是&lt;code>\b(union|select)\b&lt;/code>。尝试大小写也被过滤了，所以正则匹配应该还有个 &lt;code>i&lt;/code> 标志。&lt;/p>
+&lt;p>这种情况我有个思路是走盲注，用&lt;code>AND IF(...)&lt;/code>爆破。尝试&lt;code>?id=1'%a0and%a0if(ascii(substring(password,1,1))&amp;gt;0,true,false)%a0and%a0'1'='1&lt;/code> 有回显，条件改成&lt;code>&amp;lt;0&lt;/code>则无回显。继续爆破即可。&lt;/p>
+&lt;p>再给其他人的思路参考：&lt;/p>
+&lt;ul>
+&lt;li>审阅代码可知正则并不是我猜测的&lt;code>\b(union|select)\b&lt;/code>，而是&lt;code>union\s+select&lt;/code>，因此可以被&lt;code>%a0&lt;/code>绕过，正常&lt;code>union select&lt;/code> 或者 &lt;code>union all select&lt;/code> 可破。&lt;/li>
+&lt;/ul>
+&lt;h2 id="less-29">Less-29&lt;/h2>
+&lt;p>提示 protection with WAF, this site protected by world&amp;rsquo;s best firewall.&lt;/p>
+&lt;p>测试过滤了什么东西。&lt;code>?id=1'&amp;quot;;--%23/**/%20select,union,and,or,SeLect,UniOn,seselectlect,uniunionon&lt;/code>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513103434746.png"
+width="1734"
+height="89"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513103434746_hubce0d817c4d63d33fd9ff2720c3a3d00_13380_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513103434746_hubce0d817c4d63d33fd9ff2720c3a3d00_13380_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220513103434746"
+class="gallery-image"
+data-flex-grow="1948"
+data-flex-basis="4675px"
+>&lt;/p>
+&lt;p>发现什么都没过滤，看起来是单引号字符型注入。尝试 Less-28 的盲注 payload 发现成功。什么鬼？&lt;/p>
+&lt;p>尝试 &lt;code>?id=0' union select 1,version(),database() --%20&lt;/code> 发现也直接成功。&lt;/p>
+&lt;p>WAF，看看你都保护了个啥。&lt;/p>
+&lt;h3 id="waf设置">WAF设置&lt;/h3>
+&lt;p>经查，原来是我挑的这个分支 docker-compose 部署有问题=。=&lt;/p>
+&lt;p>WAF 并不属于 PHP，而是 jsp 的，在仓库目录下有个 &lt;code>tomcat.zip&lt;/code> 保存了 WAF 的内容，需要单独部署。&lt;/p>
+&lt;p>参考&lt;a class="link" href="https://www.jianshu.com/p/46cb6c354de5" target="_blank" rel="noopener"
+>sqli-labs: Less-29 - Less-31&lt;/a> 这篇文章了解到架构大体上就是 tomcat 过滤参数后反代 apache 服务，但仔细看了下 WAF 内容发现没有对 Less-29~Less-32 之外的页面反代，导致把 tomcat 挂在 80 端口的话就访问不到其他没设置 WAF 的页面。&lt;/p>
+&lt;p>合理的架构应该是这样。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513135801459.png"
+width="644"
+height="270"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513135801459_hu920b318a879aa14835f862755577c731_27482_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513135801459_hu920b318a879aa14835f862755577c731_27482_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220513135801459"
+class="gallery-image"
+data-flex-grow="238"
+data-flex-basis="572px"
+>&lt;/p>
+&lt;p>修改 &lt;code>docker-compose.yaml&lt;/code> 如下&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">version&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s1">&amp;#39;3&amp;#39;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="nt">services&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">reverseproxy&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">image&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s2">&amp;#34;nginx:mainline&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">depends_on&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">web&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">waf&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">ports&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="m">80&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="m">80&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">links&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">web:web&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">waf:waf&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">volumes&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="s2">&amp;#34;./etc/nginx_default.conf:/etc/nginx/conf.d/default.conf&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">db&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">image&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s2">&amp;#34;mysql:5.7.33&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">environment&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">MYSQL_ROOT_PASSWORD&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">toor&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">MYSQL_ROOT_HOST&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s2">&amp;#34;%&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">ports&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="m">3306&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="m">3306&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">web&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">depends_on&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">db&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">image&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s2">&amp;#34;php:5.3-apache&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">volumes&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="s2">&amp;#34;.:/var/www/html&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="s2">&amp;#34;./etc/apache_default:/etc/apache2/sites-available/000-default.conf&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="s2">&amp;#34;./etc/htaccess:/var/www/html/.htaccess&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">environment&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">DB_HOST&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s2">&amp;#34;db&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">DB_PASS&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s2">&amp;#34;toor&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">links&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">db:db&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">waf&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">depends_on&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">db&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">image&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="s1">&amp;#39;tomcat:jre8-openjdk-bullseye&amp;#39;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">volumes&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="s2">&amp;#34;./WAF/sqli-labs:/usr/local/tomcat/webapps&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="s2">&amp;#34;./mysql-connector-java.jar:/usr/local/tomcat/lib/mysql-connector-java.jar&amp;#34;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">links&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">db:db&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="l">web:web&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>添加&lt;code>waf&lt;/code>和&lt;code>reverseproxy&lt;/code>，&lt;code>waf&lt;/code>用&lt;code>tomcat&lt;/code>官方容器不需要配置，但源码&lt;code>index.jsp&lt;/code>里请求地址要改。还要从 MySQL 官网单独下载一个 &lt;code>mysql-connector-java&lt;/code> 的 jar 包挂载进去。&lt;/p>
+&lt;p>&lt;code>reverseproxy&lt;/code> 用 &lt;code>nginx:mainline&lt;/code>，简单配一下反代规则。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-nginx" data-lang="nginx">&lt;span class="k">upstream&lt;/span> &lt;span class="s">lab&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kn">server&lt;/span> &lt;span class="s">web&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">upstream&lt;/span> &lt;span class="s">tomcat&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kn">server&lt;/span> &lt;span class="n">waf&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="mi">8080&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">server&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kn">listen&lt;/span> &lt;span class="mi">80&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kn">listen&lt;/span> &lt;span class="s">[::]:80&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kn">server_name&lt;/span> &lt;span class="s">localhost&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kn">location&lt;/span> &lt;span class="s">/&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kn">proxy_pass&lt;/span> &lt;span class="s">http://lab&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kn">proxy_set_header&lt;/span> &lt;span class="s">Host&lt;/span> &lt;span class="nv">$http_host&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kn">proxy_set_header&lt;/span> &lt;span class="s">X-Real-IP&lt;/span> &lt;span class="nv">$remote_addr&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kn">location&lt;/span> &lt;span class="p">~&lt;/span> &lt;span class="sr">^/Less-(29|30|31|32)[a-zA-Z]?/&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kn">proxy_pass&lt;/span> &lt;span class="s">http://tomcat&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kn">proxy_set_header&lt;/span> &lt;span class="s">Host&lt;/span> &lt;span class="nv">$http_host&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="kn">proxy_set_header&lt;/span> &lt;span class="s">X-Real-IP&lt;/span> &lt;span class="nv">$remote_addr&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>到这一步就应该能同时访问 WAF 和其他题目了。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513140140027.png"
+width="1339"
+height="629"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513140140027_hu59b49e8b56be885038de39fb4bac57a5_457416_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513140140027_hu59b49e8b56be885038de39fb4bac57a5_457416_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220513140140027"
+class="gallery-image"
+data-flex-grow="212"
+data-flex-basis="510px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513140239000.png"
+width="1395"
+height="632"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513140239000_hu5e114f83468c3e0191de9526b05f3db1_450543_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513140239000_hu5e114f83468c3e0191de9526b05f3db1_450543_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220513140239000"
+class="gallery-image"
+data-flex-grow="220"
+data-flex-basis="529px"
+>&lt;/p>
+&lt;h3 id="重新解题">重新解题&lt;/h3>
+&lt;p>审阅下WAF代码。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;span class="lnt">9
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&amp;lt;%
+// ... 略
+String rex = &amp;#34;^\\d+$&amp;#34;;
+Boolean match = id.matches(rex);
+if(match==true) {
+// ... 请求 web 服务
+} else {
+response.sendRedirect(&amp;#34;hacked.jsp&amp;#34;);
+}
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>看起来无懈可击，正则匹配整个&lt;code>id&lt;/code>参数必须是纯数字。再看下 Less-29 原题代码，&lt;code>select * from users where id='$id' limit 0,1&lt;/code>，好了这题我确实不懂了，知识盲区。看别的大佬的题解：&lt;/p>
+&lt;blockquote>
+&lt;p>&lt;strong>问：&lt;/strong>&lt;code>index.php?id=1&amp;amp;id=2&lt;/code>，这时回显是&lt;code>id=1&lt;/code>还是&lt;code>id=2&lt;/code>呢？&lt;/p>
+&lt;p>**答：**apache (php) 解析最后一个参数，即回显&lt;code>id=2&lt;/code>；tomcat (jsp) 解析第
+一个参数，即回显&lt;code>id=1&lt;/code>。&lt;/p>
+&lt;p>作者：Hyafinthus 链接：https://www.jianshu.com/p/46cb6c354de5&lt;/p>
+&lt;/blockquote>
+&lt;p>这是一个利用 &lt;code>apache+php&lt;/code> 和 &lt;code>tomcat+jsp&lt;/code> 对重名 query string 参数解析结果的绕过。我们尝试下 &lt;code>?id=1&amp;amp;id=2'&lt;/code>，成功绕过。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513143042849.png"
+width="1334"
+height="498"
+srcset="https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513143042849_hu4cb981f7210b33b31a88be9915dd45b4_221345_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/sqli-labs-training-5/image-20220513143042849_hu4cb981f7210b33b31a88be9915dd45b4_221345_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220513143042849"
+class="gallery-image"
+data-flex-grow="267"
+data-flex-basis="642px"
+>&lt;/p>
+&lt;p>剩下就不多谈了，把注入的 payload 放到第二个参数里就可以绕过 WAF 的防御。&lt;/p>
+&lt;p>最后补充一点如何判断服务器类型。一个主要的办法就是看 HTTP 响应里的 &lt;code>Server&lt;/code> 头——但一般多个服务器后端的情况下，更可能出现的是一个大反代服务去代理其他所有服务，根据 url 来匹配转发。这种情况下 &lt;code>Server&lt;/code> 头一般就固定是反代服务器了。在这题里是&lt;code>nginx/1.21.6&lt;/code>，我们看不到&lt;code>apache&lt;/code>和&lt;code>tomcat&lt;/code>。&lt;/p>
+&lt;p>另一种方法是靠经验判断=。=一般来说，写 php 的喜欢配 apache 或者 nginx，写 jsp 的会优先考虑java的容器比如&lt;code>tomcat&lt;/code>。写 go 的一般裸奔或者配个 nginx 反代，Python 就可能是 uwsgi 或者别的实现 WSGI 协议的服务器或者裸奔，现在也可能有 ASGI 的服务器。这些只能靠对后端生态的了解来猜测了。如果是前后端分离架构的话，后端开发语言和环境的特征就更难找了。&lt;/p>
+&lt;h2 id="less-30">Less-30&lt;/h2>
+&lt;p>WAF，无错误回显，有正确回显，字符型注入双引号。&lt;/p>
+&lt;p>可以考虑用 &lt;code>union select&lt;/code> 解决，WAF 绕过方法和 Less-29 一样。&lt;/p>
+&lt;h2 id="less-31">Less-31&lt;/h2>
+&lt;p>和 Less-30 一样。 WTF ？看了眼源码发现就多了一个右括号。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>时间有限，还得抓紧开始看自考的课程。今天就先这样意思意思，没别的意思。&lt;/p>
+&lt;p>sqli-labs 的 WAF 感觉怪怪的，不像是之前见过的 php 的 WAF，绕过的思路感觉还是比较有趣的，反代形式的WAF如果不注意可能会被这个问题坑到。&lt;/p>
+&lt;p>28题审阅源码才发现过滤方法有漏洞，测 SQL 注入问题的时候还得多准备点各种 payload。我感觉是有很大自动测的空间，可以自己写个测试脚本啥的，但 sqlmap 珠玉在前=。= 或许有机会看看 sqlmap 源码会有更多启发。&lt;/p>
+&lt;p>今天就这样，辛苦我自己啦。&lt;/p></description></item><item><title>sqli-labs 实验记录 #4</title><link>https://nnnewb.github.io/blog/p/sqli-labs-training-4/</link><pubDate>Thu, 12 May 2022 17:23:32 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/sqli-labs-training-4/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>惯例的前言，虽然没什么可说的。本篇从 page-2 开始，page-2 开头还是 21/22 这两题，base64 编码加上引号注入即可完成。正文从 23 开始。&lt;/p>
 &lt;h2 id="less-23">Less-23&lt;/h2>
 &lt;p>提示 error based, no comments。所以应该是屏蔽了 &lt;code>--&lt;/code>、&lt;code>#&lt;/code>和&lt;code>/**/&lt;/code>，所以注入要看SQL注入位置的后半句SQL怎么写的了。&lt;/p>
