@@ -9,6 +9,8 @@ tags:
 - 逆向
 - 汇编
 - Windows
+- security
+- binary-analysis
 ---
 
 ## 前言

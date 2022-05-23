@@ -11,6 +11,8 @@ tags:
 - c++
 - python
 - windows
+- security
+- binary-analysis
 ---
 
 ## 前言

@@ -10,6 +10,8 @@ tags:
 - windows
 - c++
 - 汇编
+- security
+- binary-analysis
 ---
 
 ## 前言

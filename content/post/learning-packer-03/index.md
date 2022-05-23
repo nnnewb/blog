@@ -11,6 +11,8 @@ tags:
 - python
 - 汇编
 - windows
+- security
+- binary-analysis
 ---
 
 ## 前言

@@ -7,6 +7,7 @@ categories:
 tags:
 - security
 - dvwa
+- sqli
 ---
 
 ## 前言

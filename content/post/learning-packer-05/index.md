@@ -10,6 +10,8 @@ tags:
 - windows
 - c++
 - python
+- security
+- binary-analysis
 ---
 
 ## 前言

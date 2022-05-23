@@ -7,6 +7,7 @@ categories:
 tags:
 - security
 - dvwa
+- xss
 ---
 
 ## 前言
