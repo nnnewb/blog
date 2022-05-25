@@ -1,4 +1,86 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>mysql on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/mysql/</link><description>Recent content in mysql on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Mon, 14 Mar 2022 12:30:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/mysql/index.xml" rel="self" type="application/rss+xml"/><item><title>记一次MySQL JOIN优化</title><link>https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/</link><pubDate>Mon, 14 Mar 2022 12:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png" alt="Featured image of post 记一次MySQL JOIN优化" />&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>mysql on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/mysql/</link><description>Recent content in mysql on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 25 May 2022 10:21:12 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/mysql/index.xml" rel="self" type="application/rss+xml"/><item><title>一个MySQL死锁问题排查</title><link>https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/</link><pubDate>Wed, 25 May 2022 10:21:12 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash.jpg" alt="Featured image of post 一个MySQL死锁问题排查" />&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>并不是 MySQL 的死锁检测报错，而是一个业务代码架构上的问题导致的死锁。MySQL 只报了 &lt;code>Error 1205: Lock wait timeout exceeded; try restarting transaction&lt;/code> 。&lt;/p>
+&lt;p>感觉还是值得一谈的。&lt;/p>
+&lt;h2 id="现象">现象&lt;/h2>
+&lt;p>客户端每天第一次点评的时候响应速度极慢，从半分钟到一分钟不等。一开始测试跟我说这问题复现不出来，我暂时就没管。&lt;/p>
+&lt;p>第二天测试告诉我稳定复现了，第一次点评一定这么慢，于是要了客户端的日志，拿到请求 ID 后开始看跟踪情况。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525092418014.png"
+width="432"
+height="178"
+srcset="https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525092418014_hu752f829b91ccecf22ff250568853aca9_16764_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525092418014_hu752f829b91ccecf22ff250568853aca9_16764_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220525092418014"
+class="gallery-image"
+data-flex-grow="242"
+data-flex-basis="582px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525092441881.png"
+width="691"
+height="204"
+srcset="https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525092441881_hucc30c4051b8ae687225e03d8f66504e0_15879_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525092441881_hucc30c4051b8ae687225e03d8f66504e0_15879_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220525092441881"
+class="gallery-image"
+data-flex-grow="338"
+data-flex-basis="812px"
+>&lt;/p>
+&lt;h2 id="排查">排查&lt;/h2>
+&lt;h3 id="代码审阅和整理">代码审阅和整理&lt;/h3>
+&lt;p>查看源码，初步断定是一个 &lt;em>每日点评奖励经验值&lt;/em> 的业务里调用了这个 &lt;code>AddExperience&lt;/code> RPC 函数，因为 MySQL 错误提示是明确指出锁等待超时，所以还得看一眼 &lt;code>AddExperience&lt;/code> 这个 RPC 函数里涉事的 SQL 语句。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">insert&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">user&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">experience&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="n">user_id&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">values&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">if&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">?&amp;gt;&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="o">?&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">),&lt;/span>&lt;span class="o">?&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">ON&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">DUPLICATE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">KEY&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">UPDATE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">experience&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="k">if&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">?&amp;gt;&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="n">experience&lt;/span>&lt;span class="o">+?&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="n">experience&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>好了，可以开始笑了。不要问我为什么这样写，又不是我写的&amp;hellip;&amp;hellip; 问了写下这句SQL的同事想做什么，回答就不放了，总之和这句 SQL 的实际干的事没什么关系。&lt;/p>
+&lt;p>基于奥卡姆剃刀原理先把这句 &lt;code>insert on duplicate&lt;/code> 改成平平无奇的 &lt;code>update&lt;/code> ，发现问题依然存在。&lt;/p>
+&lt;h3 id="死锁来源">死锁来源&lt;/h3>
+&lt;p>回到错误信息，&lt;code>Lock wait timeout exceeded&lt;/code>，锁的是什么？从上面爆出错误的SQL看出应该是锁了 &lt;code>user&lt;/code> 表，但不确定具体锁类型。&lt;/p>
+&lt;p>问题就变成了，谁加的锁？因为故障能稳定复现，开发环境几乎没有负载，也就是几乎不可能因为其他请求造成死锁，加锁者就在这个请求内。&lt;/p>
+&lt;p>于是重新纵览整个请求流程涉事的 SQL 语句，注意到几点：&lt;/p>
+&lt;ol>
+&lt;li>因为一些历史原因，涉事的 RPC 尚无分布式事务支持。&lt;/li>
+&lt;li>请求 RPC 时，事务还没提交。&lt;/li>
+&lt;/ol>
+&lt;p>基本确认来源是事务内。排查发现并没有直接 &lt;code>select ... from user&lt;/code> 这样的 SQL，但注意到有表和&lt;code>user&lt;/code>表存在外键关联，涉事SQL是&lt;code>insert into&lt;/code>。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525094926344.png"
+width="1331"
+height="79"
+srcset="https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525094926344_hubcc82659852dc707364fe2175b10763b_3707_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525094926344_hubcc82659852dc707364fe2175b10763b_3707_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220525094926344"
+class="gallery-image"
+data-flex-grow="1684"
+data-flex-basis="4043px"
+>&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525095117983.png"
+width="867"
+height="105"
+srcset="https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525095117983_hu7026973f0748ebba8e8b77571ead20d8_12762_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/a-mysql-deadlock-investigation/image-20220525095117983_hu7026973f0748ebba8e8b77571ead20d8_12762_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220525095117983"
+class="gallery-image"
+data-flex-grow="825"
+data-flex-basis="1981px"
+>&lt;/p>
+&lt;p>查询MySQL文档没有收获（关于&lt;code>insert&lt;/code>是否会锁外键的问题），但谷歌发现&lt;a class="link" href="https://stackoverflow.com/questions/54672633/do-mysql-transactions-for-insert-lock-foreign-key-referenced-tables" target="_blank" rel="noopener"
+>stackoverflow 上已有相同的问题&lt;/a>，答案是 yes，会在记录上加共享锁。&lt;/p>
+&lt;p>至此，死锁来源基本算查明了。&lt;/p>
+&lt;h2 id="解决和预防">解决和预防&lt;/h2>
+&lt;h3 id="解决方案">解决方案&lt;/h3>
+&lt;p>处理说简单其实是简单的，把加经验的SQL挪到事务里就完事了，事实上也是这么解决的（如果看过之前我吐槽这项目的博客的话就会知道这项目就是农村无人管理的露天茅厕，矢上雕花大可不必）。&lt;/p>
+&lt;h3 id="预防">预防&lt;/h3>
+&lt;p>微服务架构为什么要分库？在遇到这个问题前我也没什么直观的感受，大约是出于性能和扩展性的考量。但遇到这问题后我可以再补充个回答了：防呆。&lt;/p>
+&lt;p>在软件工程里怎么防止引入低质量代码有很多解决方法，比如机检、人工审阅、技术方案提前做设计评审、测试全覆盖等等，往大了说，可以再挑个阵营：TDD、DDD什么的，指导架构设计。尽量遵循最佳实践不要把坑再踩一遍诸如此类。学历史也不用从猿人扮演开始吧？&lt;/p>
+&lt;p>但真的很难避免一个已经很复杂的业务里引入一个看似简单的功能，结果因为架构上挖的坑导致产生难以排查的故障。&lt;/p>
+&lt;p>扯远了。这个问题预防说简单也简单，遵循最佳实践，该分库分库，加强代码审阅，提高意识巴拉巴拉。但凡能做到一点也不至于把这项目变成露天粪坑。总之，怎么给服务定好边界在最初的开发过程里就是最重要的问题。边界都不清晰，你中有我我中有你就别整什么微服务了。&lt;/p>
+&lt;p>架构设计上总是脱不开那句“高内聚、低耦合”，微服务的优势就在单个服务的独立性，可以独立开发、独立维护，不用对整个系统有深入了解。用了微服务，又不在服务间划清界限，用单体应用的思路一把梭写完再分成几个可执行文件，不出问题才是真的怪事，既不内聚又高耦合，还不如就写个单体应用，起码不用调试和部署的时候都跟吃了矢一样。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>顺便再一说，这项目现在还在同时用 &lt;code>sql&lt;/code> 和 &lt;code>xorm&lt;/code>，所以一个不小心，接口交叉使用了两个事务，还是会死锁。&lt;/p>
+&lt;p>越写越烦躁。先这样吧。&lt;/p></description></item><item><title>记一次MySQL JOIN优化</title><link>https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/</link><pubDate>Mon, 14 Mar 2022 12:30:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/note-of-mysql-join-optimize/image-20220314150141759.png" alt="Featured image of post 记一次MySQL JOIN优化" />&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>长话短说，这个性能问题是上周修一个bug的时候企图偷懒引入的。因为 xorm 在连接查询的时候模型结构必须是和 &lt;code>join&lt;/code> 的顺序保持一致，中间还不能有遗漏，不然查询结果填充到结构里的时候就会错位。&lt;/p>
 &lt;p>而业务里这个条件又是可选的——用户不传的时候不需要 &lt;code>INNER JOIN&lt;/code>；但为了让 xorm 开心，同时尽量别把整个函数签名和返回类型都改了把影响范围搞太大，所以就偷了个懒：既然 xorm 要 &lt;code>JOIN&lt;/code> ，那就 &lt;code>LEFT JOIN&lt;/code>加个恒假的条件呗。于是就顺手写下了下面的代码。&lt;/p>
 &lt;div class="highlight">&lt;div class="chroma">
