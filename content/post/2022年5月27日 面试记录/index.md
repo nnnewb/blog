@@ -11,8 +11,6 @@ tags:
 - python
 ---
 
-
-
 ## 前言
 
 面试完，结果只能说我对自己也不算很满意，顺带反思了一下是不是表现得太着急了。
@@ -115,6 +113,16 @@ GC进阶一点的题？面试时没答上来。讲真应该把Go的八股先看�
 行吧……
 
 简直是暴击。
+
+### docker隔离原理
+
+基础题吧。
+
+基本原理就是利用内核的 namespace 隔离了 pid、mount、network，chroot 隔离了文件系统，cgroup 控制资源使用。
+
+面试的时候忘记了一个 `UTS` ，就是隔离 hostname ，还有 IPC，还有 USER 。另外就是 cgroup 也是有 namespace 的。
+
+具体可以看 `unshare`，直接 `man unshare` 就行。
 
 ## 论述题
 
