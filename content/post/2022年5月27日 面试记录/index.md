@@ -69,6 +69,14 @@ G就是goroutine，M是操作系统线程，P是处理器。好像也有管P叫�
 
 整个模型就是 M 绑定 P，M 有个 G 队列，然后就是抢占式调度。
 
+> 2022年5月30日 订正
+>
+> 这里我的理解是错的，参考下面这图
+>
+> ![gmp模型](./GMP模型.jpg)
+>
+> P 维护队列，M 绑定 P 运行 G，当 G 阻塞的时候视阻塞类型放到 netpoller 里，或者sysmon标记成可以被抢占，或者把 G 和 M 分出去（解绑P），让其他 M 绑定 P 继续处理其他 G 。
+
 要说遗漏的内容的话 emm
 
 - GMP 还有个全局 G 队列
@@ -151,7 +159,7 @@ def timeout(seconds: float):
 
             t = threading.Thread(target=lambda: _f(s))
             t.start()
-            
+
             # acquire 会把信号量 -1 ，不满足时等待，这里利用了 acquire 自带的 timeout 参数
             # 如果问到更底层的话比如C/C++甚至汇编，可能要依赖OS功能（信号机制之类的）来唤醒，大概这样。
             if s.acquire(timeout=seconds) is False:
