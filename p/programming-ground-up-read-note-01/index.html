@@ -1,0 +1,503 @@
+<!doctype html><html lang=zh-cn dir=ltr>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 本来想继续前篇八股写GC的博客，但花了一天多的时间读mgc.go还有推荐的那本 GC handbook 发现还真不是一句两句话能讲清楚GC设计背后的理论。特别"><title>程序平地起-读书笔记</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/programming-ground-up-read-note-01/>
+<link rel=stylesheet href=/blog/scss/style.min.5c88a5bc75732c20b0a5ccc3be5c148f782b1c20e20b6c73b276723850a33d6b.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
+<script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
+<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="程序平地起-读书笔记">
+<meta property="og:description" content="前言 本来想继续前篇八股写GC的博客，但花了一天多的时间读mgc.go还有推荐的那本 GC handbook 发现还真不是一句两句话能讲清楚GC设计背后的理论。特别">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/programming-ground-up-read-note-01/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="assembly"><meta property="article:tag" content="读书笔记"><meta property="article:tag" content="Programming Ground Up"><meta property="article:published_time" content="2022-06-14T10:38:47+08:00"><meta property="article:modified_time" content="2022-06-14T10:38:47+08:00">
+<meta name=twitter:title content="程序平地起-读书笔记">
+<meta name=twitter:description content="前言 本来想继续前篇八股写GC的博客，但花了一天多的时间读mgc.go还有推荐的那本 GC handbook 发现还真不是一句两句话能讲清楚GC设计背后的理论。特别">
+</head>
+<body class=article-page>
+<script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
+</div>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<li>
+<a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<span>标签</span>
+</a>
+</li>
+<li>
+<a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+<li id=dark-mode-toggle><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span>
+</li>
+</div>
+</ol>
+</aside>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/assembly/>
+assembly
+</a>
+</header>
+<div class=article-title-wrapper>
+<h2 class=article-title>
+<a href=/blog/p/programming-ground-up-read-note-01/>程序平地起-读书笔记</a>
+</h2>
+</div>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published datetime=2022-06-14T10:38:47+08:00>2022年 6月 14日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 8 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<h2 id=前言>前言</h2>
+<p>本来想继续前篇八股写GC的博客，但花了一天多的时间读<code>mgc.go</code>还有推荐的那本 <em>GC handbook</em> 发现还真不是一句两句话能讲清楚GC设计背后的理论。特别是关于写屏障的作用和如何生效这块尤其难读，go是个有编译器配合打辅助的GC，写屏障并不全在 runtime，还涉及编译时插入的代码，要深入还得分析 go 的内存模型巴拉巴拉 &mldr;</p>
+<p>但背八股就和这个没关系了，八股不用去看<code>mgc.go</code>也不用分析编译器怎么插入的写屏障。</p>
+<p>总而言之，时隔那么多天之后，决定把一本以前读过一点的书捡起来继续读，顺便做下读书笔记。书叫做 <em>Programming from the Ground Up</em> ，我看没中译本所以瞎叫它程序平地起，无所谓啦。</p>
+<p>书是开源的，开源协议 GNU Free Documentation License，成书于 2004 年，目前处于 Production/Stable 状态。<a class=link href=http://savannah.nongnu.org/projects/pgubook/ target=_blank rel=noopener>网站地址</a>。讲道理还别嫌旧，王爽那本汇编语言还是 03 年发的初版，我也读过，讲道理门槛还是有点高不好实践的，毕竟上手就跟你讲一大堆理论和实模式下编程你就配个环境都要花不少时间&mldr;&mldr;</p>
+<p>这本 PGU 起码是用户态开始了，C语言会吧，把<code>return 0</code>换成<code>movl $0, %eax</code>总能读懂了吧，从编译链接这些更贴近已有知识的地方开始学起我个人感觉是学习曲线平滑了很多，不至于一章劝退，乐趣也多很多。</p>
+<p>那废话不多说啦，这书300多页，快速过一下已经看过的部分。</p>
+<h2 id=语法>语法</h2>
+<h3 id=att-vs-intel>AT&T vs Intel</h3>
+<p>之前说学过王爽那本汇编语言，和 PGU 这书最明显的区别可能就是用了不同的汇编语法。PGU用的是 AT&T 语法，形如<code>movl $0,%eax</code>，Intel 语法就是 <code>mov eax, 0</code> 。</p>
+<p>AT&T 语法一方面多了很多符号<code>$ %</code>看起来比较“脏”，另一方面操作数顺序和 Intel 语法是反的。</p>
+<p>这里稍微逼逼两句，语法这个东西能读能写就完了，没有谁家真的是完全照着什么specification设计的语言，扩展数不胜数。比如学王爽那本的时候我用的不是 masm 而是 nasm ，大部分东西一样，不同的地方翻文档。汇编就是一套助记符，语言律师在高级语言里没前途在汇编里也没前途。</p>
+<h3 id=寻址模式和语法>寻址模式和语法</h3>
+<p>除了立即数和寄存器两种寻址模式稍特殊一点，后续的寻址模式在AT&T（我还是直接说 GCC 汇编吧）语法里都遵循一个一般形式。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>ADDRESS_OR_OFFSET(%BASE_OR_OFFSET,%INDEX,MULTIPLIER)
+</code></pre></td></tr></table>
+</div>
+</div><p>里面的所有字段都是可选的，地址的计算公式是：</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>FINAL ADDRESS = ADDRESS_OR_OFFSET + %BASE_OR_OFFSET + MULTIPLIER * %INDEX
+</code></pre></td></tr></table>
+</div>
+</div><p>例如，<code>4(%eax)</code> 就是 <code>4 + %eax + 0 * 0</code>。<code>%eax(,1,4)</code> 就是 <code>%eax + 0 + 1 * 4</code>。</p>
+<h4 id=立即数-immediate-mode-和寄存器--register-addressing-mode>立即数 immediate mode 和寄存器 register addressing mode</h4>
+<p>立即数寻址模式形如<code>$123</code>，<code>$</code>开头，就是立即数。</p>
+<p>寄存器寻址模式形如<code>%eax</code>，以<code>%</code>开头后面跟寄存器名字。</p>
+<h4 id=直接寻址-direct-addressing-mode>直接寻址 direct addressing mode</h4>
+<p>参考上述的一般形式，直接寻址就是只给出 <code>ADDRESS_OR_OFFSET</code> 字段。</p>
+<p>在指令里直接给出地址，比如<code>movl 400010, %eax</code> 就是把地址 <code>400010</code> 处 4 个字节复制到寄存器 <code>eax</code> 。</p>
+<h4 id=索引寻址-indexed-addressing-mode>索引寻址 indexed addressing mode</h4>
+<p>参考一般形式，索引寻址模式就是给出 <code>ADDRESS_OR_OFFSET(,%INDEX,MULTIPLIER)</code> 这样的地址。</p>
+<p>例如 <code>movl %eax(,0,4), %eax</code> 相当于是 <code>%eax</code> 指向一个 int32 数组，取这个数组第一个元素赋值给<code>%eax</code>，<code>eax = eax[0]</code>。以此类推，<code>movl %eax(,1,4), %eax</code> 就是 <code>eax = eax[1]</code> 。</p>
+<h4 id=间接寻址-indirect-addressing-mode>间接寻址 indirect addressing mode</h4>
+<p>参考一般形式，间接寻址就是只给<code>%BASE_OR_OFFSET</code>字段。</p>
+<p>间接寻址模式下指令包含一个保存指向数据的指针的寄存器，比如<code>movl (%eax),%ebx</code>。</p>
+<h4 id=基指针-base-pointer-addressing-mode>基指针 base pointer addressing mode</h4>
+<p>和间接寻址类似，指针+偏移值，如<code>movl 4(%eax), %eax</code>。</p>
+<h2 id=函数栈系统调用>函数、栈、系统调用</h2>
+<h3 id=栈>栈</h3>
+<p>说调用约定一般会讲 C calling conventions <em>cdecl</em> 的吧，特点是调用方清栈。但继续之前必须先说栈，因为好久没看汇编连进程的内存布局都快忘了。</p>
+<p><img src=/blog/p/programming-ground-up-read-note-01/memory-layout.png width=179 height=456 srcset="/blog/p/programming-ground-up-read-note-01/memory-layout_hu5831238b9def8826a5ba2b3fc871d2cd_9288_480x0_resize_box_3.png 480w, /blog/p/programming-ground-up-read-note-01/memory-layout_hu5831238b9def8826a5ba2b3fc871d2cd_9288_1024x0_resize_box_3.png 1024w" loading=lazy alt=memory-layout class=gallery-image data-flex-grow=39 data-flex-basis=94px></p>
+<p>这部分可以参考 APUE (<em>Advanced Programming in the UNIX Environment</em>) 一书第七章第六小节 C 程序的存储空间布局。</p>
+<p>之前看 Windows PE 文件结构的时候提到 PE 文件的节表写了PE文件里的节映射到具体哪个地址上，Linux ELF 文件的节表也有 <code>sh_addr</code> 这样的属性指定映射到内存的哪个位置。在 <code>gdb</code> 里可以用 <code>maintenance info sections</code> 指令查看节映射到的内存地址。另外和 Windows PE 文件一样，Linux 下 ELF 也有 ASLR 和重定位，两者历史包袱还是挺接近的。</p>
+<p>总之，这个布局图可供参考。比较重要的是图中的 stack 和 heap 增长方向。stack 往低地址增长，意味着要扩展栈需要的指令就是 <code>subq $8, %rsp</code> 这样的形式，回缩就是 <code>addq</code>。</p>
+<p>另外个人觉得比较有趣的一点是，因为栈是往低地址增长的，但栈上开个数组之类的情况，布局反而是从低到高。这也意味着大多时候出现越界读写，都是从低地址往高地址方向的越界，影响栈帧和更高地址上的环境变量。如果把栈设计为从低到高，那越界读写的威胁是否就小很多呢。</p>
+<p>扯远了。</p>
+<h3 id=函数和栈帧>函数和栈帧</h3>
+<p>汇编不像是其他高级语言，将函数视作一个客观、规范的语言结构，汇编里的函数是人为定义的概念，只是一段独立的汇编代码，被称作“函数”而已。</p>
+<p>函数调用就是<code>pushq %rsp</code>加上<code>jmp</code>；返回就是<code>popq %rsp</code>再<code>jmp</code>，再加上可选的 <code>addq $..., %rsp</code>，仅此而已。但如果要这样说的话未免有点太不负责任了。还是看一个实例吧，从PGU这书的例子改出来的 x86-64 版本。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>.section .text
+    .globl _start
+
+_start:
+    pushq $1
+    pushq $2
+    call add
+    pushq %rax
+    call exit_syscall
+
+add:
+    pushq %rbp
+    movq %rsp, %rbp
+    movq $0, %rax
+    addq 16(%rbp), %rax
+    addq 24(%rbp), %rax
+    popq %rbp
+    ret $16
+
+exit_syscall:
+    movq 8(%rsp), %rdi
+    movq $60, %rax
+    syscall
+</code></pre></td></tr></table>
+</div>
+</div><p>除了 <code>_start</code> 是个特殊的标签用来标识程序入口外，<code>add</code>和<code>exit_syscall</code>都是所谓的“函数”。其中<code>add</code>我尝试用<code>stdcall</code>约定（被调方清栈）来编写。</p>
+<p>可以亲手用 gdb 调试一下上面的程序，观察栈的变化。</p>
+<p>还是说栈帧。栈帧是一个人为定义的概念，就和函数一样。从函数出发我们可以看到一个函数的上下文包括：返回地址、参数、局部变量，把这些东西在栈上排列好：</p>
+<p><img src=/blog/stack-frame.png loading=lazy alt="stack frame"></p>
+<p>其中参数和返回地址由调用方 <em>caller</em> 通过 <code>push</code> 和 <code>call</code> 指令传入，局部变量由函数自己<code>sub $24,%rsp</code>开辟。</p>
+<p>中间有个可能造成误会的地方是 <code>%ebp</code> 寄存器为什么没在布局里画出来，根据 <a class=link href=https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.95.pdf target=_blank rel=noopener>System V Application Binary Interface Intel386 Architecture Processor Supplement</a> 中 Figure 3-15 可以看到这是可选的。</p>
+<p><img src=/blog/p/programming-ground-up-read-note-01/image-20220613145716515.png width=869 height=376 srcset="/blog/p/programming-ground-up-read-note-01/image-20220613145716515_hu91debd50d526c020699b4beb28f33a86_55779_480x0_resize_box_3.png 480w, /blog/p/programming-ground-up-read-note-01/image-20220613145716515_hu91debd50d526c020699b4beb28f33a86_55779_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220613145716515 class=gallery-image data-flex-grow=231 data-flex-basis=554px></p>
+<h3 id=系统调用>系统调用</h3>
+<p>系统调用和普通函数调用有很大不同，造成不同的内在原因等我啥时候读讲操作系统的书的时候再说。这里就单独看下调用约定。</p>
+<p>一般的进程内函数调用都是直接 <code>call func</code>，已知<code>call</code>其实就是压栈返回地址加上无条件跳转，仅此而已，但系统调用完全不同，因为OS的代码压根不在用户进程的虚拟地址空间里，想跳也无处可跳。用户代码里想调用内核直接提供的接口就需要一些特殊方法。</p>
+<ol>
+<li><code>int 0x80</code> 软中断法实现</li>
+<li>AMD64 提供的 <code>syscall</code> 指令实现</li>
+</ol>
+<p>系统调用自然也有调用约定，确定要调用哪个函数，如何传递参数，如何取得返回值。这方面不同OS规范不一样，Linux 遵循 System V ABI 规范（注意不同处理器架构规范也有差异）。</p>
+<p>对于AMD64架构使用 <code>syscall</code> 指令进入系统调用（<a class=link href=https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.95.pdf target=_blank rel=noopener>System V Application Binary Interface x86-64 Architecture Processor Supplement Draft Version 0.95 - A.2 AMD64 Linux Kernel Conventions - Calling Conventions</a>）参数传递顺序如下：</p>
+<div class=table-wrapper><table>
+<thead>
+<tr>
+<th>位置</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>%rax</code></td>
+<td>系统调用号</td>
+</tr>
+<tr>
+<td><code>%rdi</code></td>
+<td>参数 #1</td>
+</tr>
+<tr>
+<td><code>%rsi</code></td>
+<td>参数 #2</td>
+</tr>
+<tr>
+<td><code>%rdx</code></td>
+<td>参数 #3</td>
+</tr>
+<tr>
+<td><code>%r10</code></td>
+<td>参数 #4</td>
+</tr>
+<tr>
+<td><code>%r8</code></td>
+<td>参数 #5</td>
+</tr>
+<tr>
+<td><code>%r9</code></td>
+<td>参数 #6</td>
+</tr>
+</tbody>
+</table></div>
+<p>值得注意的是，调用约定中限制了整个系统调用最多不超过 6 个参数，全部都放在寄存器里，没有参数通过栈传递。另外，内核会破坏 <code>%rcx</code> 和 <code>%r11</code> 两个寄存器的内容，所以如果这两个寄存器需要调用方自己保存到栈上。</p>
+<p>IA32 架构用 <code>int 0x80</code> 软中断实现系统调用（没找到具体规范），<code>%eax</code>传递调用号，<code>%ebx</code>, <code>%ecx</code>, <code>%edx</code>, <code>%esi</code>, <code>%edi</code>, <code>%ebp</code> 六个寄存器用于传递参数，同样限制系统调用最多不超过6个参数。</p>
+<p>知道这些之后就可以用系统调用 <code>write</code> 写一个简单的 Hello world 了。</p>
+<h2 id=实验>实验</h2>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>.section .data
+helloworld:
+    .ascii &#34;Hello world\n&#34;
+helloworld_end:
+    .equ helloworld_len, helloworld_end - helloworld
+    .equ SYS_WRITE,1
+    .equ STDOUT,1
+.section .text
+    .globl _start
+_start:
+    movq $SYS_WRITE, %rax       # write
+    movq $STDOUT, %rdi          # int fd
+    movq $helloworld, %rsi      # char* buf
+    movq $helloworld_len, %rdx  # size_t len
+    syscall
+
+    # call _exit()
+    movq %rax, %rdi
+    movq $60, %rax
+    syscall
+</code></pre></td></tr></table>
+</div>
+</div><p>用 gdb 单步调试，在第一个 <code>syscall</code> 前后可以看到这样的结果。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>(gdb) l
+10      _start:
+11          movq $SYS_WRITE, %rax       # write
+12          movq $STDOUT, %rdi          # int fd
+13          movq $helloworld, %rsi      # char* buf
+14          movq $helloworld_len, %rdx  # size_t len
+15          syscall
+16
+17          # call _exit()
+18          movq %rax, %rdi
+19          movq $60, %rax
+(gdb) i r $rsi
+rsi            0x402000            4202496
+(gdb) i r $rdi
+rdi            0x1                 1
+(gdb) i r $rdx
+rdx            0xc                 12
+(gdb) x/s $rsi
+0x402000:       &#34;Hello world\n&#34;
+(gdb) ni
+Hello world
+18          movq %rax, %rdi
+</code></pre></td></tr></table>
+</div>
+</div><p>用<code>file</code>命令可以看到编译后的文件信息：</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>$ file hello
+hello: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, with debug_info, not stripped
+</code></pre></td></tr></table>
+</div>
+</div><h2 id=总结>总结</h2>
+<p>了解怎么用系统调用后，就能很大程度发挥想象了。</p>
+<p>这篇读书笔记卡了我一个星期，本来计划读GC那本书也没读，PGU原书讲的也是 x86，和 x86-64 有些不同的地方，直接套用先前学汇编的时候 nasm 的一丁点经验对学习的帮助也有限。</p>
+<p>光是找 System V ABI 规范文档和文档里关于系统调用的约定就花了一下午不止，最后还没找到 32 位 <code>INT 0X80</code> 到底哪儿规定的。</p>
+<p>随着拿到新工作的 offer，事情忽然就开始堆积起来了。数据库系统原理的网课讲得稀烂，只能靠自己刷题。马原自从看完之后也没复习和刷题。10月不知道能报上几门。工作上一边要交接，一边要把剩下的一个大功能捋清楚。偏偏这功能产品部还火急火燎要在6月底前上线，还刚好卡在我提离职后让我干。明知这功能铁定全是坑也没辙了，选了个最保守的技术方案，别等我闪人了再搞出大问题让我救火就行。</p>
+<p>至于博客，想水两篇还是有机会的，但偏偏想学的东西都不是好水的。GC那书偏理论，浅尝辄止那就跟抄书没两样，结合实践那就不是一两天能调试好的。PGU这书倒是很实践，但偏偏我又是个实践的时候喜欢钻牛角尖的，没事儿非要找个规范或者依据出来。即便如此博客还是口胡居多。</p>
+<p>我寻思是不是应该多写点没那么多抱怨的生活内容，比如给周末刷的电影和动画写个观后感什么的。</p>
+<p>六月第一篇博客拖到了14号才发，就先这样吧。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/assembly/>assembly</a>
+<a href=/blog/tags/%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/>读书笔记</a>
+<a href=/blog/tags/programming-ground-up/>Programming Ground Up</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
+</article>
+<link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css>
+<div id=vssue></div>
+<script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
+<script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"程序平地起-读书笔记",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 -
+2022 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#前言>前言</a></li>
+<li><a href=#语法>语法</a>
+<ol>
+<li><a href=#att-vs-intel>AT&T vs Intel</a></li>
+<li><a href=#寻址模式和语法>寻址模式和语法</a>
+<ol>
+<li><a href=#立即数-immediate-mode-和寄存器--register-addressing-mode>立即数 immediate mode 和寄存器 register addressing mode</a></li>
+<li><a href=#直接寻址-direct-addressing-mode>直接寻址 direct addressing mode</a></li>
+<li><a href=#索引寻址-indexed-addressing-mode>索引寻址 indexed addressing mode</a></li>
+<li><a href=#间接寻址-indirect-addressing-mode>间接寻址 indirect addressing mode</a></li>
+<li><a href=#基指针-base-pointer-addressing-mode>基指针 base pointer addressing mode</a></li>
+</ol>
+</li>
+</ol>
+</li>
+<li><a href=#函数栈系统调用>函数、栈、系统调用</a>
+<ol>
+<li><a href=#栈>栈</a></li>
+<li><a href=#函数和栈帧>函数和栈帧</a></li>
+<li><a href=#系统调用>系统调用</a></li>
+</ol>
+</li>
+<li><a href=#实验>实验</a></li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>

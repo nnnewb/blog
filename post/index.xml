@@ -1,4 +1,307 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/post/</link><description>Recent content in Posts on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 31 May 2022 16:14:47 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/post/index.xml" rel="self" type="application/rss+xml"/><item><title>Go面试八股之GMP模型</title><link>https://nnnewb.github.io/blog/p/go-interview-question-gmp-model/</link><pubDate>Tue, 31 May 2022 16:14:47 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/go-interview-question-gmp-model/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/post/</link><description>Recent content in Posts on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 14 Jun 2022 10:38:47 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/post/index.xml" rel="self" type="application/rss+xml"/><item><title>程序平地起-读书笔记</title><link>https://nnnewb.github.io/blog/p/programming-ground-up-read-note-01/</link><pubDate>Tue, 14 Jun 2022 10:38:47 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/programming-ground-up-read-note-01/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>本来想继续前篇八股写GC的博客，但花了一天多的时间读&lt;code>mgc.go&lt;/code>还有推荐的那本 &lt;em>GC handbook&lt;/em> 发现还真不是一句两句话能讲清楚GC设计背后的理论。特别是关于写屏障的作用和如何生效这块尤其难读，go是个有编译器配合打辅助的GC，写屏障并不全在 runtime，还涉及编译时插入的代码，要深入还得分析 go 的内存模型巴拉巴拉 &amp;hellip;&lt;/p>
+&lt;p>但背八股就和这个没关系了，八股不用去看&lt;code>mgc.go&lt;/code>也不用分析编译器怎么插入的写屏障。&lt;/p>
+&lt;p>总而言之，时隔那么多天之后，决定把一本以前读过一点的书捡起来继续读，顺便做下读书笔记。书叫做 &lt;em>Programming from the Ground Up&lt;/em> ，我看没中译本所以瞎叫它程序平地起，无所谓啦。&lt;/p>
+&lt;p>书是开源的，开源协议 GNU Free Documentation License，成书于 2004 年，目前处于 Production/Stable 状态。&lt;a class="link" href="http://savannah.nongnu.org/projects/pgubook/" target="_blank" rel="noopener"
+>网站地址&lt;/a>。讲道理还别嫌旧，王爽那本汇编语言还是 03 年发的初版，我也读过，讲道理门槛还是有点高不好实践的，毕竟上手就跟你讲一大堆理论和实模式下编程你就配个环境都要花不少时间&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>这本 PGU 起码是用户态开始了，C语言会吧，把&lt;code>return 0&lt;/code>换成&lt;code>movl $0, %eax&lt;/code>总能读懂了吧，从编译链接这些更贴近已有知识的地方开始学起我个人感觉是学习曲线平滑了很多，不至于一章劝退，乐趣也多很多。&lt;/p>
+&lt;p>那废话不多说啦，这书300多页，快速过一下已经看过的部分。&lt;/p>
+&lt;h2 id="语法">语法&lt;/h2>
+&lt;h3 id="att-vs-intel">AT&amp;amp;T vs Intel&lt;/h3>
+&lt;p>之前说学过王爽那本汇编语言，和 PGU 这书最明显的区别可能就是用了不同的汇编语法。PGU用的是 AT&amp;amp;T 语法，形如&lt;code>movl $0,%eax&lt;/code>，Intel 语法就是 &lt;code>mov eax, 0&lt;/code> 。&lt;/p>
+&lt;p>AT&amp;amp;T 语法一方面多了很多符号&lt;code>$ %&lt;/code>看起来比较“脏”，另一方面操作数顺序和 Intel 语法是反的。&lt;/p>
+&lt;p>这里稍微逼逼两句，语法这个东西能读能写就完了，没有谁家真的是完全照着什么specification设计的语言，扩展数不胜数。比如学王爽那本的时候我用的不是 masm 而是 nasm ，大部分东西一样，不同的地方翻文档。汇编就是一套助记符，语言律师在高级语言里没前途在汇编里也没前途。&lt;/p>
+&lt;h3 id="寻址模式和语法">寻址模式和语法&lt;/h3>
+&lt;p>除了立即数和寄存器两种寻址模式稍特殊一点，后续的寻址模式在AT&amp;amp;T（我还是直接说 GCC 汇编吧）语法里都遵循一个一般形式。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">ADDRESS_OR_OFFSET(%BASE_OR_OFFSET,%INDEX,MULTIPLIER)
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>里面的所有字段都是可选的，地址的计算公式是：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">FINAL ADDRESS = ADDRESS_OR_OFFSET + %BASE_OR_OFFSET + MULTIPLIER * %INDEX
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>例如，&lt;code>4(%eax)&lt;/code> 就是 &lt;code>4 + %eax + 0 * 0&lt;/code>。&lt;code>%eax(,1,4)&lt;/code> 就是 &lt;code>%eax + 0 + 1 * 4&lt;/code>。&lt;/p>
+&lt;h4 id="立即数-immediate-mode-和寄存器--register-addressing-mode">立即数 immediate mode 和寄存器 register addressing mode&lt;/h4>
+&lt;p>立即数寻址模式形如&lt;code>$123&lt;/code>，&lt;code>$&lt;/code>开头，就是立即数。&lt;/p>
+&lt;p>寄存器寻址模式形如&lt;code>%eax&lt;/code>，以&lt;code>%&lt;/code>开头后面跟寄存器名字。&lt;/p>
+&lt;h4 id="直接寻址-direct-addressing-mode">直接寻址 direct addressing mode&lt;/h4>
+&lt;p>参考上述的一般形式，直接寻址就是只给出 &lt;code>ADDRESS_OR_OFFSET&lt;/code> 字段。&lt;/p>
+&lt;p>在指令里直接给出地址，比如&lt;code>movl 400010, %eax&lt;/code> 就是把地址 &lt;code>400010&lt;/code> 处 4 个字节复制到寄存器 &lt;code>eax&lt;/code> 。&lt;/p>
+&lt;h4 id="索引寻址-indexed-addressing-mode">索引寻址 indexed addressing mode&lt;/h4>
+&lt;p>参考一般形式，索引寻址模式就是给出 &lt;code>ADDRESS_OR_OFFSET(,%INDEX,MULTIPLIER)&lt;/code> 这样的地址。&lt;/p>
+&lt;p>例如 &lt;code>movl %eax(,0,4), %eax&lt;/code> 相当于是 &lt;code>%eax&lt;/code> 指向一个 int32 数组，取这个数组第一个元素赋值给&lt;code>%eax&lt;/code>，&lt;code>eax = eax[0]&lt;/code>。以此类推，&lt;code>movl %eax(,1,4), %eax&lt;/code> 就是 &lt;code>eax = eax[1]&lt;/code> 。&lt;/p>
+&lt;h4 id="间接寻址-indirect-addressing-mode">间接寻址 indirect addressing mode&lt;/h4>
+&lt;p>参考一般形式，间接寻址就是只给&lt;code>%BASE_OR_OFFSET&lt;/code>字段。&lt;/p>
+&lt;p>间接寻址模式下指令包含一个保存指向数据的指针的寄存器，比如&lt;code>movl (%eax),%ebx&lt;/code>。&lt;/p>
+&lt;h4 id="基指针-base-pointer-addressing-mode">基指针 base pointer addressing mode&lt;/h4>
+&lt;p>和间接寻址类似，指针+偏移值，如&lt;code>movl 4(%eax), %eax&lt;/code>。&lt;/p>
+&lt;h2 id="函数栈系统调用">函数、栈、系统调用&lt;/h2>
+&lt;h3 id="栈">栈&lt;/h3>
+&lt;p>说调用约定一般会讲 C calling conventions &lt;em>cdecl&lt;/em> 的吧，特点是调用方清栈。但继续之前必须先说栈，因为好久没看汇编连进程的内存布局都快忘了。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/memory-layout.png"
+width="179"
+height="456"
+srcset="https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/memory-layout_hu5831238b9def8826a5ba2b3fc871d2cd_9288_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/memory-layout_hu5831238b9def8826a5ba2b3fc871d2cd_9288_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="memory-layout"
+class="gallery-image"
+data-flex-grow="39"
+data-flex-basis="94px"
+>&lt;/p>
+&lt;p>这部分可以参考 APUE (&lt;em>Advanced Programming in the UNIX Environment&lt;/em>) 一书第七章第六小节 C 程序的存储空间布局。&lt;/p>
+&lt;p>之前看 Windows PE 文件结构的时候提到 PE 文件的节表写了PE文件里的节映射到具体哪个地址上，Linux ELF 文件的节表也有 &lt;code>sh_addr&lt;/code> 这样的属性指定映射到内存的哪个位置。在 &lt;code>gdb&lt;/code> 里可以用 &lt;code>maintenance info sections&lt;/code> 指令查看节映射到的内存地址。另外和 Windows PE 文件一样，Linux 下 ELF 也有 ASLR 和重定位，两者历史包袱还是挺接近的。&lt;/p>
+&lt;p>总之，这个布局图可供参考。比较重要的是图中的 stack 和 heap 增长方向。stack 往低地址增长，意味着要扩展栈需要的指令就是 &lt;code>subq $8, %rsp&lt;/code> 这样的形式，回缩就是 &lt;code>addq&lt;/code>。&lt;/p>
+&lt;p>另外个人觉得比较有趣的一点是，因为栈是往低地址增长的，但栈上开个数组之类的情况，布局反而是从低到高。这也意味着大多时候出现越界读写，都是从低地址往高地址方向的越界，影响栈帧和更高地址上的环境变量。如果把栈设计为从低到高，那越界读写的威胁是否就小很多呢。&lt;/p>
+&lt;p>扯远了。&lt;/p>
+&lt;h3 id="函数和栈帧">函数和栈帧&lt;/h3>
+&lt;p>汇编不像是其他高级语言，将函数视作一个客观、规范的语言结构，汇编里的函数是人为定义的概念，只是一段独立的汇编代码，被称作“函数”而已。&lt;/p>
+&lt;p>函数调用就是&lt;code>pushq %rsp&lt;/code>加上&lt;code>jmp&lt;/code>；返回就是&lt;code>popq %rsp&lt;/code>再&lt;code>jmp&lt;/code>，再加上可选的 &lt;code>addq $..., %rsp&lt;/code>，仅此而已。但如果要这样说的话未免有点太不负责任了。还是看一个实例吧，从PGU这书的例子改出来的 x86-64 版本。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">.section .text
+.globl _start
+_start:
+pushq $1
+pushq $2
+call add
+pushq %rax
+call exit_syscall
+add:
+pushq %rbp
+movq %rsp, %rbp
+movq $0, %rax
+addq 16(%rbp), %rax
+addq 24(%rbp), %rax
+popq %rbp
+ret $16
+exit_syscall:
+movq 8(%rsp), %rdi
+movq $60, %rax
+syscall
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>除了 &lt;code>_start&lt;/code> 是个特殊的标签用来标识程序入口外，&lt;code>add&lt;/code>和&lt;code>exit_syscall&lt;/code>都是所谓的“函数”。其中&lt;code>add&lt;/code>我尝试用&lt;code>stdcall&lt;/code>约定（被调方清栈）来编写。&lt;/p>
+&lt;p>可以亲手用 gdb 调试一下上面的程序，观察栈的变化。&lt;/p>
+&lt;p>还是说栈帧。栈帧是一个人为定义的概念，就和函数一样。从函数出发我们可以看到一个函数的上下文包括：返回地址、参数、局部变量，把这些东西在栈上排列好：&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/stack-frame.png"
+loading="lazy"
+alt="stack frame"
+>&lt;/p>
+&lt;p>其中参数和返回地址由调用方 &lt;em>caller&lt;/em> 通过 &lt;code>push&lt;/code> 和 &lt;code>call&lt;/code> 指令传入，局部变量由函数自己&lt;code>sub $24,%rsp&lt;/code>开辟。&lt;/p>
+&lt;p>中间有个可能造成误会的地方是 &lt;code>%ebp&lt;/code> 寄存器为什么没在布局里画出来，根据 &lt;a class="link" href="https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.95.pdf" target="_blank" rel="noopener"
+>System V Application Binary Interface Intel386 Architecture Processor Supplement&lt;/a> 中 Figure 3-15 可以看到这是可选的。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/image-20220613145716515.png"
+width="869"
+height="376"
+srcset="https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/image-20220613145716515_hu91debd50d526c020699b4beb28f33a86_55779_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/image-20220613145716515_hu91debd50d526c020699b4beb28f33a86_55779_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220613145716515"
+class="gallery-image"
+data-flex-grow="231"
+data-flex-basis="554px"
+>&lt;/p>
+&lt;h3 id="系统调用">系统调用&lt;/h3>
+&lt;p>系统调用和普通函数调用有很大不同，造成不同的内在原因等我啥时候读讲操作系统的书的时候再说。这里就单独看下调用约定。&lt;/p>
+&lt;p>一般的进程内函数调用都是直接 &lt;code>call func&lt;/code>，已知&lt;code>call&lt;/code>其实就是压栈返回地址加上无条件跳转，仅此而已，但系统调用完全不同，因为OS的代码压根不在用户进程的虚拟地址空间里，想跳也无处可跳。用户代码里想调用内核直接提供的接口就需要一些特殊方法。&lt;/p>
+&lt;ol>
+&lt;li>&lt;code>int 0x80&lt;/code> 软中断法实现&lt;/li>
+&lt;li>AMD64 提供的 &lt;code>syscall&lt;/code> 指令实现&lt;/li>
+&lt;/ol>
+&lt;p>系统调用自然也有调用约定，确定要调用哪个函数，如何传递参数，如何取得返回值。这方面不同OS规范不一样，Linux 遵循 System V ABI 规范（注意不同处理器架构规范也有差异）。&lt;/p>
+&lt;p>对于AMD64架构使用 &lt;code>syscall&lt;/code> 指令进入系统调用（&lt;a class="link" href="https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.95.pdf" target="_blank" rel="noopener"
+>System V Application Binary Interface x86-64 Architecture Processor Supplement Draft Version 0.95 - A.2 AMD64 Linux Kernel Conventions - Calling Conventions&lt;/a>）参数传递顺序如下：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>位置&lt;/th>
+&lt;th>含义&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>%rax&lt;/code>&lt;/td>
+&lt;td>系统调用号&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>%rdi&lt;/code>&lt;/td>
+&lt;td>参数 #1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>%rsi&lt;/code>&lt;/td>
+&lt;td>参数 #2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>%rdx&lt;/code>&lt;/td>
+&lt;td>参数 #3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>%r10&lt;/code>&lt;/td>
+&lt;td>参数 #4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>%r8&lt;/code>&lt;/td>
+&lt;td>参数 #5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>%r9&lt;/code>&lt;/td>
+&lt;td>参数 #6&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>值得注意的是，调用约定中限制了整个系统调用最多不超过 6 个参数，全部都放在寄存器里，没有参数通过栈传递。另外，内核会破坏 &lt;code>%rcx&lt;/code> 和 &lt;code>%r11&lt;/code> 两个寄存器的内容，所以如果这两个寄存器需要调用方自己保存到栈上。&lt;/p>
+&lt;p>IA32 架构用 &lt;code>int 0x80&lt;/code> 软中断实现系统调用（没找到具体规范），&lt;code>%eax&lt;/code>传递调用号，&lt;code>%ebx&lt;/code>, &lt;code>%ecx&lt;/code>, &lt;code>%edx&lt;/code>, &lt;code>%esi&lt;/code>, &lt;code>%edi&lt;/code>, &lt;code>%ebp&lt;/code> 六个寄存器用于传递参数，同样限制系统调用最多不超过6个参数。&lt;/p>
+&lt;p>知道这些之后就可以用系统调用 &lt;code>write&lt;/code> 写一个简单的 Hello world 了。&lt;/p>
+&lt;h2 id="实验">实验&lt;/h2>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">.section .data
+helloworld:
+.ascii &amp;#34;Hello world\n&amp;#34;
+helloworld_end:
+.equ helloworld_len, helloworld_end - helloworld
+.equ SYS_WRITE,1
+.equ STDOUT,1
+.section .text
+.globl _start
+_start:
+movq $SYS_WRITE, %rax # write
+movq $STDOUT, %rdi # int fd
+movq $helloworld, %rsi # char* buf
+movq $helloworld_len, %rdx # size_t len
+syscall
+# call _exit()
+movq %rax, %rdi
+movq $60, %rax
+syscall
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>用 gdb 单步调试，在第一个 &lt;code>syscall&lt;/code> 前后可以看到这样的结果。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">(gdb) l
+10 _start:
+11 movq $SYS_WRITE, %rax # write
+12 movq $STDOUT, %rdi # int fd
+13 movq $helloworld, %rsi # char* buf
+14 movq $helloworld_len, %rdx # size_t len
+15 syscall
+16
+17 # call _exit()
+18 movq %rax, %rdi
+19 movq $60, %rax
+(gdb) i r $rsi
+rsi 0x402000 4202496
+(gdb) i r $rdi
+rdi 0x1 1
+(gdb) i r $rdx
+rdx 0xc 12
+(gdb) x/s $rsi
+0x402000: &amp;#34;Hello world\n&amp;#34;
+(gdb) ni
+Hello world
+18 movq %rax, %rdi
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>用&lt;code>file&lt;/code>命令可以看到编译后的文件信息：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext">$ file hello
+hello: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, with debug_info, not stripped
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>了解怎么用系统调用后，就能很大程度发挥想象了。&lt;/p>
+&lt;p>这篇读书笔记卡了我一个星期，本来计划读GC那本书也没读，PGU原书讲的也是 x86，和 x86-64 有些不同的地方，直接套用先前学汇编的时候 nasm 的一丁点经验对学习的帮助也有限。&lt;/p>
+&lt;p>光是找 System V ABI 规范文档和文档里关于系统调用的约定就花了一下午不止，最后还没找到 32 位 &lt;code>INT 0X80&lt;/code> 到底哪儿规定的。&lt;/p>
+&lt;p>随着拿到新工作的 offer，事情忽然就开始堆积起来了。数据库系统原理的网课讲得稀烂，只能靠自己刷题。马原自从看完之后也没复习和刷题。10月不知道能报上几门。工作上一边要交接，一边要把剩下的一个大功能捋清楚。偏偏这功能产品部还火急火燎要在6月底前上线，还刚好卡在我提离职后让我干。明知这功能铁定全是坑也没辙了，选了个最保守的技术方案，别等我闪人了再搞出大问题让我救火就行。&lt;/p>
+&lt;p>至于博客，想水两篇还是有机会的，但偏偏想学的东西都不是好水的。GC那书偏理论，浅尝辄止那就跟抄书没两样，结合实践那就不是一两天能调试好的。PGU这书倒是很实践，但偏偏我又是个实践的时候喜欢钻牛角尖的，没事儿非要找个规范或者依据出来。即便如此博客还是口胡居多。&lt;/p>
+&lt;p>我寻思是不是应该多写点没那么多抱怨的生活内容，比如给周末刷的电影和动画写个观后感什么的。&lt;/p>
+&lt;p>六月第一篇博客拖到了14号才发，就先这样吧。&lt;/p></description></item><item><title>Go面试八股之GMP模型</title><link>https://nnnewb.github.io/blog/p/go-interview-question-gmp-model/</link><pubDate>Tue, 31 May 2022 16:14:47 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/go-interview-question-gmp-model/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>应付面试做的准备吧。当然单纯背书也没意思，所以还是结合源码尝试去理解。&lt;/p>
 &lt;h2 id="gmp-模型">GMP 模型&lt;/h2>
 &lt;h3 id="一图概述">一图概述&lt;/h3>
