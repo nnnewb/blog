@@ -1,7 +1,6 @@
 .PHONY: deploy build cert
 
-REPO_ROOT:=$(shell pwd | realpath)
-
+REPO_ROOT:=$(realpath $(shell pwd))
 
 deploy: build
 	docker-compose up -d
@@ -12,7 +11,7 @@ build:
 		-v $(REPO_ROOT):/blog \
 		-v $(REPO_ROOT)/public:/blog/public \
 		-w /blog \
-		klakegg/hugo:ext-alpine hugo -b https://weakptr.site/
+		klakegg/hugo:ext-alpine -b https://weakptr.site/
 
 cert:
 	docker run \
