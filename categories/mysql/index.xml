@@ -1,4 +1,125 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>mysql on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/mysql/</link><description>Recent content in mysql on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Wed, 25 May 2022 10:21:12 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/mysql/index.xml" rel="self" type="application/rss+xml"/><item><title>一个MySQL死锁问题排查</title><link>https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/</link><pubDate>Wed, 25 May 2022 10:21:12 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash.jpg" alt="Featured image of post 一个MySQL死锁问题排查" />&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>mysql on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/mysql/</link><description>Recent content in mysql on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 16 Jun 2022 10:34:59 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/mysql/index.xml" rel="self" type="application/rss+xml"/><item><title>储存过程、函数和触发器</title><link>https://nnnewb.github.io/blog/p/stored-procedure-function-and-triggers/</link><pubDate>Thu, 16 Jun 2022 10:34:59 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/stored-procedure-function-and-triggers/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>工作里很少用到这些功能，备考数据库系统的时候发现这几个不是考点的地方确实还得现查文档才能写。&lt;/p>
+&lt;p>因为不考又不怎么用，所以本篇只是简短地记一下储存过程、函数和触发器写法，没深度，也不适用于做备考资料。仅仅是给自己扫盲。&lt;/p>
+&lt;h2 id="储存过程">储存过程&lt;/h2>
+&lt;h3 id="是什么">是什么？&lt;/h3>
+&lt;p>这是个很容易引起误解的名字，英文是 &lt;em>Stored Procedure&lt;/em>，也就是被储存的（Stored）过程（Procedure）。一翻译感觉像是说储存这个动作的过程一样。&lt;/p>
+&lt;h3 id="什么时候用">什么时候用？&lt;/h3>
+&lt;p>参考一个爆栈的回答 &lt;a class="link" href="https://stackoverflow.com/questions/6368985/mysql-stored-procedures-use-them-or-not-to-use-them" target="_blank" rel="noopener"
+>MySQL stored procedures use them or not to use them&lt;/a> ，储存过程本身不像一般的编程语言中所谓的过程，它有很多缺陷。&lt;/p>
+&lt;ol>
+&lt;li>不可移植。这意味着可能出现 &lt;em>vendor lock-in&lt;/em> 的风险。&lt;/li>
+&lt;li>难以测试、更新、维护，缺乏支持，没有日志、跟踪、调试信息。甚至很难和 VCS 工具打配合。&lt;/li>
+&lt;li>不容易和其他技术整合。&lt;/li>
+&lt;li>参考文档，发现在开启binlog时创建储存过程还需要高特权。&lt;/li>
+&lt;/ol>
+&lt;p>而储存过程常被鼓吹的优势：高性能，就是个谜。老话说提前优化是万恶之源，储存过程的“高性能”本身也不是免费午餐，除非真的 &lt;strong>真的&lt;/strong> 需要，非它不可，没有替代方案，而且充分考虑过开发、管理、维护储存过程带来的额外复杂性，再选择用储存过程也不迟。&lt;/p>
+&lt;h3 id="怎么用">怎么用？&lt;/h3>
+&lt;p>定义储存过程的语法&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="c1">-- CREATE PROCEDURE &amp;lt;proc&amp;gt;([parameters[, ...]])
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="k">CREATE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">PROCEDURE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">proc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">uid&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nb">INT&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">BEGIN&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="c1">-- PROCEDURE BODY
+&lt;/span>&lt;span class="c1">-- ordinary SQL query
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="k">UPDATE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">customer&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">SET&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">goodie&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">WHERE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">cuid&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">uid&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">END&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>对，储存过程没有返回值。所以必要的时候可以用关键字&lt;code>IN&lt;/code>和&lt;code>OUT&lt;/code>修饰参数，来传递变量。类似 C# 的 &lt;code>out&lt;/code>、&lt;code>ref&lt;/code> 关键字。微软文档也喜欢在函数签名里加 &lt;code>IN&lt;/code> 或 &lt;code>OUT&lt;/code> 的宏来标识参数会不会被覆写。不过其他编程语言里就少见了，更提倡用返回值显式传递。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;span class="lnt">9
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">CREATE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">PROCEDURE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">proc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="k">IN&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">uid&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nb">INT&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">OUT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">goodie&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nb">INT&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">BEGIN&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">SELECT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">goodie&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">INTO&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">goodie&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">FROM&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">customer&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">WHERE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">cuid&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">uid&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">END&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">CALL&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">proc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">@&lt;/span>&lt;span class="n">goodie&lt;/span>&lt;span class="p">);&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">SELECT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="o">@&lt;/span>&lt;span class="n">goodie&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">DROP&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">PROCEDURE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">IF&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">EXISTS&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">proc&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>在&lt;code>BEGIN&lt;/code>前面还可以加一些修饰，比如&lt;code>COMMENT&lt;/code>。常见的是&lt;code>DETERMINISTIC&lt;/code>，这个关键字表示过程输出是稳定的，对同一个参数总是输出同样的结果，对数据库内部优化查询有用，大概。默认是&lt;code>NOT DETERMINISTIC&lt;/code>。&lt;/p>
+&lt;h2 id="函数">函数&lt;/h2>
+&lt;h3 id="是什么-1">是什么？&lt;/h3>
+&lt;p>类似储存过程，但有返回值。&lt;/p>
+&lt;h3 id="什么时候用-1">什么时候用？&lt;/h3>
+&lt;p>问题和储存过程类似，不再赘述。&lt;/p>
+&lt;h3 id="怎么用-1">怎么用？&lt;/h3>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;span class="lnt">9
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">CREATE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">FUNCTION&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">func&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="k">IN&lt;/span>&lt;span class="o">|&lt;/span>&lt;span class="k">OUT&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">param&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">type&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">RETURNS&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">type&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">BEGIN&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="n">body&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">END&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">SELECT&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">cuid&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">FROM&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">customers&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">DROP&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">FUNCTION&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">IF&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">EXISTS&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">func&lt;/span>&lt;span class="p">;&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>创建语法和储存过程类似，使用时不需要 &lt;code>CALL&lt;/code>，而是和普通 SQL 函数一样。&lt;/p>
+&lt;h2 id="触发器">触发器&lt;/h2>
+&lt;h3 id="是什么-2">是什么？&lt;/h3>
+&lt;p>触发器是一个和表关联的数据库对象，在特定事件发生时激活。不能在临时表（使用&lt;code>TEMPORARY&lt;/code>关键字的&lt;code>CREATE TABLE&lt;/code>语句创建的表）上创建触发器。&lt;/p>
+&lt;h3 id="什么时候用-2">什么时候用？&lt;/h3>
+&lt;p>如果按数据库系统原理这门课上的考点来说，触发器可以帮助保持数据完整性。但现实世界很少有这么干的，除了上面提到的储存过程和函数都存在的缺陷之外，设计不好的触发器也可能造成性能问题。&lt;/p>
+&lt;p>所以老样子，除非真的非它不可，不然敬而远之就是了。&lt;/p>
+&lt;h3 id="怎么用-2">怎么用？&lt;/h3>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-sql" data-lang="sql">&lt;span class="k">CREATE&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">TRIGGER&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">trigger_name&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="err">{&lt;/span>&lt;span class="k">BEFORE&lt;/span>&lt;span class="o">|&lt;/span>&lt;span class="k">AFTER&lt;/span>&lt;span class="err">}&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="err">{&lt;/span>&lt;span class="k">INSERT&lt;/span>&lt;span class="o">|&lt;/span>&lt;span class="k">UPDATE&lt;/span>&lt;span class="o">|&lt;/span>&lt;span class="k">DELETE&lt;/span>&lt;span class="err">}&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">ON&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">tbl_name&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="k">FOR&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">EACH&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="k">ROW&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="err">{&lt;/span>&lt;span class="n">FOLLOWS&lt;/span>&lt;span class="o">|&lt;/span>&lt;span class="n">PRECEDES&lt;/span>&lt;span class="err">}&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="n">other_trigger_name&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w">&lt;/span>&lt;span class="n">body&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>一个考点是触发器只能对DML中增删改事件做出反应。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>水了将近1000字。&lt;/p>
+&lt;p>SQL知识里一块空白给填上了，强迫症一本满足。&lt;/p></description></item><item><title>一个MySQL死锁问题排查</title><link>https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/</link><pubDate>Wed, 25 May 2022 10:21:12 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash.jpg" alt="Featured image of post 一个MySQL死锁问题排查" />&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>并不是 MySQL 的死锁检测报错，而是一个业务代码架构上的问题导致的死锁。MySQL 只报了 &lt;code>Error 1205: Lock wait timeout exceeded; try restarting transaction&lt;/code> 。&lt;/p>
 &lt;p>感觉还是值得一谈的。&lt;/p>
 &lt;h2 id="现象">现象&lt;/h2>

@@ -1,18 +1,17 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 并不是 MySQL 的死锁检测报错，而是一个业务代码架构上的问题导致的死锁。MySQL 只报了 Error 1205: Lock wait timeout exceeded; try restarting transaction 。 感觉还是值得一谈的。 现象 客户端每天第"><title>一个MySQL死锁问题排查</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 工作里很少用到这些功能，备考数据库系统的时候发现这几个不是考点的地方确实还得现查文档才能写。 因为不考又不怎么用，所以本篇只是简短地记一下"><title>储存过程、函数和触发器</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/stored-procedure-function-and-triggers/>
 <link rel=stylesheet href=/blog/scss/style.min.5c88a5bc75732c20b0a5ccc3be5c148f782b1c20e20b6c73b276723850a33d6b.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="一个MySQL死锁问题排查">
-<meta property="og:description" content="前言 并不是 MySQL 的死锁检测报错，而是一个业务代码架构上的问题导致的死锁。MySQL 只报了 Error 1205: Lock wait timeout exceeded; try restarting transaction 。 感觉还是值得一谈的。 现象 客户端每天第">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/">
+<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="储存过程、函数和触发器">
+<meta property="og:description" content="前言 工作里很少用到这些功能，备考数据库系统的时候发现这几个不是考点的地方确实还得现查文档才能写。 因为不考又不怎么用，所以本篇只是简短地记一下">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/stored-procedure-function-and-triggers/">
 <meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="mysql"><meta property="article:tag" content="golang"><meta property="article:published_time" content="2022-05-25T10:21:12+08:00"><meta property="article:modified_time" content="2022-05-25T10:21:12+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash.jpg">
-<meta name=twitter:title content="一个MySQL死锁问题排查">
-<meta name=twitter:description content="前言 并不是 MySQL 的死锁检测报错，而是一个业务代码架构上的问题导致的死锁。MySQL 只报了 Error 1205: Lock wait timeout exceeded; try restarting transaction 。 感觉还是值得一谈的。 现象 客户端每天第"><meta name=twitter:card content="summary_large_image">
-<meta name=twitter:image content="https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash.jpg">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="mysql"><meta property="article:published_time" content="2022-06-16T10:34:59+08:00"><meta property="article:modified_time" content="2022-06-16T10:34:59+08:00">
+<meta name=twitter:title content="储存过程、函数和触发器">
+<meta name=twitter:description content="前言 工作里很少用到这些功能，备考数据库系统的时候发现这几个不是考点的地方确实还得现查文档才能写。 因为不考又不怎么用，所以本篇只是简短地记一下">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.getItem(a)||localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -82,13 +81,8 @@
 </ol>
 </aside>
 <main class="main full-width">
-<article class="has-image main-article">
+<article class=main-article>
 <header class=article-header>
-<div class=article-image>
-<a href=/blog/p/a-mysql-deadlock-investigation/>
-<img src=/blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash_hu54d45def1a288887897b72824d269a44_887498_800x0_resize_q75_box.jpg srcset="/blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash_hu54d45def1a288887897b72824d269a44_887498_800x0_resize_q75_box.jpg 800w, /blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash_hu54d45def1a288887897b72824d269a44_887498_1600x0_resize_q75_box.jpg 1600w" width=800 height=500 loading=lazy alt="Featured image of post 一个MySQL死锁问题排查">
-</a>
-</div>
 <div class=article-details>
 <header class=article-category>
 <a href=/blog/categories/mysql/>
@@ -97,12 +91,12 @@ mysql
 </header>
 <div class=article-title-wrapper>
 <h2 class=article-title>
-<a href=/blog/p/a-mysql-deadlock-investigation/>一个MySQL死锁问题排查</a>
+<a href=/blog/p/stored-procedure-function-and-triggers/>储存过程、函数和触发器</a>
 </h2>
 </div>
 <footer class=article-time>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2022-05-25T10:21:12+08:00>2022年 5月 25日</time>
+<time class=article-time--published datetime=2022-06-16T10:34:59+08:00>2022年 6月 16日</time>
 </div>
 <div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
 <time class=article-time--reading>
@@ -114,56 +108,130 @@ mysql
 </header>
 <section class=article-content>
 <h2 id=前言>前言</h2>
-<p>并不是 MySQL 的死锁检测报错，而是一个业务代码架构上的问题导致的死锁。MySQL 只报了 <code>Error 1205: Lock wait timeout exceeded; try restarting transaction</code> 。</p>
-<p>感觉还是值得一谈的。</p>
-<h2 id=现象>现象</h2>
-<p>客户端每天第一次点评的时候响应速度极慢，从半分钟到一分钟不等。一开始测试跟我说这问题复现不出来，我暂时就没管。</p>
-<p>第二天测试告诉我稳定复现了，第一次点评一定这么慢，于是要了客户端的日志，拿到请求 ID 后开始看跟踪情况。</p>
-<p><img src=/blog/p/a-mysql-deadlock-investigation/image-20220525092418014.png width=432 height=178 srcset="/blog/p/a-mysql-deadlock-investigation/image-20220525092418014_hu752f829b91ccecf22ff250568853aca9_16764_480x0_resize_box_3.png 480w, /blog/p/a-mysql-deadlock-investigation/image-20220525092418014_hu752f829b91ccecf22ff250568853aca9_16764_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525092418014 class=gallery-image data-flex-grow=242 data-flex-basis=582px></p>
-<p><img src=/blog/p/a-mysql-deadlock-investigation/image-20220525092441881.png width=691 height=204 srcset="/blog/p/a-mysql-deadlock-investigation/image-20220525092441881_hucc30c4051b8ae687225e03d8f66504e0_15879_480x0_resize_box_3.png 480w, /blog/p/a-mysql-deadlock-investigation/image-20220525092441881_hucc30c4051b8ae687225e03d8f66504e0_15879_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525092441881 class=gallery-image data-flex-grow=338 data-flex-basis=812px></p>
-<h2 id=排查>排查</h2>
-<h3 id=代码审阅和整理>代码审阅和整理</h3>
-<p>查看源码，初步断定是一个 <em>每日点评奖励经验值</em> 的业务里调用了这个 <code>AddExperience</code> RPC 函数，因为 MySQL 错误提示是明确指出锁等待超时，所以还得看一眼 <code>AddExperience</code> 这个 RPC 函数里涉事的 SQL 语句。</p>
+<p>工作里很少用到这些功能，备考数据库系统的时候发现这几个不是考点的地方确实还得现查文档才能写。</p>
+<p>因为不考又不怎么用，所以本篇只是简短地记一下储存过程、函数和触发器写法，没深度，也不适用于做备考资料。仅仅是给自己扫盲。</p>
+<h2 id=储存过程>储存过程</h2>
+<h3 id=是什么>是什么？</h3>
+<p>这是个很容易引起误解的名字，英文是 <em>Stored Procedure</em>，也就是被储存的（Stored）过程（Procedure）。一翻译感觉像是说储存这个动作的过程一样。</p>
+<h3 id=什么时候用>什么时候用？</h3>
+<p>参考一个爆栈的回答 <a class=link href=https://stackoverflow.com/questions/6368985/mysql-stored-procedures-use-them-or-not-to-use-them target=_blank rel=noopener>MySQL stored procedures use them or not to use them</a> ，储存过程本身不像一般的编程语言中所谓的过程，它有很多缺陷。</p>
+<ol>
+<li>不可移植。这意味着可能出现 <em>vendor lock-in</em> 的风险。</li>
+<li>难以测试、更新、维护，缺乏支持，没有日志、跟踪、调试信息。甚至很难和 VCS 工具打配合。</li>
+<li>不容易和其他技术整合。</li>
+<li>参考文档，发现在开启binlog时创建储存过程还需要高特权。</li>
+</ol>
+<p>而储存过程常被鼓吹的优势：高性能，就是个谜。老话说提前优化是万恶之源，储存过程的“高性能”本身也不是免费午餐，除非真的 <strong>真的</strong> 需要，非它不可，没有替代方案，而且充分考虑过开发、管理、维护储存过程带来的额外复杂性，再选择用储存过程也不迟。</p>
+<h3 id=怎么用>怎么用？</h3>
+<p>定义储存过程的语法</p>
 <div class=highlight><div class=chroma>
 <table class=lntable><tr><td class=lntd>
 <pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
 </span></code></pre></td>
 <td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-sql data-lang=sql><span class=k>insert</span><span class=w> </span><span class=k>user</span><span class=p>(</span><span class=n>experience</span><span class=p>,</span><span class=n>user_id</span><span class=p>)</span><span class=w> </span><span class=k>values</span><span class=p>(</span><span class=k>if</span><span class=p>(</span><span class=o>?&gt;</span><span class=mi>0</span><span class=p>,</span><span class=o>?</span><span class=p>,</span><span class=mi>0</span><span class=p>),</span><span class=o>?</span><span class=p>)</span><span class=w> </span><span class=k>ON</span><span class=w> </span><span class=n>DUPLICATE</span><span class=w> </span><span class=k>KEY</span><span class=w> </span><span class=k>UPDATE</span><span class=w> </span><span class=n>experience</span><span class=o>=</span><span class=k>if</span><span class=p>(</span><span class=o>?&gt;</span><span class=mi>0</span><span class=p>,</span><span class=n>experience</span><span class=o>+?</span><span class=p>,</span><span class=n>experience</span><span class=p>)</span><span class=w>
+<pre tabindex=0 class=chroma><code class=language-sql data-lang=sql><span class=c1>-- CREATE PROCEDURE &lt;proc&gt;([parameters[, ...]])
+</span><span class=c1></span><span class=k>CREATE</span><span class=w> </span><span class=k>PROCEDURE</span><span class=w> </span><span class=n>proc</span><span class=p>(</span><span class=n>uid</span><span class=w> </span><span class=nb>INT</span><span class=p>)</span><span class=w>
+</span><span class=w></span><span class=k>BEGIN</span><span class=w>
+</span><span class=w></span><span class=c1>-- PROCEDURE BODY
+</span><span class=c1>-- ordinary SQL query
+</span><span class=c1></span><span class=k>UPDATE</span><span class=w> </span><span class=n>customer</span><span class=w> </span><span class=k>SET</span><span class=w> </span><span class=n>goodie</span><span class=o>=</span><span class=mi>1</span><span class=w> </span><span class=k>WHERE</span><span class=w> </span><span class=n>cuid</span><span class=o>=</span><span class=n>uid</span><span class=p>;</span><span class=w>
+</span><span class=w></span><span class=k>END</span><span class=w>
 </span></code></pre></td></tr></table>
 </div>
-</div><p>好了，可以开始笑了。不要问我为什么这样写，又不是我写的&mldr;&mldr; 问了写下这句SQL的同事想做什么，回答就不放了，总之和这句 SQL 的实际干的事没什么关系。</p>
-<p>基于奥卡姆剃刀原理先把这句 <code>insert on duplicate</code> 改成平平无奇的 <code>update</code> ，发现问题依然存在。</p>
-<h3 id=死锁来源>死锁来源</h3>
-<p>回到错误信息，<code>Lock wait timeout exceeded</code>，锁的是什么？从上面爆出错误的SQL看出应该是锁了 <code>user</code> 表，但不确定具体锁类型。</p>
-<p>问题就变成了，谁加的锁？因为故障能稳定复现，开发环境几乎没有负载，也就是几乎不可能因为其他请求造成死锁，加锁者就在这个请求内。</p>
-<p>于是重新纵览整个请求流程涉事的 SQL 语句，注意到几点：</p>
-<ol>
-<li>因为一些历史原因，涉事的 RPC 尚无分布式事务支持。</li>
-<li>请求 RPC 时，事务还没提交。</li>
-</ol>
-<p>基本确认来源是事务内。排查发现并没有直接 <code>select ... from user</code> 这样的 SQL，但注意到有表和<code>user</code>表存在外键关联，涉事SQL是<code>insert into</code>。</p>
-<p><img src=/blog/p/a-mysql-deadlock-investigation/image-20220525094926344.png width=1331 height=79 srcset="/blog/p/a-mysql-deadlock-investigation/image-20220525094926344_hubcc82659852dc707364fe2175b10763b_3707_480x0_resize_box_3.png 480w, /blog/p/a-mysql-deadlock-investigation/image-20220525094926344_hubcc82659852dc707364fe2175b10763b_3707_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525094926344 class=gallery-image data-flex-grow=1684 data-flex-basis=4043px></p>
-<p><img src=/blog/p/a-mysql-deadlock-investigation/image-20220525095117983.png width=867 height=105 srcset="/blog/p/a-mysql-deadlock-investigation/image-20220525095117983_hu7026973f0748ebba8e8b77571ead20d8_12762_480x0_resize_box_3.png 480w, /blog/p/a-mysql-deadlock-investigation/image-20220525095117983_hu7026973f0748ebba8e8b77571ead20d8_12762_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525095117983 class=gallery-image data-flex-grow=825 data-flex-basis=1981px></p>
-<p>查询MySQL文档没有收获（关于<code>insert</code>是否会锁外键的问题），但谷歌发现<a class=link href=https://stackoverflow.com/questions/54672633/do-mysql-transactions-for-insert-lock-foreign-key-referenced-tables target=_blank rel=noopener>stackoverflow 上已有相同的问题</a>，答案是 yes，会在记录上加共享锁。</p>
-<p>至此，死锁来源基本算查明了。</p>
-<h2 id=解决和预防>解决和预防</h2>
-<h3 id=解决方案>解决方案</h3>
-<p>处理说简单其实是简单的，把加经验的SQL挪到事务里就完事了，事实上也是这么解决的（如果看过之前我吐槽这项目的博客的话就会知道这项目就是农村无人管理的露天茅厕，矢上雕花大可不必）。</p>
-<h3 id=预防>预防</h3>
-<p>微服务架构为什么要分库？在遇到这个问题前我也没什么直观的感受，大约是出于性能和扩展性的考量。但遇到这问题后我可以再补充个回答了：防呆。</p>
-<p>在软件工程里怎么防止引入低质量代码有很多解决方法，比如机检、人工审阅、技术方案提前做设计评审、测试全覆盖等等，往大了说，可以再挑个阵营：TDD、DDD什么的，指导架构设计。尽量遵循最佳实践不要把坑再踩一遍诸如此类。学历史也不用从猿人扮演开始吧？</p>
-<p>但真的很难避免一个已经很复杂的业务里引入一个看似简单的功能，结果因为架构上挖的坑导致产生难以排查的故障。</p>
-<p>扯远了。这个问题预防说简单也简单，遵循最佳实践，该分库分库，加强代码审阅，提高意识巴拉巴拉。但凡能做到一点也不至于把这项目变成露天粪坑。总之，怎么给服务定好边界在最初的开发过程里就是最重要的问题。边界都不清晰，你中有我我中有你就别整什么微服务了。</p>
-<p>架构设计上总是脱不开那句“高内聚、低耦合”，微服务的优势就在单个服务的独立性，可以独立开发、独立维护，不用对整个系统有深入了解。用了微服务，又不在服务间划清界限，用单体应用的思路一把梭写完再分成几个可执行文件，不出问题才是真的怪事，既不内聚又高耦合，还不如就写个单体应用，起码不用调试和部署的时候都跟吃了矢一样。</p>
+</div><p>对，储存过程没有返回值。所以必要的时候可以用关键字<code>IN</code>和<code>OUT</code>修饰参数，来传递变量。类似 C# 的 <code>out</code>、<code>ref</code> 关键字。微软文档也喜欢在函数签名里加 <code>IN</code> 或 <code>OUT</code> 的宏来标识参数会不会被覆写。不过其他编程语言里就少见了，更提倡用返回值显式传递。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-sql data-lang=sql><span class=k>CREATE</span><span class=w> </span><span class=k>PROCEDURE</span><span class=w> </span><span class=n>proc</span><span class=p>(</span><span class=k>IN</span><span class=w> </span><span class=n>uid</span><span class=w> </span><span class=nb>INT</span><span class=p>,</span><span class=w> </span><span class=k>OUT</span><span class=w> </span><span class=n>goodie</span><span class=w> </span><span class=nb>INT</span><span class=p>)</span><span class=w>
+</span><span class=w></span><span class=k>BEGIN</span><span class=w>
+</span><span class=w></span><span class=k>SELECT</span><span class=w> </span><span class=n>goodie</span><span class=w> </span><span class=k>INTO</span><span class=w> </span><span class=n>goodie</span><span class=w> </span><span class=k>FROM</span><span class=w> </span><span class=n>customer</span><span class=w> </span><span class=k>WHERE</span><span class=w> </span><span class=n>cuid</span><span class=o>=</span><span class=n>uid</span><span class=p>;</span><span class=w>
+</span><span class=w></span><span class=k>END</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=k>CALL</span><span class=w> </span><span class=n>proc</span><span class=p>(</span><span class=o>@</span><span class=n>goodie</span><span class=p>);</span><span class=w>
+</span><span class=w></span><span class=k>SELECT</span><span class=w> </span><span class=o>@</span><span class=n>goodie</span><span class=p>;</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=k>DROP</span><span class=w> </span><span class=k>PROCEDURE</span><span class=w> </span><span class=k>IF</span><span class=w> </span><span class=k>EXISTS</span><span class=w> </span><span class=n>proc</span><span class=p>;</span><span class=w>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>在<code>BEGIN</code>前面还可以加一些修饰，比如<code>COMMENT</code>。常见的是<code>DETERMINISTIC</code>，这个关键字表示过程输出是稳定的，对同一个参数总是输出同样的结果，对数据库内部优化查询有用，大概。默认是<code>NOT DETERMINISTIC</code>。</p>
+<h2 id=函数>函数</h2>
+<h3 id=是什么-1>是什么？</h3>
+<p>类似储存过程，但有返回值。</p>
+<h3 id=什么时候用-1>什么时候用？</h3>
+<p>问题和储存过程类似，不再赘述。</p>
+<h3 id=怎么用-1>怎么用？</h3>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-sql data-lang=sql><span class=k>CREATE</span><span class=w> </span><span class=k>FUNCTION</span><span class=w> </span><span class=n>func</span><span class=p>([</span><span class=k>IN</span><span class=o>|</span><span class=k>OUT</span><span class=p>]</span><span class=w> </span><span class=n>param</span><span class=w> </span><span class=k>type</span><span class=p>)</span><span class=w>
+</span><span class=w></span><span class=k>RETURNS</span><span class=w> </span><span class=k>type</span><span class=w>
+</span><span class=w></span><span class=k>BEGIN</span><span class=w>
+</span><span class=w></span><span class=n>body</span><span class=w>
+</span><span class=w></span><span class=k>END</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=k>SELECT</span><span class=w> </span><span class=n>func</span><span class=p>(</span><span class=n>cuid</span><span class=p>)</span><span class=w> </span><span class=k>FROM</span><span class=w> </span><span class=n>customers</span><span class=p>;</span><span class=w>
+</span><span class=w>
+</span><span class=w></span><span class=k>DROP</span><span class=w> </span><span class=k>FUNCTION</span><span class=w> </span><span class=k>IF</span><span class=w> </span><span class=k>EXISTS</span><span class=w> </span><span class=n>func</span><span class=p>;</span><span class=w>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>创建语法和储存过程类似，使用时不需要 <code>CALL</code>，而是和普通 SQL 函数一样。</p>
+<h2 id=触发器>触发器</h2>
+<h3 id=是什么-2>是什么？</h3>
+<p>触发器是一个和表关联的数据库对象，在特定事件发生时激活。不能在临时表（使用<code>TEMPORARY</code>关键字的<code>CREATE TABLE</code>语句创建的表）上创建触发器。</p>
+<h3 id=什么时候用-2>什么时候用？</h3>
+<p>如果按数据库系统原理这门课上的考点来说，触发器可以帮助保持数据完整性。但现实世界很少有这么干的，除了上面提到的储存过程和函数都存在的缺陷之外，设计不好的触发器也可能造成性能问题。</p>
+<p>所以老样子，除非真的非它不可，不然敬而远之就是了。</p>
+<h3 id=怎么用-2>怎么用？</h3>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-sql data-lang=sql><span class=k>CREATE</span><span class=w> </span><span class=k>TRIGGER</span><span class=w> </span><span class=k>trigger_name</span><span class=w>
+</span><span class=w></span><span class=err>{</span><span class=k>BEFORE</span><span class=o>|</span><span class=k>AFTER</span><span class=err>}</span><span class=w> </span><span class=err>{</span><span class=k>INSERT</span><span class=o>|</span><span class=k>UPDATE</span><span class=o>|</span><span class=k>DELETE</span><span class=err>}</span><span class=w> </span><span class=k>ON</span><span class=w> </span><span class=n>tbl_name</span><span class=w>
+</span><span class=w></span><span class=k>FOR</span><span class=w> </span><span class=k>EACH</span><span class=w> </span><span class=k>ROW</span><span class=w>
+</span><span class=w></span><span class=p>[</span><span class=err>{</span><span class=n>FOLLOWS</span><span class=o>|</span><span class=n>PRECEDES</span><span class=err>}</span><span class=w> </span><span class=n>other_trigger_name</span><span class=p>]</span><span class=w>
+</span><span class=w></span><span class=n>body</span><span class=w>
+</span></code></pre></td></tr></table>
+</div>
+</div><p>一个考点是触发器只能对DML中增删改事件做出反应。</p>
 <h2 id=总结>总结</h2>
-<p>顺便再一说，这项目现在还在同时用 <code>sql</code> 和 <code>xorm</code>，所以一个不小心，接口交叉使用了两个事务，还是会死锁。</p>
-<p>越写越烦躁。先这样吧。</p>
+<p>水了将近1000字。</p>
+<p>SQL知识里一块空白给填上了，强迫症一本满足。</p>
 </section>
 <footer class=article-footer>
 <section class=article-tags>
 <a href=/blog/tags/mysql/>mysql</a>
-<a href=/blog/tags/golang/>golang</a>
 </section>
 <section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
 <span>Licensed under CC BY-NC-SA 4.0</span>
@@ -175,10 +243,13 @@ mysql
 <h2 class=section-title>相关文章</h2>
 <div class=related-contents>
 <div class="flex article-list--tile">
-<article>
-<a href=/blog/p/stored-procedure-function-and-triggers/>
+<article class=has-image>
+<a href=/blog/p/a-mysql-deadlock-investigation/>
+<div class=article-image>
+<img src=/blog/p/a-mysql-deadlock-investigation/_hu54d45def1a288887897b72824d269a44_887498_7db57a4ccb5be3e5639a425e1238f674.jpg width=250 height=150 loading=lazy alt="Featured image of post 一个MySQL死锁问题排查" data-key=a-mysql-deadlock-investigation data-hash="md5-k5mo9Ni2/6ybyZIIU9fi9Q==">
+</div>
 <div class=article-details>
-<h2 class=article-title>储存过程、函数和触发器</h2>
+<h2 class=article-title>一个MySQL死锁问题排查</h2>
 </div>
 </a>
 </article>
@@ -199,13 +270,6 @@ mysql
 </div>
 </a>
 </article>
-<article>
-<a href=/blog/p/an-api-response-time-optimize/>
-<div class=article-details>
-<h2 class=article-title>记一次API响应时间优化</h2>
-</div>
-</a>
-</article>
 </div>
 </div>
 </aside>
@@ -213,7 +277,7 @@ mysql
 <div id=vssue></div>
 <script src=https://unpkg.com/vue@2.6.14/dist/vue.runtime.min.js></script>
 <script src=https://unpkg.com/vssue@1.4.8/dist/vssue.github.min.js></script>
-<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"一个MySQL死锁问题排查",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
+<script>new Vue({el:"#vssue",render:a=>a("Vssue",{props:{title:"储存过程、函数和触发器",options:{autoCreateIssue:!1,owner:"nnnewb",repo:"blog",clientId:"285910fdc1567a1a23e3",clientSecret:"f00da5438d9ac82c4a86024866c7a916ae411edc"}}})})</script>
 <footer class=site-footer>
 <section class=copyright>
 &copy;
@@ -273,17 +337,25 @@ Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 <nav id=TableOfContents>
 <ol>
 <li><a href=#前言>前言</a></li>
-<li><a href=#现象>现象</a></li>
-<li><a href=#排查>排查</a>
+<li><a href=#储存过程>储存过程</a>
 <ol>
-<li><a href=#代码审阅和整理>代码审阅和整理</a></li>
-<li><a href=#死锁来源>死锁来源</a></li>
+<li><a href=#是什么>是什么？</a></li>
+<li><a href=#什么时候用>什么时候用？</a></li>
+<li><a href=#怎么用>怎么用？</a></li>
 </ol>
 </li>
-<li><a href=#解决和预防>解决和预防</a>
+<li><a href=#函数>函数</a>
 <ol>
-<li><a href=#解决方案>解决方案</a></li>
-<li><a href=#预防>预防</a></li>
+<li><a href=#是什么-1>是什么？</a></li>
+<li><a href=#什么时候用-1>什么时候用？</a></li>
+<li><a href=#怎么用-1>怎么用？</a></li>
+</ol>
+</li>
+<li><a href=#触发器>触发器</a>
+<ol>
+<li><a href=#是什么-2>是什么？</a></li>
+<li><a href=#什么时候用-2>什么时候用？</a></li>
+<li><a href=#怎么用-2>怎么用？</a></li>
 </ol>
 </li>
 <li><a href=#总结>总结</a></li>
