@@ -1,11 +1,19 @@
-.PHONY: deploy build cert
+.PHONY: deploy prepare build cert
 
 REPO_ROOT:=$(realpath $(shell pwd))
 
 deploy: build
 	docker-compose up -d
 
-build:
+prepare:
+	cp config.tpl.yaml config.yaml
+	docker run \
+		--rm \
+		-v $(REPO_ROOT)/config.yaml:/config.yaml \
+		-w / \
+		mikefarah/yq -i '.params.comments.enabled = false | .params.comments.provider = ~' config.yaml
+
+build: prepare
 	docker run \
 		--rm \
 		-v $(REPO_ROOT):/blog \
