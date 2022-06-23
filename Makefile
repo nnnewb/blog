@@ -21,6 +21,15 @@ build: prepare
 		-w /blog \
 		klakegg/hugo:ext-alpine -b https://weakptr.site/
 
+serve:
+	docker run \
+		--rm \
+		-v $(REPO_ROOT):/blog \
+		-v $(REPO_ROOT)/public:/blog/public \
+		-p 1313:1313 \
+		-w /blog \
+		klakegg/hugo:ext-alpine serve
+
 cert:
 	docker run \
 		-it \
