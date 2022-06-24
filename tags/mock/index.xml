@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>mock on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/mock/</link><description>Recent content in mock on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 24 Jun 2022 14:38:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/mock/index.xml" rel="self" type="application/rss+xml"/><item><title>go-sqlmock 上手记录和延伸的一些想法</title><link>https://nnnewb.github.io/blog/p/go-sqlmock-%E4%B8%8A%E6%89%8B%E8%AE%B0%E5%BD%95%E5%92%8C%E5%BB%B6%E4%BC%B8%E7%9A%84%E4%B8%80%E4%BA%9B%E6%83%B3%E6%B3%95/</link><pubDate>Fri, 24 Jun 2022 14:38:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/go-sqlmock-%E4%B8%8A%E6%89%8B%E8%AE%B0%E5%BD%95%E5%92%8C%E5%BB%B6%E4%BC%B8%E7%9A%84%E4%B8%80%E4%BA%9B%E6%83%B3%E6%B3%95/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>用 &lt;code>DATA-DOG/go-sqlmock&lt;/code> 结合 gorm 的简单案例和一些延伸想法。&lt;/p>
+&lt;h2 id="为什么mock">为什么mock&lt;/h2>
+&lt;p>使用 mock 技术的主要原因就是确保待测代码的行为稳定，不会因为外部条件变化而造成测试结果不稳定。比如网络延迟或断开、数据库高负载或维护中、你需要的微服务正在被另一个人调试或者你不在内网但急需排查个问题等等。&lt;/p>
+&lt;p>开发中这些问题都还好，因为偶发原因失败就失败，排除后测通就行。但一旦单测进入自动化运行的阶段，这些问题就会变得很烦人：测一个服务要启动一整个集群；写用例的时候要考虑支持并发测试提高单测速度；各种偶发故障/平台故障/环境问题/配置错误频繁打断工作流&amp;hellip;&amp;hellip;&lt;/p>
+&lt;p>实际体验过亲手写微服务 API 单测然后放 CI 跑这会儿该都是泪。&lt;/p>
+&lt;h2 id="构造-gormdb">构造 GORM.DB&lt;/h2>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;span class="lnt">9
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="nx">db&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">mock&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">sqlmock&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">New&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">gormDB&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">gorm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Open&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">postgres&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">New&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">postgres&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Config&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="nx">Conn&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">db&lt;/span>&lt;span class="p">}))&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="nx">err&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;code>gorm.Open&lt;/code>的首参数 &lt;code>Dialector&lt;/code>是具体数据库驱动，同时也指定了使用的 SQL 方言。&lt;code>go-sqlmock&lt;/code>只提供了&lt;code>*sql.DB&lt;/code>，所以还需要 &lt;code>Dialector&lt;/code> 构造方法支持从 &lt;code>sql.DB&lt;/code> 创建。常用的数据库大概都支持。&lt;/p>
+&lt;h2 id="控制反转">控制反转&lt;/h2>
+&lt;p>非常重要的一步，待测代码不能硬编码了数据库实例，不然就没有 mock 的空间了。放 python 里说不定还能 monkeypatch 弥补下，go 里就全看代码架构设计好不好。&lt;/p>
+&lt;p>go 的设计理念之一就是 &lt;em>Composition over inheritance&lt;/em> ，不仅体现在类型系统设计上，在组织代码时的体现就是优先用显式装配的方式构造对象，避免使用全局变量等强耦合方式。&lt;/p>
+&lt;p>再做一句补充，什么叫强耦合？如果你发现待测功能有一个依赖项没法单测的时候 mock 掉，那多半就是写法强耦合了。&lt;/p>
+&lt;p>所以用 mock 写单测还有个好处，就是发现待测代码里不好的设计。当然前提还是单测设计得好的情况下，不管做什么事想搞砸总比想做好容易。&lt;/p>
+&lt;p>回到正题，虽然这一小节说 IoC ，但并不是要求用什么 DI 框架，而是指优先用装配的方式显式提供依赖或依赖的工厂函数，避免在待测代码内自行构造依赖对象或引用全局变量。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kd">type&lt;/span> &lt;span class="nx">B&lt;/span> &lt;span class="kd">interface&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="cm">/* ... */&lt;/span> &lt;span class="p">}&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">BImpl&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span> &lt;span class="cm">/* ... */&lt;/span> &lt;span class="p">}&lt;/span>
+&lt;span class="kd">type&lt;/span> &lt;span class="nx">A&lt;/span> &lt;span class="kd">struct&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">b&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">B&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">NewA&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">b&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">B&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">A&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">A&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;span class="nx">b&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">b&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="o">*&lt;/span>&lt;span class="nx">A&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">method&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nf">NewBImpl&lt;/span>&lt;span class="p">().&lt;/span>&lt;span class="nf">Say&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="c1">// 强耦合，想再把 B 换成别的东西必须侵入 A 的业务，无法 mock
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="p">}&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nx">a&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">A&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="nf">method2&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">a&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">b&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Say&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="c1">// 弱耦合，可以随便把 b 换成别的类型，单测这个接口时 b 可以替换
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这种耦合关系还得具体分析，像是业务代码里直接用 &lt;code>gorm.DB&lt;/code> 做函数签名，的确对 GORM 形成了强耦合，但 GORM 内部和 &lt;code>gorm.Dialect&lt;/code> 又是弱耦合，&lt;code>gorm.Dialect&lt;/code> 和 &lt;code>sql.DB&lt;/code> 强耦合，&lt;code>sql.DB&lt;/code> 和驱动弱耦合。&lt;/p>
+&lt;p>于是我们可以选择 mock &lt;code>gorm.Dialect&lt;/code> 或 mock 驱动，实际分析来看，&lt;code>gorm.Dialect&lt;/code> 大多可以从 &lt;code>sql.DB&lt;/code> 构造，mock 掉 &lt;code>sql.DB&lt;/code> 就等于 mock 掉了 &lt;code>gorm.Dialect&lt;/code>，等于 mock 掉了 &lt;code>gorm.DB&lt;/code>，所以 mock &lt;code>sql.DB&lt;/code> 收益更好。当然，mock &lt;code>sql.DB&lt;/code> 的底层实现还是 mock 驱动。&lt;/p>
+&lt;p>和 &lt;code>gorm&lt;/code> 构成强耦合不是特别严重的问题（不太可能随便更换 ORM 框架），但能把数据库操作单独抽象出来肯定是更好的，一方面可以单独单测，另一方面出现破坏性变更比如大版本升级时影响范围会更可控，变更结果也可以被已经写好的单测验证。&lt;/p>
+&lt;h2 id="例子">例子&lt;/h2>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-go" data-lang="go">&lt;span class="kn">package&lt;/span> &lt;span class="nx">tests&lt;/span>
+&lt;span class="kn">import&lt;/span> &lt;span class="p">(&lt;/span>
+&lt;span class="s">&amp;#34;testing&amp;#34;&lt;/span>
+&lt;span class="nx">sqlmock&lt;/span> &lt;span class="s">&amp;#34;github.com/DATA-DOG/go-sqlmock&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;gorm.io/driver/postgres&amp;#34;&lt;/span>
+&lt;span class="s">&amp;#34;gorm.io/gorm&amp;#34;&lt;/span>
+&lt;span class="p">)&lt;/span>
+&lt;span class="kd">func&lt;/span> &lt;span class="nf">TestMockGORM&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">t&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="nx">testing&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">T&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">db&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">mock&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nx">sqlmock&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">New&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">t&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatal&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">gormDB&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="p">=&lt;/span> &lt;span class="nx">gorm&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Open&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">postgres&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">New&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">postgres&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nx">Config&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="nx">Conn&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nx">db&lt;/span>&lt;span class="p">}))&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">err&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="kc">nil&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">t&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatal&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">err&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="nx">mock&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">ExpectQuery&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">`SELECT &amp;#34;id&amp;#34; FROM &amp;#34;tbl&amp;#34;`&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="nf">WillReturnRows&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">mock&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">NewRows&lt;/span>&lt;span class="p">([]&lt;/span>&lt;span class="kt">string&lt;/span>&lt;span class="p">{&lt;/span>&lt;span class="s">&amp;#34;id&amp;#34;&lt;/span>&lt;span class="p">}).&lt;/span>&lt;span class="nf">AddRow&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;span class="nx">results&lt;/span> &lt;span class="o">:=&lt;/span> &lt;span class="nb">make&lt;/span>&lt;span class="p">([]&lt;/span>&lt;span class="kt">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="nx">gormDB&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Table&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;tbl&amp;#34;&lt;/span>&lt;span class="p">).&lt;/span>&lt;span class="nf">Pluck&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;id&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">&amp;amp;&lt;/span>&lt;span class="nx">results&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nx">results&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">1&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">t&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatal&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;应该只有1行结果&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="nx">results&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">1&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="nx">t&lt;/span>&lt;span class="p">.&lt;/span>&lt;span class="nf">Fatal&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;结果应该是1&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>go-sqlmock 也不是完美的，mock 驱动的方案比较烦心的问题就是需要针对每个查询请求添加 &lt;code>ExpectQuery&lt;/code>，为了模拟真实环境，还需要&lt;code>WillReturnRows&lt;/code>添加返回结果。对于&lt;code>SELECT * FROM tbl&lt;/code> 的情况就需要手写一遍字段名和模拟数据，相当啰嗦。可以考虑自己写个助手函数从 gorm 模型生成&lt;code>sqlmock.Rows&lt;/code>。&lt;/p>
+&lt;h2 id="结论">结论&lt;/h2>
+&lt;p>用 mock 技术写单测成本比较高，收益是单测跑起来稳定不容易意外挂，能并发测试，特别适合自动化跑，测试粒度也更细。&lt;/p>
+&lt;p>反之测 API 的话写起来成本比较低，但依赖一整套配套的运行环境（这一成本在系统规模很大或需要自动化频繁跑的时候会很明显），依赖的外部因素比较多容易意外挂，测试粒度比较粗。适合开发阶段写一个，或者大可用 &lt;code>grpcurl&lt;/code> 或 &lt;code>postman&lt;/code> 一类工具替代。&lt;/p>
+&lt;p>以上。&lt;/p></description></item></channel></rss>
