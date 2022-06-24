@@ -10,6 +10,7 @@ prepare:
 	docker run \
 		--rm \
 		-v $(REPO_ROOT)/config.yaml:/config.yaml \
+		-u $(shell id -u)
 		-w / \
 		mikefarah/yq -i '.params.comments.enabled = false | .params.comments.provider = ~' config.yaml
 
@@ -18,6 +19,7 @@ build: prepare
 		--rm \
 		-v $(REPO_ROOT):/blog \
 		-v $(REPO_ROOT)/public:/blog/public \
+		-u $(shell id -u) \
 		-w /blog \
 		klakegg/hugo:ext-alpine -b https://weakptr.site/
 
@@ -33,6 +35,7 @@ serve:
 cert:
 	docker run \
 		-it \
+		-u $(shell id -u) \
 		--rm \
 		--name certbot \
 		-v "$(REPO_ROOT)/ssl/var/lib/letsencrypt:/var/lib/letsencrypt" \
