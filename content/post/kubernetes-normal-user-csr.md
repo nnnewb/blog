@@ -2,7 +2,8 @@
 title: csr 方式创建 kubernetes 用户出了点差错
 date: 2021-07-19 09:52:38
 tags: ["kubernetes"]
-categories: kubernetes
+categories:
+- kubernetes
 references:
   - title: 证书签名请求 | kubernetes
     url: https://kubernetes.io/zh/docs/reference/access-authn-authz/certificate-signing-requests/#normal-user
