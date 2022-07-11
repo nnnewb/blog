@@ -10,7 +10,7 @@ prepare:
 	docker run \
 		--rm \
 		-v $(REPO_ROOT)/config.yaml:/config.yaml \
-		-u $(shell id -u)
+		-u $(shell id -u) \
 		-w / \
 		mikefarah/yq -i '.params.comments.enabled = false | .params.comments.provider = ~' config.yaml
 
