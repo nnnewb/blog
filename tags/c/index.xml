@@ -1,0 +1,677 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>c on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/c/</link><description>Recent content in c on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 05 Aug 2022 19:41:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/c/index.xml" rel="self" type="application/rss+xml"/><item><title>协程原理和实现</title><link>https://nnnewb.github.io/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/</link><pubDate>Fri, 05 Aug 2022 19:41:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>尝试阅读分析云风大佬的 &lt;a class="link" href="https://github.com/cloudwu/coroutine" target="_blank" rel="noopener"
+>cloudwu/coroutine&lt;/a> ，学习协程的基本原理和实现，然后自己写一个。&lt;/p>
+&lt;h2 id="原理">原理&lt;/h2>
+&lt;p>协程是协同运行的程序，不同语言的实现可以有很大差异。但从基本的来说，协程应该是要低于线程一级的，在用户态调度的程序。&lt;/p>
+&lt;p>既然是用户态调度，也就意味着开两个线程然后用信号量或互斥锁同步就不叫协程，因为线程都是内核调度和切换上下文的。&lt;/p>
+&lt;p>所以实现协程，实现的就是程序的上下文切换和调度分配，代码实现也关注这一块。&lt;/p>
+&lt;h3 id="协同式协程">协同式协程&lt;/h3>
+&lt;p>不确定有没有专有名词描述这种调度方式。&lt;/p>
+&lt;p>“协同式”，指的是需要协程主动放弃执行，调度器才切换调度其他协程运行的情况。协同式调度，协程可以自由决定什么时候交还控制权。&lt;/p>
+&lt;p>云风大佬的 coroutine 库就是协同式调度。&lt;/p>
+&lt;h3 id="抢占式协程">抢占式协程&lt;/h3>
+&lt;p>如 go 的 &lt;code>goroutine&lt;/code> 就是，不需要协程主动放弃执行，调度器会主动在合适的时候停止协程，或创建新的线程，来调度协程运行。&lt;/p>
+&lt;h3 id="上下文切换">上下文切换&lt;/h3>
+&lt;p>上下文切换，上下文指的是程序运行的状态。具体点说，包括：&lt;/p>
+&lt;ul>
+&lt;li>寄存器（通用寄存器和浮点寄存器）&lt;/li>
+&lt;li>栈&lt;/li>
+&lt;/ul>
+&lt;p>以及一些其他的内容，比如监听/屏蔽的 UNIX 信号等，按平台可能有所区别。&lt;/p>
+&lt;p>在 Linux 上，GNU C Lib 提供了 &lt;code>ucontext.h&lt;/code> 头文件暴露相关内核接口。而在 Windows 上，微软也也提供了 &lt;a class="link" href="https://docs.microsoft.com/en-us/windows/win32/procthread/fibers" target="_blank" rel="noopener"
+>fibers 抽象&lt;/a>。&lt;/p>
+&lt;h3 id="调度">调度&lt;/h3>
+&lt;p>以协作式调度为例，只需要简单地在需要让出CPU时，主动保存自己的执行状态，恢复调度器的上下文，然后跳转到调度器继续执行即可。而恢复协程执行也是同理，将执行状态恢复后跳转回上一个中断点即可。&lt;/p>
+&lt;p>抢占式调度则更复杂一些，因为被调度的协程可能处于不能打断的状态或频繁打断产生性能上的负面影响。调度器需要综合多种因素，选择合适的时机打断和切换上下文。&lt;/p>
+&lt;h2 id="实现">实现&lt;/h2>
+&lt;p>学习为主，云风的 coroutine 直接用了 &lt;code>ucontext&lt;/code>，但我对 &lt;code>ucontext&lt;/code> 实现的方式更好奇，所以选择自己用汇编实现上下文的保存和恢复。&lt;/p>
+&lt;p>由于是自己瞎造轮子，难免会有各种错误和潜在问题，但就这样吧。&lt;/p>
+&lt;h3 id="初步设计">初步设计&lt;/h3>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805101240814.png"
+width="873"
+height="349"
+srcset="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805101240814_hu018e2aac8303348ea46e7f8af0ce2366_15306_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805101240814_hu018e2aac8303348ea46e7f8af0ce2366_15306_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220805101240814"
+class="gallery-image"
+data-flex-grow="250"
+data-flex-basis="600px"
+>&lt;/p>
+&lt;p>构想中的协程应该有自己的独立栈区，而调度器继续停留在系统栈。&lt;/p>
+&lt;p>调度器通过 &lt;code>resume&lt;/code> 切换上下文到协程，协程通过 &lt;code>yield&lt;/code> 切换上下文到调度器。当 &lt;code>resume&lt;/code> 时，应该从协程上一次调用 &lt;code>yield&lt;/code> 的地方（或函数入口）开始执行。而调用 &lt;code>yield&lt;/code> 的时候，应该回到调度器上一次调用 &lt;code>resume&lt;/code> 进入协程上下文的地方继续执行。&lt;/p>
+&lt;p>当所有协程都结束后，调度器正常返回。&lt;/p>
+&lt;h3 id="实现思路">实现思路&lt;/h3>
+&lt;p>实现协程最大的难点就在如何切换上下文，我考虑的方法是通过修改 &lt;code>bp&lt;/code> 和 &lt;code>sp&lt;/code> 寄存器劫持返回地址，让&lt;code>yield&lt;/code>和&lt;code>resume&lt;/code>返回到对方的位置，来实现上下文切换。&lt;/p>
+&lt;h3 id="协程和调度器结构">协程和调度器结构&lt;/h3>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="k">struct&lt;/span> &lt;span class="n">wo_routine&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">uint64_t&lt;/span> &lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">17&lt;/span>&lt;span class="p">];&lt;/span> &lt;span class="c1">// 寄存器状态
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">uint8_t&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// 协程专属栈
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">wo_fp&lt;/span> &lt;span class="n">func&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// 协程入口点
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// 参数指针，存放到 RDI 寄存器
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">wo_state&lt;/span> &lt;span class="n">state&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// 协程状态
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="n">wo_routine&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// 协程队列，环形链表
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="n">wo_routine&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">prev&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// 协程队列，环形链表
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="p">};&lt;/span>
+&lt;span class="k">struct&lt;/span> &lt;span class="n">wo_scheduler&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="kt">uint64_t&lt;/span> &lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">17&lt;/span>&lt;span class="p">];&lt;/span> &lt;span class="c1">// 调取协程的寄存器状态
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="n">wo_routine&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="c1">// 当前正在运行的协程
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="p">};&lt;/span>
+&lt;span class="c1">// 调度器实例指针，每个线程独享一个
+&lt;/span>&lt;span class="c1">&lt;/span>&lt;span class="k">extern&lt;/span> &lt;span class="n">_Thread_local&lt;/span> &lt;span class="k">struct&lt;/span> &lt;span class="n">wo_scheduler&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>基于上面的思路，设计出基本的协程结构。包含寄存器、栈、函数入口和参数。为了让多个协程可以轮流执行，将协程结构设计成一个环形链表，以允许随时插入新的协程，在当前协程后被调度执行。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805103145105.png"
+width="631"
+height="583"
+srcset="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805103145105_hu5e5fd36be88da92088dbce0c4d25d462_29383_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805103145105_hu5e5fd36be88da92088dbce0c4d25d462_29383_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220805103145105"
+class="gallery-image"
+data-flex-grow="108"
+data-flex-basis="259px"
+>&lt;/p>
+&lt;p>协程本身也存在状态，不同状态的协程进入调度时会有不同的处理。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805112501182.png"
+width="501"
+height="784"
+srcset="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805112501182_hud8089d45c5fee9293e341af9afafa1b1_24268_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805112501182_hud8089d45c5fee9293e341af9afafa1b1_24268_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220805112501182"
+class="gallery-image"
+data-flex-grow="63"
+data-flex-basis="153px"
+>&lt;/p>
+&lt;h3 id="api设计">API设计&lt;/h3>
+&lt;p>依照上面的思路，可以比较简单地列出需要的接口：&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>wo_main&lt;/code>，主函数，必要的初始化和启动调度器，开始运行协程。&lt;/li>
+&lt;li>&lt;code>wo_start&lt;/code>，在工作队列里添加一个协程，可以在 &lt;code>wo_main&lt;/code> 之前或协程中调用。&lt;/li>
+&lt;li>&lt;code>wo_yield&lt;/code>，只能在协程里调用，切换上下文到调度器。&lt;/li>
+&lt;li>&lt;code>wo_resume&lt;/code>，只能在调度器里调用，切换上下文到协程。&lt;/li>
+&lt;/ul>
+&lt;p>就是这些。&lt;/p>
+&lt;h3 id="调度器部分实现">调度器部分实现&lt;/h3>
+&lt;p>调度器主要工作是管理工作队列（协程组成的环形链表），添加协程或移除已结束的协程，在没有可调度协程时退出。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">wo_schedule&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(;;)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">wo_resume&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">switch&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">state&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nl">WO_STATE_EXITED&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="c1">// 从工作队列删除自己
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">prev&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">prev&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">prev&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">case&lt;/span> &lt;span class="nl">WO_STATE_SUSPENDED&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">&amp;amp;&amp;amp;&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">break&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">default&lt;/span>&lt;span class="o">:&lt;/span>
+&lt;span class="n">assert&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">false&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>调度器主循环。&lt;/p>
+&lt;p>按设计协程 &lt;code>yield&lt;/code> 或 &lt;code>return&lt;/code> 后都是从 &lt;code>resume&lt;/code> 返回。所以在&lt;code>resume&lt;/code> 后 &lt;code>switch&lt;/code> 检查协程的状态。如果协程是 &lt;code>yield&lt;/code> 则状态为 &lt;code>SUSPENDED&lt;/code>，调度器取下一个协程继续运行。若协程为 &lt;code>return&lt;/code> 返回，结束运行，则进入 &lt;code>EXIT&lt;/code> 状态，调度器从工作队列里删除协程。其他情况都是不应该出现的。&lt;/p>
+&lt;p>添加协程的 &lt;code>start&lt;/code> 函数如下。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">wo_start&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">wo_fp&lt;/span> &lt;span class="n">func&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">S&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">wo_sp&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">calloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">wo_s&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">wo_rp&lt;/span> &lt;span class="n">routine&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">wo_rp&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">calloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="k">sizeof&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">wo_r&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="n">routine&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">stack&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">uint8_t&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">malloc&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">STACK_SIZE&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">memset&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">routine&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">stack&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">STACK_SIZE&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">routine&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">func&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">func&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">routine&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">args&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">args&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">routine&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 把自己插入队列
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">routine&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">prev&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">routine&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">routine&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">prev&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">routine&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">routine&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">prev&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">next&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">routine&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>主要工作就是构造出 &lt;code>wo_routine&lt;/code> 结构，初始化栈，然后加入工作队列，等待调度。&lt;/p>
+&lt;h3 id="resume">resume&lt;/h3>
+&lt;p>&lt;code>resume&lt;/code> 负责保存上下文并切换到协程。切换到协程又分两种情况：&lt;/p>
+&lt;ol>
+&lt;li>协程处于 &lt;code>READY&lt;/code> 状态，也就是还没开始执行，此时协程的寄存器、栈都是空的。&lt;/li>
+&lt;li>协程处于 &lt;code>SUSPENDED&lt;/code> 状态，也就是协程已经执行过，寄存器和栈保存的是协程 &lt;code>yield&lt;/code> 时储存的状态。&lt;/li>
+&lt;/ol>
+&lt;p>当协程处于 &lt;code>READY&lt;/code> 状态时是没法恢复上下文的，因为根本就不存在 &lt;em>上一次执行时的上下文&lt;/em> 。&lt;code>READY&lt;/code> 状态时 &lt;code>resume&lt;/code> 做的并不是 &lt;em>恢复&lt;/em> 上下文，而是 &lt;em>构造&lt;/em> 一个合适的初始状态，让协程从这个初始状态开始执行。&lt;/p>
+&lt;p>在实现思路中提到过我想要控制 &lt;code>sp&lt;/code> 寄存器，劫持返回地址来实现切换上下文，这里展开说一说具体怎么做。讨论限定在 Linux x86-64 GCC 编译器环境下。&lt;/p>
+&lt;p>还是从&lt;code>READY&lt;/code>状态的协程开始说。&lt;/p>
+&lt;h4 id="启动新协程">启动新协程&lt;/h4>
+&lt;p>新协程的启动主要考虑两个问题：&lt;/p>
+&lt;ol>
+&lt;li>如何让新协程用自己的栈和寄存器。&lt;/li>
+&lt;li>如何让新协程开始执行。&lt;/li>
+&lt;li>如何让新协程结束时返回到 &lt;code>resume&lt;/code> 。避免在协程代码里调一次 &lt;code>exit&lt;/code> 之类的函数，协程代码编写更自然。&lt;/li>
+&lt;/ol>
+&lt;p>对问题1，让新协程用自己的栈和寄存器可以很简单，保存主线程的寄存器状态，然后将&lt;code>rsp&lt;/code>寄存器设置为协程栈的栈底即可。至于新协程的寄存器状态，我们需要关注的只有 &lt;code>rdi&lt;/code>、&lt;code>rsi&lt;/code> 这些 x86-64 基于寄存器的调用约定里，规定用于传递参数的寄存器即可。出于简化考虑，我们只在&lt;code>start&lt;/code>中允许一个初始参数，所以设置好 &lt;code>rdi&lt;/code> 寄存器的值即可。除&lt;code>rsp&lt;/code>、&lt;code>rdi&lt;/code>外，应该无需再设置其他寄存器的值。&lt;/p>
+&lt;p>对问题2和3，我的方法是正常调用协程函数。&lt;code>call&lt;/code>指令会在协程栈上压栈返回地址，协程函数的序言部分会压栈&lt;code>rbp&lt;/code>，然后把&lt;code>rbp&lt;/code>设置成&lt;code>rsp&lt;/code>，我们不需要关注旧的&lt;code>rbp&lt;/code>值，在协程中不会再用到。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805165740406.png"
+width="1270"
+height="412"
+srcset="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805165740406_hu306eead32bd4fe73f92e98967550a70d_38971_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805165740406_hu306eead32bd4fe73f92e98967550a70d_38971_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220805165740406"
+class="gallery-image"
+data-flex-grow="308"
+data-flex-basis="739px"
+>&lt;/p>
+&lt;p>协程正常执行结束后，在返回时，会弹出&lt;code>rbp&lt;/code>并返回到调用者，也就是 &lt;code>resume&lt;/code> 中调用协程函数的地方。此时必须注意 &lt;code>resume&lt;/code> 运行在协程栈上，而且&lt;code>rsp&lt;/code>已经是栈底。如果在调用协程函数后直接&lt;code>return&lt;/code>，会导致&lt;code>rsp&lt;/code>越界读到无效的&lt;code>rbp&lt;/code>和返回地址，让协程跑飞。在协程函数返回后，&lt;code>resume&lt;/code> 里需要标记协程状态为结束，并手动做一次上下文切换，返回到调度器函数。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805170336172.png"
+width="1309"
+height="337"
+srcset="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805170336172_hub0543b643452558d1674de4a0b24693c_20420_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805170336172_hub0543b643452558d1674de4a0b24693c_20420_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220805170336172"
+class="gallery-image"
+data-flex-grow="388"
+data-flex-basis="932px"
+>&lt;/p>
+&lt;h4 id="恢复旧协程">恢复旧协程&lt;/h4>
+&lt;p>对旧协程的恢复较为简单，因为&lt;code>rsp&lt;/code>寄存器已经在 &lt;code>yield&lt;/code> 中保存，恢复寄存器后栈状态其实和 &lt;code>yield&lt;/code> 中相同。此时只要保证 &lt;code>resume&lt;/code> 和 &lt;code>yield&lt;/code> 函数的清栈操作相同（栈帧大小相同），清栈后 &lt;code>rsp&lt;/code> 都能落在返回地址上，则 &lt;code>resume&lt;/code> 的 &lt;code>return&lt;/code> 实际等于 &lt;code>yield&lt;/code> 中 &lt;code>return&lt;/code> 。在 &lt;code>resume&lt;/code> 的 &lt;code>return&lt;/code> 执行后，就会返回到协程调用 &lt;code>yield&lt;/code> 的位置。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805165516661.png"
+width="1169"
+height="409"
+srcset="https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805165516661_hudb83745f8040956dab88cffe69067977_23816_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/%E5%8D%8F%E7%A8%8B%E5%8E%9F%E7%90%86%E5%92%8C%E5%AE%9E%E7%8E%B0/image-20220805165516661_hudb83745f8040956dab88cffe69067977_23816_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20220805165516661"
+class="gallery-image"
+data-flex-grow="285"
+data-flex-basis="685px"
+>&lt;/p>
+&lt;h4 id="实现代码">实现代码&lt;/h4>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;span class="lnt">47
+&lt;/span>&lt;span class="lnt">48
+&lt;/span>&lt;span class="lnt">49
+&lt;/span>&lt;span class="lnt">50
+&lt;/span>&lt;span class="lnt">51
+&lt;/span>&lt;span class="lnt">52
+&lt;/span>&lt;span class="lnt">53
+&lt;/span>&lt;span class="lnt">54
+&lt;/span>&lt;span class="lnt">55
+&lt;/span>&lt;span class="lnt">56
+&lt;/span>&lt;span class="lnt">57
+&lt;/span>&lt;span class="lnt">58
+&lt;/span>&lt;span class="lnt">59
+&lt;/span>&lt;span class="lnt">60
+&lt;/span>&lt;span class="lnt">61
+&lt;/span>&lt;span class="lnt">62
+&lt;/span>&lt;span class="lnt">63
+&lt;/span>&lt;span class="lnt">64
+&lt;/span>&lt;span class="lnt">65
+&lt;/span>&lt;span class="lnt">66
+&lt;/span>&lt;span class="lnt">67
+&lt;/span>&lt;span class="lnt">68
+&lt;/span>&lt;span class="lnt">69
+&lt;/span>&lt;span class="lnt">70
+&lt;/span>&lt;span class="lnt">71
+&lt;/span>&lt;span class="lnt">72
+&lt;/span>&lt;span class="lnt">73
+&lt;/span>&lt;span class="lnt">74
+&lt;/span>&lt;span class="lnt">75
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">wo_exit&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">state&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">WO_STATE_EXITED&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// 协程已结束。不保存上下文。
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 恢复调度器上下文
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 调度器独享系统栈所以不用复制栈，仅恢复寄存器状态
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rbx&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RBX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rcx&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RCX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rdx&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RDX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rsi&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RSI&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rdi&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RDI&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rsp&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RSP&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rbp&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RBP&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r8&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R8&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r9&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R9&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r10&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R10&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r11&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R11&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r12&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R12&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r13&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R13&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r14&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R14&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r15&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R15&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">wo_resume&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="c1">// 保存上下文
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 调度器运行在系统栈上，所以不保存栈，只记录寄存器
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rbx, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RBX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rcx, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RCX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rdx, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RDX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rsi, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RSI&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rdi, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RDI&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rsp, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RSP&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rbp, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RBP&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r8, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R8&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r9, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R9&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r10, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R10&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r11, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R11&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r12, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R12&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r13, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R13&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r14, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R14&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r15, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R15&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="c1">// 第一次进入时使用 call 方式，在栈底记录返回地址为 resume。
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">state&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">WO_STATE_READY&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">state&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">WO_STATE_RUNNING&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rsp&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">stack&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">STACK_SIZE&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rbp&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">stack&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">STACK_SIZE&lt;/span>&lt;span class="p">));&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">func&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">state&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">WO_STATE_RUNNING&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// 恢复协程上下文
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rbx&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RBX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rcx&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RCX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rdx&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RDX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rsi&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RSI&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rdi&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RDI&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rsp&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RSP&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rbp&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RBP&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r8&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R8&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r9&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R9&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r10&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R10&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r11&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R11&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r12&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R12&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r13&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R13&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r14&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R14&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r15&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R15&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="c1">// 协程结束时会返回到 resume
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 此时上下文是协程栈，直接 return 会跑飞，所以还需要 yield 切换回系统栈
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 再在 schedule 里从链表移除协程
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">state&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">WO_STATE_EXITED&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">wo_exit&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>此处关于 inline assembly 的写法，在最后会给出在线手册地址。&lt;/p>
+&lt;h3 id="yield">yield&lt;/h3>
+&lt;p>&lt;code>yield&lt;/code> 负责保存协程的运行状态。因为协程栈是独立独享的，所以无需对协程栈做备份操作，只需要保存寄存器信息。&lt;/p>
+&lt;p>恢复调度器上下文的原理和&lt;code>resume&lt;/code>的原理一样，只要保证&lt;code>yield&lt;/code>和&lt;code>resume&lt;/code>的栈帧大小一致清栈操作后&lt;code>rsp&lt;/code>落到正确返回地址上，即可在恢复寄存器后直接&lt;code>return&lt;/code>，就像是在 &lt;code>resume&lt;/code> 里 &lt;code>return&lt;/code> 一样。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">wo_yield&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">state&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">WO_STATE_SUSPENDED&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="c1">// 保存协程上下文
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rbx, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RBX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rcx, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RCX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rdx, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RDX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rsi, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RSI&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rdi, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RDI&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rsp, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RSP&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%rbp, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RBP&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r8, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R8&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r9, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R9&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r10, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R10&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r11, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R11&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r12, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R12&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r13, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R13&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r14, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R14&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %%r15, %0&amp;#34;&lt;/span> &lt;span class="o">:&lt;/span> &lt;span class="s">&amp;#34;=m&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">C&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R15&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="c1">// 恢复调度器上下文
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="c1">// 调度器独享系统栈所以不用复制栈，仅恢复寄存器状态
+&lt;/span>&lt;span class="c1">&lt;/span> &lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rbx&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RBX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rcx&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RCX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rdx&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RDX&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rsi&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RSI&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rdi&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RDI&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rsp&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RSP&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%rbp&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_RBP&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r8&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R8&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r9&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R9&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r10&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R10&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r11&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R11&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r12&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R12&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r13&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R13&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r14&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R14&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="n">__asm__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;movq %0, %%r15&amp;#34;&lt;/span> &lt;span class="o">::&lt;/span>&lt;span class="s">&amp;#34;a&amp;#34;&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="o">-&amp;gt;&lt;/span>&lt;span class="n">registers&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">REG_R15&lt;/span>&lt;span class="p">]));&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="使用">使用&lt;/h2>
+&lt;p>几个简单的用例。&lt;/p>
+&lt;h3 id="单线程多协程">单线程多协程&lt;/h3>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">void&lt;/span> &lt;span class="nf">co1&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">5&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">&amp;gt;=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">-=&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;co1: n=%d&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">wo_yield&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">co2&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">4&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">&amp;gt;=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">-=&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;co2: n=%d&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">wo_yield&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">greeting&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="k">for&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="kt">int&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="mi">6&lt;/span>&lt;span class="p">;&lt;/span> &lt;span class="n">i&lt;/span>&lt;span class="o">++&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">wo_yield&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;greeting: %s&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="k">const&lt;/span> &lt;span class="kt">char&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="k">return&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">run_single&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">wo_start&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">co1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">wo_start&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">co2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">wo_start&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">greeting&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;Hello world!&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">wo_main&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;run single end.&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h3 id="多线程多协程">多线程多协程&lt;/h3>
+&lt;p>这个用例展示多个线程同时使用 &lt;code>wo_main()&lt;/code> 启动协程调度器时的场景。未来如果有机会的话应该会再让多线程中的调度器调度对方的协程，甚至启动新调度器，就像 go 的 goroutine 一样。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-c" data-lang="c">&lt;span class="kt">int&lt;/span> &lt;span class="nf">thrd1&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">wo_start&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">co1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">wo_start&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">co2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">wo_start&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">greeting&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;Hello world!&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">wo_main&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">int&lt;/span> &lt;span class="nf">thrd2&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span> &lt;span class="o">*&lt;/span>&lt;span class="n">args&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">wo_start&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">co1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">wo_start&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">co2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">wo_start&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">greeting&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s">&amp;#34;Hello world!&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">wo_main&lt;/span>&lt;span class="p">();&lt;/span>
+&lt;span class="k">return&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;span class="kt">void&lt;/span> &lt;span class="nf">run_parallels&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kt">void&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;span class="n">thrd_t&lt;/span> &lt;span class="n">t1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">t2&lt;/span>&lt;span class="p">;&lt;/span>
+&lt;span class="n">thrd_create&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">t1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">thrd1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">thrd_create&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">&amp;amp;&lt;/span>&lt;span class="n">t2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">thrd2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">thrd_join&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">t1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">thrd_join&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">t2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">NULL&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="n">printf&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s">&amp;#34;run parallels end.&lt;/span>&lt;span class="se">\n&lt;/span>&lt;span class="s">&amp;#34;&lt;/span>&lt;span class="p">);&lt;/span>
+&lt;span class="p">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>参考资料列出如下。&lt;/p>
+&lt;ul>
+&lt;li>&lt;a class="link" href="http://www.ibiblio.org/gferg/ldp/GCC-Inline-Assembly-HOWTO.html" target="_blank" rel="noopener"
+>GCC inline assembly HOWTO&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://github.com/cloudwu/coroutine" target="_blank" rel="noopener"
+>cloudwu/coroutine&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://zhuanlan.zhihu.com/p/84935949" target="_blank" rel="noopener"
+>云风coroutine协程库源码分析&lt;/a>，评论区有些相关的项目和资料，谨慎参考。&lt;/li>
+&lt;li>&lt;a class="link" href="http://www.vishalchovatiya.com/coroutine-in-c-language/" target="_blank" rel="noopener"
+>Coroutine in C Language&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://gist.github.com/zhuowei/b8bc5d8d4a09c9437876" target="_blank" rel="noopener"
+>getcontext implementation&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;p>这里手写汇编代码显然有问题，比如我存了所有通用寄存器但没有存 FPU 和 FLAGS 的状态，也没有存段寄存器。&lt;code>ucontext&lt;/code>的实现考虑周全得多，用 &lt;code>jmp&lt;/code> 也比我用 &lt;code>return&lt;/code> 的形式好。再比如协程栈不能自动扩容，只有一个固定大小。&lt;/p>
+&lt;p>再对比 libco 的话，还缺少非常关键的系统调用异步化改造，让 io 时能自动 yield ，准备就绪后再继续执行。&lt;/p>
+&lt;p>我都不知道算不算摸到了云风大佬十年前水平的边角，太菜了我。&lt;/p></description></item></channel></rss>
