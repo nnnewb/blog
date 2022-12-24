@@ -38,9 +38,11 @@ cert:
 		-u $(shell id -u) \
 		--rm \
 		--name certbot \
-		-v "$(REPO_ROOT)/ssl/var/lib/letsencrypt:/var/lib/letsencrypt" \
-		-v "$(REPO_ROOT)/ssl/etc/letsencrypt:/etc/letsencrypt" \
-		-v "$(REPO_ROOT)/public:/public"
-		-p "80:80" \
-		-p "443:443" \
-		certbot/certbot certonly --web-root=/public
+		-v "$(REPO_ROOT)/ssl/:/ssl" \
+		-v "$(REPO_ROOT)/public:/public" \
+		certbot/certbot certonly \
+			--webroot \
+			--webroot-path=/public \
+			--config-dir=/ssl \
+			--logs-dir=/tmp \
+			-n -d weakptr.site
