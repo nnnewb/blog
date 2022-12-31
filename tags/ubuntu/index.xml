@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>ubuntu on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/ubuntu/</link><description>Recent content in ubuntu on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Sat, 31 Dec 2022 17:15:43 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/ubuntu/index.xml" rel="self" type="application/rss+xml"/><item><title>我的 Ubuntu Server 虚拟机配置</title><link>https://nnnewb.github.io/blog/p/%E6%88%91%E7%9A%84-ubuntu-server-%E8%99%9A%E6%8B%9F%E6%9C%BA%E9%85%8D%E7%BD%AE/</link><pubDate>Sat, 31 Dec 2022 17:15:43 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E6%88%91%E7%9A%84-ubuntu-server-%E8%99%9A%E6%8B%9F%E6%9C%BA%E9%85%8D%E7%BD%AE/</guid><description>&lt;p>Ubuntu Server 是我目前比较习惯用的开发用 Linux 虚拟机系统，选择 Ubuntu Server 的原因也很简单：问答资源什么的比较丰富，安装过程足够快捷可控，以及日常开发使用中相对没那么折腾。&lt;/p>
+&lt;p>但 Ubuntu Server 默认配置也有些比较恶心人的东西，比如那个 &lt;code>snapd&lt;/code> ，平时基本用不到，但系统用了一段时间后经常看到 &lt;code>snapd&lt;/code> 关机的时候等待 120s 或者启动报错之类。同样比较烦人的是 &lt;code>systemd-networkd-wait-online&lt;/code> ，会拖慢开机时间，而且经常能看到失败。&lt;/p>
+&lt;p>且不说这个检查机制到底是怎么实现的，虚拟机环境基本不配什么开机启动依赖网络的服务，等网络确实没什么意义。&lt;/p>
+&lt;p>最后还有一个比较迷惑的问题，默认装完 Ubuntu Server 设置的 systemd target 是 graphical ，但安装选项是不含桌面的。所以为了不加载没啥用还可能导致问题的服务，默认 target 也得改成 multi-user 。&lt;/p>
+&lt;p>具体流程：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-shell" data-lang="shell">&lt;span class="c1"># 卸载和禁用 snapd&lt;/span>
+sudo apt autoremove --purge snapd
+sudo apt-mark hold snapd
+&lt;span class="c1"># 修改 systemd-networkd-wait-online 的等待时间&lt;/span>
+&lt;span class="c1"># ExecStart=/lib/systemd/systemd-networkd-wait-online --timeout 1&lt;/span>
+&lt;span class="c1"># 加上 --timeout 1&lt;/span>
+sudo systemctl edit systemd-networkd-wait-online.service --full
+&lt;span class="c1"># 修改目标 multi-user&lt;/span>
+sudo systemctl set-default multi-user
+&lt;span class="c1"># 重启生效&lt;/span>
+sudo reboot
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这是一方面。&lt;/p>
+&lt;p>另外还有个比较讨厌的问题是网络配置，公司内网不允许虚拟机桥接，而 NAT 模式宿主机是不能直接通过 IP 访问虚拟机的，所以还得加一张 Host-Only 网卡。此外，因为工作需要，还得准备两台用来给公司代码编译打包的虚拟机（也是历史遗留的大坑），以及一台测试用的虚拟机。这些虚拟机之间需要互通，然而 NAT 模式网卡也是不支持虚拟机之间互通的，所以还是要加 Host-Only 网卡。&lt;/p>
+&lt;p>然后就是 Host-Only 网卡的问题了，默认是 DHCP 分配 IP ，会偶发的出现虚拟机 IP 改变，导致一些写好的脚本不得不改下才能跑。所以还得顺便改下静态 IP 。嗯，虚拟机有部分是 CentOS 的，配置静态 IP 方法和 Ubuntu Server 不一样，但这篇只聊下 Ubuntu Server 的配置静态 IP 方法。&lt;/p>
+&lt;p>简而言之，参考 &lt;a class="link" href="https://netplan.io/examples" target="_blank" rel="noopener"
+>Canonical Netplan&lt;/a> 这篇文档。在 &lt;code>/etc/netplan/&lt;/code> 下面新建一个 &lt;code>01-host-only.yaml&lt;/code> 配置如下。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-yaml" data-lang="yaml">&lt;span class="nt">network&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">version&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">2&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">renderer&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="l">networkd&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">ethernets&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">ens37&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">dhcp4&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="kc">no&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">addresses&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="m">192.168.129.101&lt;/span>&lt;span class="l">/24]&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">nameservers&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">addresses&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="m">114.114.114.114&lt;/span>&lt;span class="p">,&lt;/span>&lt;span class="m">114.114.115.115&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">routes&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>- &lt;span class="nt">to&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">192.168.129.0&lt;/span>&lt;span class="l">/24&lt;/span>&lt;span class="w">
+&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="nt">via&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="w"> &lt;/span>&lt;span class="m">192.168.129.1&lt;/span>&lt;span class="w">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>需要注意的是得看下虚拟机的 Host-Only 网卡配置的是哪个网段，以及 Host-Only 的网卡名是什么（我的机器上是 &lt;code>ens37&lt;/code>）。Host-Only 网卡配 &lt;code>nameservers&lt;/code> 没啥意义我这写了也就写了。&lt;/p>
+&lt;p>改好之后 &lt;code>sudo netplan aplpy&lt;/code> 应用，再试试 &lt;code>ip addr show&lt;/code> 看看生效了，&lt;code>ping -I ens37 192.168.129.xxx&lt;/code> 试下能不能通其他 Host-Only 网卡的 IP 。最好再试下 &lt;code>curl -L https://www.baidu.com/&lt;/code> 看看正常上网有没有问题。&lt;/p></description></item></channel></rss>
