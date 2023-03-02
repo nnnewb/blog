@@ -1,0 +1,344 @@
+<!doctype html><html lang=zh-cn dir=ltr>
+<head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="工作忙长话短说，写的匆忙，参考文章见文末。 应对场景 因为工作面对的网络环境有点复杂，业务需要做了基于 Tun 网卡的隧道转发流量，然后流量会经过实体机"><title>iptables 调试方法</title>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/>
+<link rel=stylesheet href=/blog/scss/style.min.8620c11ff935a5d342b5db4472643ebc0b4e9d20346a8730d3bf81e0b248f600.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
+<script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
+<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="iptables 调试方法">
+<meta property="og:description" content="工作忙长话短说，写的匆忙，参考文章见文末。 应对场景 因为工作面对的网络环境有点复杂，业务需要做了基于 Tun 网卡的隧道转发流量，然后流量会经过实体机">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/">
+<meta property="og:site_name" content="weakptr's 笔记">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="linux运维"><meta property="article:tag" content="iptables"><meta property="article:published_time" content="2023-03-02T17:36:09+08:00"><meta property="article:modified_time" content="2023-03-02T17:36:09+08:00">
+<meta name=twitter:title content="iptables 调试方法">
+<meta name=twitter:description content="工作忙长话短说，写的匆忙，参考文章见文末。 应对场景 因为工作面对的网络环境有点复杂，业务需要做了基于 Tun 网卡的隧道转发流量，然后流量会经过实体机">
+</head>
+<body class=article-page>
+<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
+<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box>
+<span class=hamburger-inner></span>
+</span>
+</button>
+<header>
+<figure class=site-avatar>
+<a href=/blog>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a>
+<span class=emoji>🍑</span>
+</figure>
+<div class=site-meta>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h2 class=site-description>弃船！</h2>
+</div>
+</header><ol class=social-menu>
+<li>
+<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+</a>
+</li>
+</ol><ol class=menu id=main-menu>
+<li>
+<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>首页</span>
+</a>
+</li>
+<li>
+<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<span>关于我</span>
+</a>
+</li>
+<li>
+<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>归档</span>
+</a>
+</li>
+<li>
+<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<span>分类</span>
+</a>
+</li>
+<li>
+<a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<span>标签</span>
+</a>
+</li>
+<li>
+<a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<span>友链</span>
+</a>
+</li>
+<li>
+<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>搜索</span>
+</a>
+</li>
+<div class=menu-bottom-section>
+</div>
+</ol>
+</aside>
+<main class="main full-width">
+<article class=main-article>
+<header class=article-header>
+<div class=article-details>
+<header class=article-category>
+<a href=/blog/categories/linux%E8%BF%90%E7%BB%B4/>
+linux运维
+</a>
+</header>
+<div class=article-title-wrapper>
+<h2 class=article-title>
+<a href=/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/>iptables 调试方法</a>
+</h2>
+</div>
+<footer class=article-time>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published datetime=2023-03-02T17:36:09+08:00>2023年 3月 2日</time>
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>
+阅读时长: 3 分钟
+</time>
+</div>
+</footer>
+</div>
+</header>
+<section class=article-content>
+<p>工作忙长话短说，写的匆忙，参考文章见文末。</p>
+<h2 id=应对场景>应对场景</h2>
+<p>因为工作面对的网络环境有点复杂，业务需要做了基于 Tun 网卡的隧道转发流量，然后流量会经过实体机-虚拟机（隧道网关）-虚拟机（蜜罐网络网关）-虚拟机/docker容器一长串转发，基本靠 <code>ip rule</code>/<code>ip route</code> 还有 <code>iptables</code> 制定流量转发规则。</p>
+<p>后来简化了整个流量路径，直接从实体机转蜜罐网络。最近就遇到一个 <code>tcpdump</code> 抓到了隧道网卡流量，但没有进入 docker 创建的网桥的问题。虽然后来是靠重启了一下隧道服务端解决（问题根源没找到），但中间看另一个同事调规则还是直接 <code>-j accept</code> 然后 <code>iptables -t nat -nvL</code> 看流量，于是就想起来之前似乎看到过 netfilter 支持 <code>-j LOG</code> 还是啥来着，可以把流量打条日志出来。</p>
+<p>不过一个一个链跟过去 <code>iptables -t xxx -I yyy -j LOG</code> 加日志再看日志很不方便，于是搜了下，发现可以在 <code>raw</code> 表 <code>PREROUTING</code> 链增加一条 <code>-j TRACE</code> 把入站链路匹配的表链规则都打出来。</p>
+<h2 id=使用>使用</h2>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=c1># 跟踪入站包</span>
+iptables -t raw -I PREROUTING -p tcp -s 192.168.13.3 -d 192.168.13.6 --dport <span class=m>80</span> -j TRACE
+<span class=c1># 跟踪出站包</span>
+iptables -t raw -I OUTPUT -p tcp -s 192.168.13.6 -d 192.168.13.3 --sport <span class=m>80</span> -j TRACE
+</code></pre></td></tr></table>
+</div>
+</div><p>因为 TRACE 打的内容很丰富，说白了要是不加约束的话打出来的日志量大到没法看，所以最好加上详细的匹配规则，只抓感兴趣的流量。</p>
+<p>比如上面的命令只抓 <code>192.168.13.6:80</code> 的出站、入站流量，如果遇到像是 80 不知道转发到哪儿了，可以打出来匹配的表链和规则。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>[root@localhost ~]# iptables -t raw -nvL
+Chain PREROUTING (policy ACCEPT 111 packets, 8843 bytes)
+ pkts bytes target     prot opt in     out     source               destination         
+    0     0 TRACE      tcp  --  *      *       192.168.13.3         192.168.13.6         tcp dpt:80
+
+Chain OUTPUT (policy ACCEPT 67 packets, 15411 bytes)
+ pkts bytes target     prot opt in     out     source               destination         
+    0     0 TRACE      tcp  --  *      *       192.168.13.6         192.168.13.3         tcp spt:80
+
+</code></pre></td></tr></table>
+</div>
+</div><p>现在到 192.168.13.3 尝试请求 192.168.13.6 的 80 端口看看。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>vm :: ~/repos/huanyun » curl -vkL http://192.168.13.6/
+*   Trying 192.168.13.6:80...
+^C
+</code></pre></td></tr></table>
+</div>
+</div><p>在 192.168.13.6 上使用命令 <code>journalctl -xek</code> 查看内核日志。</p>
+<div class=highlight><div class=chroma>
+<table class=lntable><tr><td class=lntd>
+<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span></code></pre></td>
+<td class=lntd>
+<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>[root@localhost ~]# journalctl -kxe -n 10 --no-pager
+-- Logs begin at Tue 2023-02-28 05:48:43 CST, end at Thu 2023-03-02 13:56:16 CST. --
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:INPUT:policy:1 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43341 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK URGP=0 OPT (0101080AB2CBAA293337B8FC) UID=48 GID=48 
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: filter:INPUT:policy:1 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43341 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK URGP=0 OPT (0101080AB2CBAA293337B8FC) UID=48 GID=48 
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: raw:PREROUTING:policy:2 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43342 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK FIN URGP=0 OPT (0101080AB2CBAA293337B8FC) 
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:PREROUTING:policy:1 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43342 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK FIN URGP=0 OPT (0101080AB2CBAA293337B8FC) 
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:INPUT:policy:1 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43342 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK FIN URGP=0 OPT (0101080AB2CBAA293337B8FC) UID=48 GID=48 
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: filter:INPUT:policy:1 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43342 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK FIN URGP=0 OPT (0101080AB2CBAA293337B8FC) UID=48 GID=48 
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: raw:OUTPUT:policy:2 IN= OUT=enp0s8 SRC=192.168.13.6 DST=192.168.13.3 LEN=52 TOS=0x00 PREC=0x00 TTL=64 ID=41993 DF PROTO=TCP SPT=80 DPT=38660 SEQ=907923156 ACK=548562009 WINDOW=227 RES=0x00 ACK URGP=0 OPT (0101080A3337B8FFB2CBAA29) UID=48 GID=48 
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:OUTPUT:policy:1 IN= OUT=enp0s8 SRC=192.168.13.6 DST=192.168.13.3 LEN=52 TOS=0x00 PREC=0x00 TTL=64 ID=41993 DF PROTO=TCP SPT=80 DPT=38660 SEQ=907923156 ACK=548562009 WINDOW=227 RES=0x00 ACK URGP=0 OPT (0101080A3337B8FFB2CBAA29) UID=48 GID=48 
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: filter:OUTPUT:policy:1 IN= OUT=enp0s8 SRC=192.168.13.6 DST=192.168.13.3 LEN=52 TOS=0x00 PREC=0x00 TTL=64 ID=41993 DF PROTO=TCP SPT=80 DPT=38660 SEQ=907923156 ACK=548562009 WINDOW=227 RES=0x00 ACK URGP=0 OPT (0101080A3337B8FFB2CBAA29) UID=48 GID=48 
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:POSTROUTING:policy:1 IN= OUT=enp0s8 SRC=192.168.13.6 DST=192.168.13.3 LEN=52 TOS=0x00 PREC=0x00 TTL=64 ID=41993 DF PROTO=TCP SPT=80 DPT=38660 SEQ=907923156 ACK=548562009 WINDOW=227 RES=0x00 ACK URGP=0 OPT (0101080A3337B8FFB2CBAA29) UID=48 GID=48
+</code></pre></td></tr></table>
+</div>
+</div><p>我多请求了两次所以日志量会多点，不过内容大概就是这样。</p>
+<p>日志字段分几个主要部分：匹配的表链（<code>mangle:POSTROUTING:policy:1</code>）、进出设备（<code>IN= OUT=enp0s8</code>）、接收方以太网地址（<code>MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00</code>）、收发IP（<code>SRC=192.168.13.3 DST=192.168.13.6</code>）、协议（<code>PROTO=TCP</code>）、收发端口（<code>SPT=38660 DPT=80</code>）还有 flag（<code>ACK FIN URGP=0</code>）</p>
+<h2 id=总结>总结</h2>
+<p>就是这样。</p>
+<p><code>ip rule</code> 和 <code>ip route</code> 把 《TCP/IP 协议详解》读完了再说，Linux 网络实现好几本大部头在我书架上等着我翻，也不知道几年后能看完。</p>
+</section>
+<footer class=article-footer>
+<section class=article-tags>
+<a href=/blog/tags/linux%E8%BF%90%E7%BB%B4/>linux运维</a>
+<a href=/blog/tags/iptables/>iptables</a>
+</section>
+<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span>
+</section>
+</footer>
+<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
+</article>
+<aside class=related-contents--wrapper>
+<h2 class=section-title>相关文章</h2>
+<div class=related-contents>
+<div class="flex article-list--tile">
+<article>
+<a href=/blog/p/%E6%88%91%E7%9A%84-ubuntu-server-%E8%99%9A%E6%8B%9F%E6%9C%BA%E9%85%8D%E7%BD%AE/>
+<div class=light>
+<div class=lamp></div>
+</div>
+<div class=article-details>
+<h2 class=article-title>我的 Ubuntu Server 虚拟机配置</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/build-vim8.2-manually-on-raspbian/>
+<div class=light>
+<div class=lamp></div>
+</div>
+<div class=article-details>
+<h2 class=article-title>在raspbian上手动编译vim8.2</h2>
+</div>
+</a>
+</article>
+<article class=has-image>
+<a href=/blog/p/blind-op-2021-11-11/>
+<div class=article-image>
+<img src=/blog/p/blind-op-2021-11-11/cover.58fdad05746821d54bc454b7b5327e75_hu1d1fceb777c1bb637eaad95645df6a3c_2452_250x150_fill_box_smart1_3.png width=250 height=150 loading=lazy alt="Featured image of post 运维瞎记 2021年11月11日" data-key=blind-op-2021-11-11 data-hash="md5-WP2tBXRoIdVLxFS3tTJ+dQ==">
+</div>
+<div class=light>
+<div class=lamp></div>
+</div>
+<div class=article-details>
+<h2 class=article-title>运维瞎记 2021年11月11日</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/%E5%8D%87%E7%BA%A7%E5%85%AC%E5%8F%B8%E7%9A%84-gitlab/>
+<div class=light>
+<div class=lamp></div>
+</div>
+<div class=article-details>
+<h2 class=article-title>升级公司的 GitLab</h2>
+</div>
+</a>
+</article>
+<article>
+<a href=/blog/p/%E4%B8%8D%E5%B8%B8%E7%94%A8%E7%9A%84-git-%E5%91%BD%E4%BB%A4/>
+<div class=light>
+<div class=lamp></div>
+</div>
+<div class=article-details>
+<h2 class=article-title>不常用的 Git 命令</h2>
+</div>
+</a>
+</article>
+</div>
+</div>
+</aside>
+<footer class=site-footer>
+<section class=copyright>
+&copy;
+2021 -
+2023 weakptr's 笔记
+</section>
+<section class=powerby>
+GitHub Pages <br>
+Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
+主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
+</section>
+</footer>
+<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
+<div class=pswp__bg></div>
+<div class=pswp__scroll-wrap>
+<div class=pswp__container>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+<div class=pswp__item></div>
+</div>
+<div class="pswp__ui pswp__ui--hidden">
+<div class=pswp__top-bar>
+<div class=pswp__counter></div>
+<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+<div class=pswp__preloader>
+<div class=pswp__preloader__icn>
+<div class=pswp__preloader__cut>
+<div class=pswp__preloader__donut></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+<div class=pswp__share-tooltip></div>
+</div>
+<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+</button>
+<div class=pswp__caption>
+<div class=pswp__caption__center></div>
+</div>
+</div>
+</div>
+</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
+</main>
+<aside class="sidebar right-sidebar sticky">
+<section class="widget archives">
+<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+</div>
+<h2 class="widget-title section-title">目录</h2>
+<div class=widget--toc>
+<nav id=TableOfContents>
+<ol>
+<li><a href=#应对场景>应对场景</a></li>
+<li><a href=#使用>使用</a></li>
+<li><a href=#总结>总结</a></li>
+</ol>
+</nav>
+</div>
+</section>
+</aside>
+</div>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
+</body>
+</html>

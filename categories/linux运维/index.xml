@@ -1,4 +1,96 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>linux运维 on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/linux%E8%BF%90%E7%BB%B4/</link><description>Recent content in linux运维 on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Sat, 31 Dec 2022 17:15:43 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/linux%E8%BF%90%E7%BB%B4/index.xml" rel="self" type="application/rss+xml"/><item><title>我的 Ubuntu Server 虚拟机配置</title><link>https://nnnewb.github.io/blog/p/%E6%88%91%E7%9A%84-ubuntu-server-%E8%99%9A%E6%8B%9F%E6%9C%BA%E9%85%8D%E7%BD%AE/</link><pubDate>Sat, 31 Dec 2022 17:15:43 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E6%88%91%E7%9A%84-ubuntu-server-%E8%99%9A%E6%8B%9F%E6%9C%BA%E9%85%8D%E7%BD%AE/</guid><description>&lt;p>Ubuntu Server 是我目前比较习惯用的开发用 Linux 虚拟机系统，选择 Ubuntu Server 的原因也很简单：问答资源什么的比较丰富，安装过程足够快捷可控，以及日常开发使用中相对没那么折腾。&lt;/p>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>linux运维 on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/linux%E8%BF%90%E7%BB%B4/</link><description>Recent content in linux运维 on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 02 Mar 2023 17:36:09 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/linux%E8%BF%90%E7%BB%B4/index.xml" rel="self" type="application/rss+xml"/><item><title>iptables 调试方法</title><link>https://nnnewb.github.io/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/</link><pubDate>Thu, 02 Mar 2023 17:36:09 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/</guid><description>&lt;p>工作忙长话短说，写的匆忙，参考文章见文末。&lt;/p>
+&lt;h2 id="应对场景">应对场景&lt;/h2>
+&lt;p>因为工作面对的网络环境有点复杂，业务需要做了基于 Tun 网卡的隧道转发流量，然后流量会经过实体机-虚拟机（隧道网关）-虚拟机（蜜罐网络网关）-虚拟机/docker容器一长串转发，基本靠 &lt;code>ip rule&lt;/code>/&lt;code>ip route&lt;/code> 还有 &lt;code>iptables&lt;/code> 制定流量转发规则。&lt;/p>
+&lt;p>后来简化了整个流量路径，直接从实体机转蜜罐网络。最近就遇到一个 &lt;code>tcpdump&lt;/code> 抓到了隧道网卡流量，但没有进入 docker 创建的网桥的问题。虽然后来是靠重启了一下隧道服务端解决（问题根源没找到），但中间看另一个同事调规则还是直接 &lt;code>-j accept&lt;/code> 然后 &lt;code>iptables -t nat -nvL&lt;/code> 看流量，于是就想起来之前似乎看到过 netfilter 支持 &lt;code>-j LOG&lt;/code> 还是啥来着，可以把流量打条日志出来。&lt;/p>
+&lt;p>不过一个一个链跟过去 &lt;code>iptables -t xxx -I yyy -j LOG&lt;/code> 加日志再看日志很不方便，于是搜了下，发现可以在 &lt;code>raw&lt;/code> 表 &lt;code>PREROUTING&lt;/code> 链增加一条 &lt;code>-j TRACE&lt;/code> 把入站链路匹配的表链规则都打出来。&lt;/p>
+&lt;h2 id="使用">使用&lt;/h2>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="c1"># 跟踪入站包&lt;/span>
+iptables -t raw -I PREROUTING -p tcp -s 192.168.13.3 -d 192.168.13.6 --dport &lt;span class="m">80&lt;/span> -j TRACE
+&lt;span class="c1"># 跟踪出站包&lt;/span>
+iptables -t raw -I OUTPUT -p tcp -s 192.168.13.6 -d 192.168.13.3 --sport &lt;span class="m">80&lt;/span> -j TRACE
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>因为 TRACE 打的内容很丰富，说白了要是不加约束的话打出来的日志量大到没法看，所以最好加上详细的匹配规则，只抓感兴趣的流量。&lt;/p>
+&lt;p>比如上面的命令只抓 &lt;code>192.168.13.6:80&lt;/code> 的出站、入站流量，如果遇到像是 80 不知道转发到哪儿了，可以打出来匹配的表链和规则。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;span class="lnt">9
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">[root@localhost ~]# iptables -t raw -nvL
+Chain PREROUTING (policy ACCEPT 111 packets, 8843 bytes)
+pkts bytes target prot opt in out source destination
+0 0 TRACE tcp -- * * 192.168.13.3 192.168.13.6 tcp dpt:80
+Chain OUTPUT (policy ACCEPT 67 packets, 15411 bytes)
+pkts bytes target prot opt in out source destination
+0 0 TRACE tcp -- * * 192.168.13.6 192.168.13.3 tcp spt:80
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>现在到 192.168.13.3 尝试请求 192.168.13.6 的 80 端口看看。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">vm :: ~/repos/huanyun » curl -vkL http://192.168.13.6/
+* Trying 192.168.13.6:80...
+^C
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>在 192.168.13.6 上使用命令 &lt;code>journalctl -xek&lt;/code> 查看内核日志。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">[root@localhost ~]# journalctl -kxe -n 10 --no-pager
+-- Logs begin at Tue 2023-02-28 05:48:43 CST, end at Thu 2023-03-02 13:56:16 CST. --
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:INPUT:policy:1 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43341 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK URGP=0 OPT (0101080AB2CBAA293337B8FC) UID=48 GID=48
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: filter:INPUT:policy:1 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43341 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK URGP=0 OPT (0101080AB2CBAA293337B8FC) UID=48 GID=48
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: raw:PREROUTING:policy:2 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43342 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK FIN URGP=0 OPT (0101080AB2CBAA293337B8FC)
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:PREROUTING:policy:1 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43342 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK FIN URGP=0 OPT (0101080AB2CBAA293337B8FC)
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:INPUT:policy:1 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43342 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK FIN URGP=0 OPT (0101080AB2CBAA293337B8FC) UID=48 GID=48
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: filter:INPUT:policy:1 IN=enp0s8 OUT= MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00 SRC=192.168.13.3 DST=192.168.13.6 LEN=52 TOS=0x10 PREC=0x00 TTL=64 ID=43342 DF PROTO=TCP SPT=38660 DPT=80 SEQ=548562008 ACK=907923156 WINDOW=502 RES=0x00 ACK FIN URGP=0 OPT (0101080AB2CBAA293337B8FC) UID=48 GID=48
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: raw:OUTPUT:policy:2 IN= OUT=enp0s8 SRC=192.168.13.6 DST=192.168.13.3 LEN=52 TOS=0x00 PREC=0x00 TTL=64 ID=41993 DF PROTO=TCP SPT=80 DPT=38660 SEQ=907923156 ACK=548562009 WINDOW=227 RES=0x00 ACK URGP=0 OPT (0101080A3337B8FFB2CBAA29) UID=48 GID=48
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:OUTPUT:policy:1 IN= OUT=enp0s8 SRC=192.168.13.6 DST=192.168.13.3 LEN=52 TOS=0x00 PREC=0x00 TTL=64 ID=41993 DF PROTO=TCP SPT=80 DPT=38660 SEQ=907923156 ACK=548562009 WINDOW=227 RES=0x00 ACK URGP=0 OPT (0101080A3337B8FFB2CBAA29) UID=48 GID=48
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: filter:OUTPUT:policy:1 IN= OUT=enp0s8 SRC=192.168.13.6 DST=192.168.13.3 LEN=52 TOS=0x00 PREC=0x00 TTL=64 ID=41993 DF PROTO=TCP SPT=80 DPT=38660 SEQ=907923156 ACK=548562009 WINDOW=227 RES=0x00 ACK URGP=0 OPT (0101080A3337B8FFB2CBAA29) UID=48 GID=48
+Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:POSTROUTING:policy:1 IN= OUT=enp0s8 SRC=192.168.13.6 DST=192.168.13.3 LEN=52 TOS=0x00 PREC=0x00 TTL=64 ID=41993 DF PROTO=TCP SPT=80 DPT=38660 SEQ=907923156 ACK=548562009 WINDOW=227 RES=0x00 ACK URGP=0 OPT (0101080A3337B8FFB2CBAA29) UID=48 GID=48
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>我多请求了两次所以日志量会多点，不过内容大概就是这样。&lt;/p>
+&lt;p>日志字段分几个主要部分：匹配的表链（&lt;code>mangle:POSTROUTING:policy:1&lt;/code>）、进出设备（&lt;code>IN= OUT=enp0s8&lt;/code>）、接收方以太网地址（&lt;code>MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00&lt;/code>）、收发IP（&lt;code>SRC=192.168.13.3 DST=192.168.13.6&lt;/code>）、协议（&lt;code>PROTO=TCP&lt;/code>）、收发端口（&lt;code>SPT=38660 DPT=80&lt;/code>）还有 flag（&lt;code>ACK FIN URGP=0&lt;/code>）&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>就是这样。&lt;/p>
+&lt;p>&lt;code>ip rule&lt;/code> 和 &lt;code>ip route&lt;/code> 把 《TCP/IP 协议详解》读完了再说，Linux 网络实现好几本大部头在我书架上等着我翻，也不知道几年后能看完。&lt;/p></description></item><item><title>我的 Ubuntu Server 虚拟机配置</title><link>https://nnnewb.github.io/blog/p/%E6%88%91%E7%9A%84-ubuntu-server-%E8%99%9A%E6%8B%9F%E6%9C%BA%E9%85%8D%E7%BD%AE/</link><pubDate>Sat, 31 Dec 2022 17:15:43 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E6%88%91%E7%9A%84-ubuntu-server-%E8%99%9A%E6%8B%9F%E6%9C%BA%E9%85%8D%E7%BD%AE/</guid><description>&lt;p>Ubuntu Server 是我目前比较习惯用的开发用 Linux 虚拟机系统，选择 Ubuntu Server 的原因也很简单：问答资源什么的比较丰富，安装过程足够快捷可控，以及日常开发使用中相对没那么折腾。&lt;/p>
 &lt;p>但 Ubuntu Server 默认配置也有些比较恶心人的东西，比如那个 &lt;code>snapd&lt;/code> ，平时基本用不到，但系统用了一段时间后经常看到 &lt;code>snapd&lt;/code> 关机的时候等待 120s 或者启动报错之类。同样比较烦人的是 &lt;code>systemd-networkd-wait-online&lt;/code> ，会拖慢开机时间，而且经常能看到失败。&lt;/p>
 &lt;p>且不说这个检查机制到底是怎么实现的，虚拟机环境基本不配什么开机启动依赖网络的服务，等网络确实没什么意义。&lt;/p>
 &lt;p>最后还有一个比较迷惑的问题，默认装完 Ubuntu Server 设置的 systemd target 是 graphical ，但安装选项是不含桌面的。所以为了不加载没啥用还可能导致问题的服务，默认 target 也得改成 multi-user 。&lt;/p>
