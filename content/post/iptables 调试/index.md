@@ -74,6 +74,17 @@ Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:POSTROUTING:policy:1
 
 ## 总结
 
+原理图
+
+![netfilter-packet-flow](netfilter-packet-flow.png)
+
 就是这样。
 
 `ip rule` 和 `ip route` 把 《TCP/IP 协议详解》读完了再说，Linux 网络实现好几本大部头在我书架上等着我翻，也不知道几年后能看完。
+
+参考
+
+- https://thermalcircle.de/doku.php?id=blog:linux:nftables_packet_flow_netfilter_hooks_detail
+- https://backreference.org/2010/06/11/iptables-debugging/
+
+建议就直接读原文，写得很细。
