@@ -35,7 +35,7 @@ serve:
 cert:
 	docker run \
 		-it \
-		-u $(shell id -u) \
+		-u $(shell id -u):$(shell id -g) \
 		--rm \
 		--name certbot \
 		-v "$(REPO_ROOT)/ssl/:/ssl" \
@@ -45,4 +45,8 @@ cert:
 			--webroot-path=/public \
 			--config-dir=/ssl \
 			--logs-dir=/tmp \
+			--work-dir=/tmp \
+			--agree-tos \
+			--email 'weak_ptr@outlook.com' \
 			-n -d weakptr.site
+
