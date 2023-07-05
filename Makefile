@@ -1,20 +1,12 @@
 .PHONY: deploy prepare build cert
 
 REPO_ROOT:=$(realpath $(shell pwd))
+VERSION:=$(shell git rev-parse HEAD)
 
 deploy: build
 	docker-compose up -d
 
-prepare:
-	cp config.tpl.yaml config.yaml
-	docker run \
-		--rm \
-		-v $(REPO_ROOT)/config.yaml:/config.yaml \
-		-u $(shell id -u) \
-		-w / \
-		mikefarah/yq -i '.params.comments.enabled = false | .params.comments.provider = ~' config.yaml
-
-build: prepare
+build:
 	docker run \
 		--rm \
 		-v $(REPO_ROOT):/blog \
@@ -22,6 +14,9 @@ build: prepare
 		-u $(shell id -u) \
 		-w /blog \
 		klakegg/hugo:ext-alpine -b https://weakptr.site/
+
+image:
+	docker build . -t gitea.weakptr.site/weakptr/blog:${VERSION}
 
 serve:
 	docker run \
