@@ -26,3 +26,26 @@ volumes:
 trigger:
   branch: 
     - main
+
+---
+kind: pipeline
+type: docker
+name: synchronize repository
+
+steps:
+  - name: push
+    image: bitnami/git:latest
+    environment:
+      PRIVATE_KEY:
+        from_secret: ssh_private_key
+      KNOWN_HOSTS:
+        from_secret: ssh_known_hosts
+    commands:
+      - mkdir -p ~/.ssh
+      - chmod 750 ~/.ssh
+      - echo "$PRIVATE_KEY" | tee -a ~/.ssh/id_ed25519
+      - ssh-keyscan -H github.com | tee -a ~/.ssh/known_hosts
+      - chmod 600 ~/.ssh/id_ed25519
+      - chmod 600 ~/.ssh/known_hosts
+      - git remote set-url origin git@github.com:nnnewb/cms.git
+      - git push origin $DRONE_BRANCH
