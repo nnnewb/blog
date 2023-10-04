@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>linux on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/linux/</link><description>Recent content in linux on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 31 Aug 2023 13:40:44 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/linux/index.xml" rel="self" type="application/rss+xml"/><item><title>VirtualBox 安装 32 位 CentOS 7.9 提示 Spurious ACK 问题</title><link>https://nnnewb.github.io/blog/p/virtualbox-%E5%AE%89%E8%A3%85-32-%E4%BD%8D-centos-7.9-%E6%8F%90%E7%A4%BA-spurious-ack-%E9%97%AE%E9%A2%98/</link><pubDate>Thu, 31 Aug 2023 13:40:44 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/virtualbox-%E5%AE%89%E8%A3%85-32-%E4%BD%8D-centos-7.9-%E6%8F%90%E7%A4%BA-spurious-ack-%E9%97%AE%E9%A2%98/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>为啥要装32位的？如果要问这问题我只能答你猜我乐不乐意装？&lt;/p>
+&lt;p>工作需要没办法。&lt;/p>
+&lt;h2 id="问题描述">问题描述&lt;/h2>
+&lt;p>VirtualBox 版本 7.1.0 r158379 。&lt;/p>
+&lt;p>宿主机 Windows 10.0.18363.1556 x64 。&lt;/p>
+&lt;p>如果直接创建虚拟机后运行会出现&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">atkbd_interrupt: 2834 callbacks suppressed
+atkbd serio0: Spurious ACK on isa0060/serio0. some program might trying to access hardware directly.
+atkbd serio0: Spurious ACK on isa0060/serio0. some program might trying to access hardware directly.
+...
+&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>然后在这个界面卡住。顺便我还注意到键盘的CAPS LOCK、SCROLL LOCK、NUM LOCK 三个灯在疯狂闪烁。&lt;/p>
+&lt;h2 id="解决方法">解决方法&lt;/h2>
+&lt;p>参考一个别人发给我的可以用的32位虚拟机配置，反复检查和对比实验后发现应该是虚拟机设置中的 &lt;code>I/O APIC&lt;/code> 影响。&lt;/p>
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/virtualbox-%E5%AE%89%E8%A3%85-32-%E4%BD%8D-centos-7.9-%E6%8F%90%E7%A4%BA-spurious-ack-%E9%97%AE%E9%A2%98/image-20230831135203249.png"
+width="713"
+height="459"
+srcset="https://nnnewb.github.io/blog/blog/p/virtualbox-%E5%AE%89%E8%A3%85-32-%E4%BD%8D-centos-7.9-%E6%8F%90%E7%A4%BA-spurious-ack-%E9%97%AE%E9%A2%98/image-20230831135203249_hu37dc36aeebdcd0d8c5f1f910faf9177b_20715_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/virtualbox-%E5%AE%89%E8%A3%85-32-%E4%BD%8D-centos-7.9-%E6%8F%90%E7%A4%BA-spurious-ack-%E9%97%AE%E9%A2%98/image-20230831135203249_hu37dc36aeebdcd0d8c5f1f910faf9177b_20715_1024x0_resize_box_3.png 1024w"
+loading="lazy"
+alt="image-20230831135203249"
+class="gallery-image"
+data-flex-grow="155"
+data-flex-basis="372px"
+>&lt;/p>
+&lt;p>开启 &lt;code>I/O APIC&lt;/code> 会导致这个奇诡的现象。关闭 &lt;code>I/O APIC&lt;/code> 后能正常从 CentOS 7.9 i386 的 DVD 镜像进入安装界面，但关闭后只能分配一个 CPU 核心。尝试了调整其他选项，关掉了 USB 控制器、移除了所有网卡、没有串口、没有声卡，基本能关的都关了，只要开着 &lt;code>I/O APIC&lt;/code> 就会出现这个问题。系统安装前、安装后都不行。顺便一提我也试过 VMWare Workstation Pro 创建虚拟机，问题表现和 VirtualBox 差不多。但不太清楚 VMWare 的 &lt;code>I/O APIC&lt;/code> 开关在哪儿。&lt;/p>
+&lt;p>怀疑是内核原因，毕竟就是卡在内核启动过程中。尝试装完后升级内核（升级后版本 &lt;code>3.10.0-1160.62.1.el7.centos.plus.i686&lt;/code>，升级前 &lt;code>3.10.0-1160.2.2.el7.centos.plus.i686&lt;/code>）再开启 &lt;code>I/O APIC&lt;/code> 就没问题啦。&lt;/p>
+&lt;h2 id="总结">总结&lt;/h2>
+&lt;p>遇到此问题可以尝试在创建完虚拟机后关掉 &lt;code>I/O APIC&lt;/code> ，启动虚拟机安装系统，装完再打开 &lt;code>I/O APIC&lt;/code>。&lt;/p></description></item></channel></rss>
