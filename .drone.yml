@@ -6,6 +6,9 @@ name: default
 steps:
 - name: build
   image: docker:dind
+  when:
+    event: 
+      - push
   environment:
     AUTH:
       from_secret: docker_config_json
@@ -15,8 +18,8 @@ steps:
   commands:
     - mkdir -p ~/.docker
     - echo $AUTH | tee -a ~/.docker/config.json
-    - docker build . -t gitea.weakptr.site/weakptr/blog:1.0.0
-    - docker push gitea.weakptr.site/weakptr/blog:1.0.0
+    - docker build . -t gitea.weakptr.site/weakptr/blog:${DRONE_BRANCH}_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}
+    - docker push gitea.weakptr.site/weakptr/blog:${DRONE_BRANCH}_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}
 
 volumes:
   - name: dockersock
@@ -33,8 +36,11 @@ type: docker
 name: synchronize repository
 
 steps:
-  - name: push
+  - name: push commits
     image: bitnami/git:latest
+    when:
+      event: 
+        - push
     environment:
       PRIVATE_KEY:
         from_secret: ssh_private_key
