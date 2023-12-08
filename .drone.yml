@@ -18,8 +18,25 @@ steps:
   commands:
     - mkdir -p ~/.docker
     - echo $AUTH | tee -a ~/.docker/config.json
-    - docker build . -t gitea.weakptr.site/weakptr/blog:${DRONE_BRANCH}_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}
-    - docker push gitea.weakptr.site/weakptr/blog:${DRONE_BRANCH}_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}
+    - docker build . -t gitea.weakptr.site/weakptr/blog:ci_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}
+    - docker push gitea.weakptr.site/weakptr/blog:ci_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}
+
+- name: deploy
+  image: appleboy/ssh
+  when:
+    event: 
+      - push
+  settings:
+    hosts:
+      - 172.19.1.1
+    username: ubuntu
+    password:
+      from_secret: ssh_password
+    port: 22132
+    command_timeout: 2m
+    script:
+      - "sed -i 's|image:[[:space:]]gitea.weakptr.site/weakptr/blog:.*|image: gitea.weakptr.site/weakptr/blog:ci_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}|' ${DEPLOY_DIR}/docker-compose.yaml"
+      - "cd ${DEPLOY_DIR}; docker-compose up -d blog"
 
 volumes:
   - name: dockersock
@@ -29,6 +46,7 @@ volumes:
 trigger:
   branch: 
     - main
+    - dev/*
 
 ---
 kind: pipeline
