@@ -15,33 +15,23 @@ steps:
   volumes:
   - name: dockersock
     path: /var/run/docker.sock
+  - name: deploy_dir
+    path: /deploy
   commands:
     - mkdir -p ~/.docker
     - echo $AUTH | tee -a ~/.docker/config.json
     - docker build . -t gitea.weakptr.site/weakptr/blog:ci_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}
     - docker push gitea.weakptr.site/weakptr/blog:ci_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}
-
-- name: deploy
-  image: gitea.weakptr.site/weakptr/appleboy/drone-ssh:latest
-  when:
-    event: 
-      - push
-  settings:
-    host:
-      - 172.19.1.1
-    username: ubuntu
-    key:
-      from_secret: ssh_private_key
-    port: 22132
-    command_timeout: 2m
-    script:
-      - "sed -i 's|image:[[:space:]]gitea.weakptr.site/weakptr/blog:.*|image: gitea.weakptr.site/weakptr/blog:ci_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}|' ${DEPLOY_DIR}/docker-compose.yaml"
-      - "cd ${DEPLOY_DIR}; docker-compose up -d blog"
+    - "sed -i 's|image:[[:space:]]gitea.weakptr.site/weakptr/blog:.*|image: gitea.weakptr.site/weakptr/blog:ci_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}|' /deploy/docker-compose.yaml"
+    - "cd /deploy; docker-compose up -d blog"
 
 volumes:
   - name: dockersock
     host:
       path: /var/run/docker.sock
+  - name: deploy_dir
+    host:
+      path: /ubuntu/repos/my-server
 
 trigger:
   branch: 
