@@ -1,4 +1,4 @@
-FROM peaceiris/hugo:latest-full AS BUILD
+FROM gitea.weakptr.site/weakptr/peaceiris/hugo:latest-full AS BUILD
 RUN mkdir -p /src
 COPY . /src
 WORKDIR /src
