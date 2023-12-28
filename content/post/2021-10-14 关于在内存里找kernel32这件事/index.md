@@ -333,11 +333,11 @@ gcc main.o -nostartfiles -nodefaultlibs -o main.exe
 
 不知道为啥 WinDbg Preview 不能正确调试，还是用回 x32dbg 。
 
-![image-20211014143628806](image/关于在内存里找kernel32这件事/image-20211014143628806.png)
+![image-20211014143628806](image-20211014143628806.png)
 
 注意此时 EAX 的值是 `75B30000` ，内容被调试器识别为 `MZ?` ，显然是个 DOS 文件头。
 
-![image-20211014143759203](image/关于在内存里找kernel32这件事/image-20211014143759203.png)
+![image-20211014143759203](image-20211014143759203.png)
 
 在调试器的内存布局窗口可以看到，这个地址正好就是 `kernel32.dll` 的镜像基址。
 
@@ -724,7 +724,7 @@ section .data
 
 验证方法很简单，我们编译之，运行，然后就好啦！
 
-![image-20211014161140486](image/关于在内存里找kernel32这件事/image-20211014161140486.png)
+![image-20211014161140486](image-20211014161140486.png)
 
 `WinExec` 的返回值在 eax 里，微软的文档说返回值大于 31 就是 OJBK，0x21 是10进制的33，所以完全 OJBK 。
 
