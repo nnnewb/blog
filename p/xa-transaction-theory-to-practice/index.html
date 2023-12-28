@@ -1,20 +1,20 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 有言道，纸上得来终觉浅，绝知此事要躬行。分布式事务的具体方案，看几篇文章就基本有了概念，但实际应用的机会很少。这不有点闲暇，就试试看把理"><title>XA 事务从理论到实践</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/xa-transaction-theory-to-practice/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<link rel=canonical href=https://nnnewb.github.io/p/xa-transaction-theory-to-practice/>
+<link rel=stylesheet href=/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
 <script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="XA 事务从理论到实践">
 <meta property="og:description" content="前言 有言道，纸上得来终觉浅，绝知此事要躬行。分布式事务的具体方案，看几篇文章就基本有了概念，但实际应用的机会很少。这不有点闲暇，就试试看把理">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/xa-transaction-theory-to-practice/">
+<meta property="og:url" content="https://nnnewb.github.io/p/xa-transaction-theory-to-practice/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="mysql"><meta property="article:tag" content="分布式"><meta property="article:tag" content="go"><meta property="article:published_time" content="2021-12-16T15:00:00+08:00"><meta property="article:modified_time" content="2021-12-16T15:00:00+08:00">
 <meta name=twitter:title content="XA 事务从理论到实践">
 <meta name=twitter:description content="前言 有言道，纸上得来终觉浅，绝知此事要躬行。分布式事务的具体方案，看几篇文章就基本有了概念，但实际应用的机会很少。这不有点闲暇，就试试看把理">
 </head>
 <body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
 <div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
 <button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
 <span class=hamburger-box>
@@ -23,13 +23,13 @@
 </button>
 <header>
 <figure class=site-avatar>
-<a href=/blog>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+<a href=/>
+<img src=/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
 <span class=emoji>🍑</span>
 </figure>
 <div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h1 class=site-name><a href=/>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
 </header><ol class=social-menu>
@@ -39,37 +39,37 @@
 </li>
 </ol><ol class=menu id=main-menu>
 <li>
-<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<a href=/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
 </a>
 </li>
 <li>
-<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<a href=/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
 <span>关于我</span>
 </a>
 </li>
 <li>
-<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<a href=/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
 <span>归档</span>
 </a>
 </li>
 <li>
-<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<a href=/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 <span>分类</span>
 </a>
 </li>
 <li>
-<a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<a href=/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
 <span>标签</span>
 </a>
 </li>
 <li>
-<a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<a href=/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
 </a>
 </li>
 <li>
-<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<a href=/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
 <span>搜索</span>
 </a>
 </li>
@@ -82,13 +82,13 @@
 <header class=article-header>
 <div class=article-details>
 <header class=article-category>
-<a href=/blog/categories/mysql/>
+<a href=/categories/mysql/>
 mysql
 </a>
 </header>
 <div class=article-title-wrapper>
 <h2 class=article-title>
-<a href=/blog/p/xa-transaction-theory-to-practice/>XA 事务从理论到实践</a>
+<a href=/p/xa-transaction-theory-to-practice/>XA 事务从理论到实践</a>
 </h2>
 </div>
 <footer class=article-time>
@@ -109,12 +109,12 @@ mysql
 <h2 id=1-案例设计>#1 案例设计</h2>
 <p>采用分布式事务经典的转账案例：用户从银行A转账到银行B，银行A扣除余额，银行B增加余额。</p>
 <p>XA事务官方规范文档给出的示意图如下。</p>
-<p><img src=/blog/%E4%BA%8B%E5%8A%A1%E6%A8%A1%E5%9E%8B-16396188786822.webp loading=lazy alt=事务模型></p>
+<p><img src=/%E4%BA%8B%E5%8A%A1%E6%A8%A1%E5%9E%8B-16396188786822.webp loading=lazy alt=事务模型></p>
 <p>用 XA 事务描述，用户的转账操作发生在AP，AP调用TM注册全局事务后，调用银行A（RM）完成扣款（PREPARE），调用银行B（RM）完成增加余额（PREPARE），然后调用TM提交全局事务，TM回调银行A和B提交本地事务。</p>
 <p>图示如下。</p>
-<p><img src=/blog/p/xa-transaction-theory-to-practice/image-20211216093842362-16396187268731.png width=975 height=755 srcset="/blog/p/xa-transaction-theory-to-practice/image-20211216093842362-16396187268731_hud4880bf67613c24d16e213b564201e7c_46081_480x0_resize_box_3.png 480w, /blog/p/xa-transaction-theory-to-practice/image-20211216093842362-16396187268731_hud4880bf67613c24d16e213b564201e7c_46081_1024x0_resize_box_3.png 1024w" loading=lazy alt=xa事务时序图 class=gallery-image data-flex-grow=129 data-flex-basis=309px></p>
+<p><img src=/p/xa-transaction-theory-to-practice/image-20211216093842362-16396187268731.png width=975 height=755 srcset="/p/xa-transaction-theory-to-practice/image-20211216093842362-16396187268731_hud4880bf67613c24d16e213b564201e7c_46081_480x0_resize_box_3.png 480w, /p/xa-transaction-theory-to-practice/image-20211216093842362-16396187268731_hud4880bf67613c24d16e213b564201e7c_46081_1024x0_resize_box_3.png 1024w" loading=lazy alt=xa事务时序图 class=gallery-image data-flex-grow=129 data-flex-basis=309px></p>
 <p>上面的时序图是读了 <a class=link href=https://github.com/yedf/dtm/ target=_blank rel=noopener>github.com/yedf/dtm</a> 代码后胡乱分析出来的，图略去了错误处理的部分。根据这个时序图可以做出一个简单的服务划分设计。</p>
-<p><img src=/blog/p/xa-transaction-theory-to-practice/image-20211216095721213.png width=634 height=574 srcset="/blog/p/xa-transaction-theory-to-practice/image-20211216095721213_hucf2754a53d93ba8eebe14a4b22b7b5b1_40377_480x0_resize_box_3.png 480w, /blog/p/xa-transaction-theory-to-practice/image-20211216095721213_hucf2754a53d93ba8eebe14a4b22b7b5b1_40377_1024x0_resize_box_3.png 1024w" loading=lazy alt=案例服务划分 class=gallery-image data-flex-grow=110 data-flex-basis=265px></p>
+<p><img src=/p/xa-transaction-theory-to-practice/image-20211216095721213.png width=634 height=574 srcset="/p/xa-transaction-theory-to-practice/image-20211216095721213_hucf2754a53d93ba8eebe14a4b22b7b5b1_40377_480x0_resize_box_3.png 480w, /p/xa-transaction-theory-to-practice/image-20211216095721213_hucf2754a53d93ba8eebe14a4b22b7b5b1_40377_1024x0_resize_box_3.png 1024w" loading=lazy alt=案例服务划分 class=gallery-image data-flex-grow=110 data-flex-basis=265px></p>
 <p>为了更好地观察服务的交互情况，引入了 Jaeger ，如果是为了简化整个案例代码考虑也可以不要。但大部分时候 Jaeger 应该是没什么存在感的。</p>
 <p>nginx 反向代理将 AP 的接口还有 Bank1/Bank2的接口导出给用户访问，实际上案例中没有需要访问 Bank1/Bank2 接口的情况，所以 去掉 nginx 反向代理应该也没什么大关系。</p>
 <h2 id=2-技术栈>#2 技术栈</h2>
@@ -1067,9 +1067,9 @@ mysql
 </section>
 <footer class=article-footer>
 <section class=article-tags>
-<a href=/blog/tags/mysql/>mysql</a>
-<a href=/blog/tags/%E5%88%86%E5%B8%83%E5%BC%8F/>分布式</a>
-<a href=/blog/tags/go/>go</a>
+<a href=/tags/mysql/>mysql</a>
+<a href=/tags/%E5%88%86%E5%B8%83%E5%BC%8F/>分布式</a>
+<a href=/tags/go/>go</a>
 </section>
 <section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
 <span>Licensed under CC BY-NC-SA 4.0</span>
@@ -1082,7 +1082,7 @@ mysql
 <div class=related-contents>
 <div class="flex article-list--tile">
 <article>
-<a href=/blog/p/stored-procedure-function-and-triggers/>
+<a href=/p/stored-procedure-function-and-triggers/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -1092,9 +1092,9 @@ mysql
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/a-mysql-deadlock-investigation/>
+<a href=/p/a-mysql-deadlock-investigation/>
 <div class=article-image>
-<img src=/blog/p/a-mysql-deadlock-investigation/_hu54d45def1a288887897b72824d269a44_887498_7db57a4ccb5be3e5639a425e1238f674.jpg width=250 height=150 loading=lazy alt="Featured image of post 一个MySQL死锁问题排查" data-key=a-mysql-deadlock-investigation data-hash="md5-k5mo9Ni2/6ybyZIIU9fi9Q==">
+<img src=/p/a-mysql-deadlock-investigation/_hu54d45def1a288887897b72824d269a44_887498_7db57a4ccb5be3e5639a425e1238f674.jpg width=250 height=150 loading=lazy alt="Featured image of post 一个MySQL死锁问题排查" data-key=a-mysql-deadlock-investigation data-hash="md5-k5mo9Ni2/6ybyZIIU9fi9Q==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -1105,9 +1105,9 @@ mysql
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/note-of-mysql-join-optimize/>
+<a href=/p/note-of-mysql-join-optimize/>
 <div class=article-image>
-<img src=/blog/p/note-of-mysql-join-optimize/_hu8ccdbbcbbb5906798b24061f7093764d_181309_67981f9287890ebaff2246bbae2807cd.png width=250 height=150 loading=lazy alt="Featured image of post 记一次MySQL JOIN优化" data-key=note-of-mysql-join-optimize data-hash="md5-N9wuII+zC8DBGa8noaGMEA==">
+<img src=/p/note-of-mysql-join-optimize/_hu8ccdbbcbbb5906798b24061f7093764d_181309_67981f9287890ebaff2246bbae2807cd.png width=250 height=150 loading=lazy alt="Featured image of post 记一次MySQL JOIN优化" data-key=note-of-mysql-join-optimize data-hash="md5-N9wuII+zC8DBGa8noaGMEA==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -1127,7 +1127,13 @@ mysql
 2023 weakptr's 笔记
 </section>
 <section class=powerby>
-GitHub Pages <br>
+<a href=https://beian.miit.gov.cn/>浙ICP备2021032371号-1</a>
+<span style=margin-left:16px></span>
+<a target=_blank href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33032402002231" style=display:inline-block;text-decoration:none;height:20px;line-height:20px>
+<img src=/blog/image/beian.png style=float:left>
+浙公网安备 33032402002231号
+</a>
+<br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 ，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
@@ -1217,7 +1223,7 @@ Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 </section>
 </aside>
 </div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>

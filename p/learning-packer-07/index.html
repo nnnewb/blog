@@ -1,21 +1,21 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 个人浅见，一般分析一个程序可以有动态和静态两条路，动态一般指的就是调试或者别的运行时跟踪程序行为的方式了，除了调试器外就是抓取事件、日志"><title>加壳原理07 - 花指令入门</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-07/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<link rel=canonical href=https://nnnewb.github.io/p/learning-packer-07/>
+<link rel=stylesheet href=/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
 <script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="加壳原理07 - 花指令入门">
 <meta property="og:description" content="前言 个人浅见，一般分析一个程序可以有动态和静态两条路，动态一般指的就是调试或者别的运行时跟踪程序行为的方式了，除了调试器外就是抓取事件、日志">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-07/">
+<meta property="og:url" content="https://nnnewb.github.io/p/learning-packer-07/">
 <meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="windows"><meta property="article:tag" content="c++"><meta property="article:tag" content="汇编"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-10-31T17:14:00+08:00"><meta property="article:modified_time" content="2021-10-31T17:14:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-07/cover.jpg">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="windows"><meta property="article:tag" content="c++"><meta property="article:tag" content="汇编"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-10-31T17:14:00+08:00"><meta property="article:modified_time" content="2021-10-31T17:14:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/p/learning-packer-07/cover.jpg">
 <meta name=twitter:title content="加壳原理07 - 花指令入门">
 <meta name=twitter:description content="前言 个人浅见，一般分析一个程序可以有动态和静态两条路，动态一般指的就是调试或者别的运行时跟踪程序行为的方式了，除了调试器外就是抓取事件、日志"><meta name=twitter:card content="summary_large_image">
-<meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-07/cover.jpg">
+<meta name=twitter:image content="https://nnnewb.github.io/p/learning-packer-07/cover.jpg">
 </head>
 <body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
 <div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
 <button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
 <span class=hamburger-box>
@@ -24,13 +24,13 @@
 </button>
 <header>
 <figure class=site-avatar>
-<a href=/blog>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+<a href=/>
+<img src=/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
 <span class=emoji>🍑</span>
 </figure>
 <div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h1 class=site-name><a href=/>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
 </header><ol class=social-menu>
@@ -40,37 +40,37 @@
 </li>
 </ol><ol class=menu id=main-menu>
 <li>
-<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<a href=/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
 </a>
 </li>
 <li>
-<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<a href=/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
 <span>关于我</span>
 </a>
 </li>
 <li>
-<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<a href=/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
 <span>归档</span>
 </a>
 </li>
 <li>
-<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<a href=/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 <span>分类</span>
 </a>
 </li>
 <li>
-<a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<a href=/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
 <span>标签</span>
 </a>
 </li>
 <li>
-<a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<a href=/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
 </a>
 </li>
 <li>
-<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<a href=/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
 <span>搜索</span>
 </a>
 </li>
@@ -82,19 +82,19 @@
 <article class="has-image main-article">
 <header class=article-header>
 <div class=article-image>
-<a href=/blog/p/learning-packer-07/>
-<img src=/blog/p/learning-packer-07/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/blog/p/learning-packer-07/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /blog/p/learning-packer-07/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门">
+<a href=/p/learning-packer-07/>
+<img src=/p/learning-packer-07/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/p/learning-packer-07/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /p/learning-packer-07/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门">
 </a>
 </div>
 <div class=article-details>
 <header class=article-category>
-<a href=/blog/categories/%E9%80%86%E5%90%91/>
+<a href=/categories/%E9%80%86%E5%90%91/>
 逆向
 </a>
 </header>
 <div class=article-title-wrapper>
 <h2 class=article-title>
-<a href=/blog/p/learning-packer-07/>加壳原理07 - 花指令入门</a>
+<a href=/p/learning-packer-07/>加壳原理07 - 花指令入门</a>
 </h2>
 </div>
 <footer class=article-time>
@@ -125,7 +125,7 @@
 <h2 id=0x01-花指令原理>0x01 花指令原理</h2>
 <h3 id=11-机器码指令格式>1.1 机器码指令格式</h3>
 <p>码农日常工作接触的是高级语言（这个概念可能有争议，反正相对汇编、机器码这个层级来说都是高级语言就对了），汇编和机器码这种满是历史尘埃的领域是绝无机会接触的。但要理解花指令，首先要理解汇编代码的二进制表示，才会明白为什么反汇编工具的力量是有极限的。</p>
-<p><img src=/blog/p/learning-packer-07/zHClf.png width=658 height=368 srcset="/blog/p/learning-packer-07/zHClf_hu3ca7a186b6a8e60fb2df5f6ffb33e0d4_25027_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/zHClf_hu3ca7a186b6a8e60fb2df5f6ffb33e0d4_25027_1024x0_resize_box_3.png 1024w" loading=lazy alt=zHClf class=gallery-image data-flex-grow=178 data-flex-basis=429px></p>
+<p><img src=/p/learning-packer-07/zHClf.png width=658 height=368 srcset="/p/learning-packer-07/zHClf_hu3ca7a186b6a8e60fb2df5f6ffb33e0d4_25027_480x0_resize_box_3.png 480w, /p/learning-packer-07/zHClf_hu3ca7a186b6a8e60fb2df5f6ffb33e0d4_25027_1024x0_resize_box_3.png 1024w" loading=lazy alt=zHClf class=gallery-image data-flex-grow=178 data-flex-basis=429px></p>
 <p>这是 Intel 的 <a class=link href=https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-instruction-set-reference-manual-325383.pdf target=_blank rel=noopener>64-ia-32-architectures-software-developer-instruction-set-reference-manual</a> 里的一张图，说明了汇编指令如何以二进制形式保存。可以简单看成3部分，1字节的可选前缀，1-3字节的opcode部分，剩余描述操作数的部分。</p>
 <p>几个要素：</p>
 <ol>
@@ -179,7 +179,7 @@
 </code></pre></td></tr></table>
 </div>
 </div><p>调试器内的效果</p>
-<p><img src=/blog/p/learning-packer-07/image-20211028152219524.png width=1175 height=501 srcset="/blog/p/learning-packer-07/image-20211028152219524_hu2408fa036d3a5e5647fcc1f6e2c0b730_66690_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/image-20211028152219524_hu2408fa036d3a5e5647fcc1f6e2c0b730_66690_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211028152219524 class=gallery-image data-flex-grow=234 data-flex-basis=562px></p>
+<p><img src=/p/learning-packer-07/image-20211028152219524.png width=1175 height=501 srcset="/p/learning-packer-07/image-20211028152219524_hu2408fa036d3a5e5647fcc1f6e2c0b730_66690_480x0_resize_box_3.png 480w, /p/learning-packer-07/image-20211028152219524_hu2408fa036d3a5e5647fcc1f6e2c0b730_66690_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211028152219524 class=gallery-image data-flex-grow=234 data-flex-basis=562px></p>
 <p>可以看到在 <code>jmp</code> 指令后，反汇编出了一条 <code>call</code> 指令。但实际上我们写的代码里是没有任何函数调用的。而在这个 <code>E8</code> 后面的 <code>B8 00 00 00 00 5D C3</code> 才是真正会执行的代码：</p>
 <div class=highlight><div class=chroma>
 <table class=lntable><tr><td class=lntd>
@@ -196,7 +196,7 @@ retn       ; C3
 </div><p>参考<a class=link href=http://www.mathemainzel.info/files/x86asmref.html#pop target=_blank rel=noopener>intel 80x86 assembly language opcodes</a>。</p>
 <p>如果仔细看 <code>jmp</code> 后的偏移 <code>01</code> 的话也能猜到下一个 <code>E8</code> 是不会被执行的。</p>
 <p>像是这种简单的花指令在 IDA 里没用，IDA 的反汇编算法会根据控制流分析来判断哪些内容不会被执行，进而产生下面的结果。</p>
-<p><img src=/blog/p/learning-packer-07/image-20211028153421508.png width=796 height=478 srcset="/blog/p/learning-packer-07/image-20211028153421508_hu997bdc75332333c1639f8a4c89fbdacd_51145_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/image-20211028153421508_hu997bdc75332333c1639f8a4c89fbdacd_51145_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211028153421508 class=gallery-image data-flex-grow=166 data-flex-basis=399px></p>
+<p><img src=/p/learning-packer-07/image-20211028153421508.png width=796 height=478 srcset="/p/learning-packer-07/image-20211028153421508_hu997bdc75332333c1639f8a4c89fbdacd_51145_480x0_resize_box_3.png 480w, /p/learning-packer-07/image-20211028153421508_hu997bdc75332333c1639f8a4c89fbdacd_51145_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211028153421508 class=gallery-image data-flex-grow=166 data-flex-basis=399px></p>
 <h3 id=22--ida-和代码流反汇编算法>2.2 IDA 和代码流反汇编算法</h3>
 <p>关于IDA的反汇编算法描述是来自《恶意代码分析实战》。</p>
 <blockquote>
@@ -221,7 +221,7 @@ retn       ; C3
 <p><code>0xff</code> 是 <code>INC</code> 的机器码，<code>0xc0</code>是操作数，表示 <code>eax</code>，也就是 <code>inc eax</code>。可以在这个<a class=link href=https://defuse.ca/online-x86-assembler.htm target=_blank rel=noopener>在线反汇编</a>网站上验证。</p>
 <p><code>0x48</code> 则是 <code>dec eax</code> 的汇编指令，因此这4个字节执行后最终不会影响 <code>eax</code> 的值。</p>
 <p>在这里，<code>0xff</code> 同时被解释为 <code>jmp</code> 的操作数和 <code>inc</code> 指令，并且能正常执行，但反汇编器则会被迷惑。</p>
-<p><img src=/blog/p/learning-packer-07/image-20211030211603863.png width=910 height=177 srcset="/blog/p/learning-packer-07/image-20211030211603863_huc23cc312a3844059e36c75b9cf995c65_26582_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/image-20211030211603863_huc23cc312a3844059e36c75b9cf995c65_26582_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211030211603863 class=gallery-image data-flex-grow=514 data-flex-basis=1233px></p>
+<p><img src=/p/learning-packer-07/image-20211030211603863.png width=910 height=177 srcset="/p/learning-packer-07/image-20211030211603863_huc23cc312a3844059e36c75b9cf995c65_26582_480x0_resize_box_3.png 480w, /p/learning-packer-07/image-20211030211603863_huc23cc312a3844059e36c75b9cf995c65_26582_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211030211603863 class=gallery-image data-flex-grow=514 data-flex-basis=1233px></p>
 <p>上图是IDA中反汇编的结果。</p>
 <h3 id=23-构造能欺骗ida的花指令>2.3 构造能欺骗IDA的花指令</h3>
 <p>构造能欺骗IDA的花指令简单的办法就是构造无法被静态分析的恒真/恒假条件。举例来说，<code>LoadLibraryA</code> 加载失败会返回 <code>NULL</code>，就可以被用来构造花指令。</p>
@@ -235,7 +235,7 @@ retn       ; C3
   <span class=k>asm</span><span class=p>(</span><span class=s>&#34;test %eax,%eax;</span><span class=se>\n</span><span class=s>jz next;</span><span class=se>\n</span><span class=s>.byte 0xe8;</span><span class=se>\n</span><span class=s>next:</span><span class=se>\n</span><span class=s>&#34;</span><span class=p>);</span>
 </code></pre></td></tr></table>
 </div>
-</div><p><img src=/blog/p/learning-packer-07/image-20211030213109569.png width=955 height=267 srcset="/blog/p/learning-packer-07/image-20211030213109569_huae46ff5cf7f405ad977cb15ab7a51e13_39907_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/image-20211030213109569_huae46ff5cf7f405ad977cb15ab7a51e13_39907_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211030213109569 class=gallery-image data-flex-grow=357 data-flex-basis=858px></p>
+</div><p><img src=/p/learning-packer-07/image-20211030213109569.png width=955 height=267 srcset="/p/learning-packer-07/image-20211030213109569_huae46ff5cf7f405ad977cb15ab7a51e13_39907_480x0_resize_box_3.png 480w, /p/learning-packer-07/image-20211030213109569_huae46ff5cf7f405ad977cb15ab7a51e13_39907_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211030213109569 class=gallery-image data-flex-grow=357 data-flex-basis=858px></p>
 <p>可以看到，IDA不能静态分析出<code>LoadLibraryA</code> 的返回值是 <code>NULL</code>，顺着 <code>jz</code> 的 False 分支反汇编时遇到了 <code>0xe8</code>，于是后续的反汇编结果就完全乱了套。</p>
 <h3 id=24-破坏栈帧分析>2.4 破坏栈帧分析</h3>
 <p>还有一种花指令是通过对 <code>call</code> 和 <code>ret</code> 利用来实现破坏栈帧分析。大家都知道 <code>call</code> 和 <code>ret</code> 就是 <code>push</code>+<code>jmp</code>和<code>pop</code>+<code>jmp</code>，如果我们手动在函数里再构造一个假函数，跳转之后修改栈上的返回地址，返回到我们希望继续执行的位置，虽然本质上是个 GOTO 的操作，但 IDA 就会懵圈了。</p>
@@ -261,10 +261,10 @@ retn       ; C3
 </code></pre></td></tr></table>
 </div>
 </div><p>产生的代码在IDA里分析会出现这样的 <code>sp-analysis failed</code>。</p>
-<p><img src=/blog/p/learning-packer-07/image-20211030215415946.png width=529 height=325 srcset="/blog/p/learning-packer-07/image-20211030215415946_hu1b68fd95622716000a3ab92e85a1f3fd_15293_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/image-20211030215415946_hu1b68fd95622716000a3ab92e85a1f3fd_15293_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211030215415946 class=gallery-image data-flex-grow=162 data-flex-basis=390px></p>
+<p><img src=/p/learning-packer-07/image-20211030215415946.png width=529 height=325 srcset="/p/learning-packer-07/image-20211030215415946_hu1b68fd95622716000a3ab92e85a1f3fd_15293_480x0_resize_box_3.png 480w, /p/learning-packer-07/image-20211030215415946_hu1b68fd95622716000a3ab92e85a1f3fd_15293_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211030215415946 class=gallery-image data-flex-grow=162 data-flex-basis=390px></p>
 <p>这个思路可以反复嵌套，增加跳转的次数和深度，甚至把正常逻辑隐藏在这种反复跳转中，但从高级语言层面手工加这种花很困难。</p>
 <p>再给一个复杂一些的例子，同样是利用了 <code>call</code> 和 <code>ret</code> 来实现花式跳转。</p>
-<p><img src=/blog/p/learning-packer-07/165417l97li97iwq8lf5qz.png width=836 height=381 srcset="/blog/p/learning-packer-07/165417l97li97iwq8lf5qz_hua1e400469607dff71cf186bb43cf99f2_16220_480x0_resize_box_3.png 480w, /blog/p/learning-packer-07/165417l97li97iwq8lf5qz_hua1e400469607dff71cf186bb43cf99f2_16220_1024x0_resize_box_3.png 1024w" loading=lazy alt=img class=gallery-image data-flex-grow=219 data-flex-basis=526px></p>
+<p><img src=/p/learning-packer-07/165417l97li97iwq8lf5qz.png width=836 height=381 srcset="/p/learning-packer-07/165417l97li97iwq8lf5qz_hua1e400469607dff71cf186bb43cf99f2_16220_480x0_resize_box_3.png 480w, /p/learning-packer-07/165417l97li97iwq8lf5qz_hua1e400469607dff71cf186bb43cf99f2_16220_1024x0_resize_box_3.png 1024w" loading=lazy alt=img class=gallery-image data-flex-grow=219 data-flex-basis=526px></p>
 <p>来自52论坛的：<a class=link href="https://www.52pojie.cn/forum.php?mod=viewthread&tid=1068444&highlight=%BB%A8%D6%B8%C1%EE" target=_blank rel=noopener>一些简单的花指令的解析(含Intel指令集) - 『病毒分析区』 - 吾爱破解 - LCG - LSG |安卓破解|病毒分析|www.52pojie.cn</a>。</p>
 <p>顺便一提，链接里那个 <code>pop ss</code> 也很有意思，GrandCrab 的案例也是结合了多种控制流指令来完成跳转，阻碍IDA分析。</p>
 <h2 id=总结>总结</h2>
@@ -288,12 +288,12 @@ retn       ; C3
 </section>
 <footer class=article-footer>
 <section class=article-tags>
-<a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
-<a href=/blog/tags/windows/>windows</a>
-<a href=/blog/tags/c++/>c++</a>
-<a href=/blog/tags/%E6%B1%87%E7%BC%96/>汇编</a>
-<a href=/blog/tags/security/>security</a>
-<a href=/blog/tags/binary-analysis/>binary-analysis</a>
+<a href=/tags/%E9%80%86%E5%90%91/>逆向</a>
+<a href=/tags/windows/>windows</a>
+<a href=/tags/c++/>c++</a>
+<a href=/tags/%E6%B1%87%E7%BC%96/>汇编</a>
+<a href=/tags/security/>security</a>
+<a href=/tags/binary-analysis/>binary-analysis</a>
 </section>
 <section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
 <span>Licensed under CC BY-NC-SA 4.0</span>
@@ -306,9 +306,9 @@ retn       ; C3
 <div class=related-contents>
 <div class="flex article-list--tile">
 <article class=has-image>
-<a href=/blog/p/learning-packer-08/>
+<a href=/p/learning-packer-08/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -319,9 +319,9 @@ retn       ; C3
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-06/>
+<a href=/p/learning-packer-06/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -332,9 +332,9 @@ retn       ; C3
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/>
+<a href=/p/learning-packer-04-zlib-compression-packer-demo/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -345,9 +345,9 @@ retn       ; C3
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-03-support-no-relocations/>
+<a href=/p/learning-packer-03-support-no-relocations/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-03-support-no-relocations/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序" data-key=learning-packer-03-support-no-relocations data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-03-support-no-relocations/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序" data-key=learning-packer-03-support-no-relocations data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -358,9 +358,9 @@ retn       ; C3
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-05/>
+<a href=/p/learning-packer-05/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-05/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理05：利用图片隐藏" data-key=learning-packer-05 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-05/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理05：利用图片隐藏" data-key=learning-packer-05 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -380,7 +380,13 @@ retn       ; C3
 2023 weakptr's 笔记
 </section>
 <section class=powerby>
-GitHub Pages <br>
+<a href=https://beian.miit.gov.cn/>浙ICP备2021032371号-1</a>
+<span style=margin-left:16px></span>
+<a target=_blank href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33032402002231" style=display:inline-block;text-decoration:none;height:20px;line-height:20px>
+<img src=/blog/image/beian.png style=float:left>
+浙公网安备 33032402002231号
+</a>
+<br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 ，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
@@ -454,7 +460,7 @@ Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 </section>
 </aside>
 </div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>

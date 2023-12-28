@@ -1,14 +1,14 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>反序列化漏洞 on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/</link><description>Recent content in 反序列化漏洞 on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 24 Jun 2022 18:11:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/index.xml" rel="self" type="application/rss+xml"/><item><title>pickle反序列化漏洞浅析</title><link>https://nnnewb.github.io/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/</link><pubDate>Fri, 24 Jun 2022 18:11:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>反序列化漏洞 on weakptr's 笔记</title><link>https://nnnewb.github.io/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/</link><description>Recent content in 反序列化漏洞 on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Fri, 24 Jun 2022 18:11:00 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/index.xml" rel="self" type="application/rss+xml"/><item><title>pickle反序列化漏洞浅析</title><link>https://nnnewb.github.io/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/</link><pubDate>Fri, 24 Jun 2022 18:11:00 +0800</pubDate><guid>https://nnnewb.github.io/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>挑了个好捏的软柿子下手，来看下反序列化漏洞一般什么原理。&lt;/p>
 &lt;h2 id="原理">原理&lt;/h2>
 &lt;h3 id="概述">概述&lt;/h3>
 &lt;p>Python 是个动态类型且高度灵活的语言，这意味着直接按内存布局序列化基本是没戏的。想序列化一个Python中的实例，很大程度要依靠Python的高度灵活性。&lt;/p>
 &lt;p>pickle 是一种 Python 的序列化库（或者，序列化协议？），其优势是几乎能序列化任何 Python 对象，但为了实现这种优势，pickle 会根据输入而执行指定的函数，从而造成RCE。&lt;/p>
 &lt;p>可以用 &lt;code>fickling&lt;/code> 和 &lt;code>pickletools&lt;/code> 这两个工具分析 pickle 序列化后的字节序列。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139.png"
 width="1587"
 height="433"
-srcset="https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139_hu0f0622ef2bea9e4acb18c7285499bd00_36179_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139_hu0f0622ef2bea9e4acb18c7285499bd00_36179_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139_hu0f0622ef2bea9e4acb18c7285499bd00_36179_480x0_resize_box_3.png 480w, https://nnnewb.github.io/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139_hu0f0622ef2bea9e4acb18c7285499bd00_36179_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="序列化简单列表"
 class="gallery-image"
@@ -335,10 +335,10 @@ data-flex-basis="879px"
 &lt;p>提供 &lt;code>__reduce__&lt;/code> 魔术方法以允许 pickle 将当前对象转为一系列构造和恢复实例所需的参数：类型、构造参数、状态参数等。&lt;/p>
 &lt;p>一般对 &lt;code>__reduce__&lt;/code> 的利用就是构造参数的部分，将构造方法指定为 &lt;code>os.system&lt;/code> 即可执行任意命令。&lt;/p>
 &lt;p>同样这里提供一个例子，在反序列化时会弹出计算器。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655.png"
 width="1573"
 height="581"
-srcset="https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655_hub937d7691963b68ff3337ee6eb814a2f_51193_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655_hub937d7691963b68ff3337ee6eb814a2f_51193_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655_hub937d7691963b68ff3337ee6eb814a2f_51193_480x0_resize_box_3.png 480w, https://nnnewb.github.io/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655_hub937d7691963b68ff3337ee6eb814a2f_51193_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220624175833655"
 class="gallery-image"

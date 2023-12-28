@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>linux运维 on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/linux%E8%BF%90%E7%BB%B4/</link><description>Recent content in linux运维 on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 02 Mar 2023 17:36:09 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/linux%E8%BF%90%E7%BB%B4/index.xml" rel="self" type="application/rss+xml"/><item><title>iptables 调试方法</title><link>https://nnnewb.github.io/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/</link><pubDate>Thu, 02 Mar 2023 17:36:09 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/</guid><description>&lt;p>工作忙长话短说，写的匆忙，参考文章见文末。&lt;/p>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>linux运维 on weakptr's 笔记</title><link>https://nnnewb.github.io/tags/linux%E8%BF%90%E7%BB%B4/</link><description>Recent content in linux运维 on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 02 Mar 2023 17:36:09 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/tags/linux%E8%BF%90%E7%BB%B4/index.xml" rel="self" type="application/rss+xml"/><item><title>iptables 调试方法</title><link>https://nnnewb.github.io/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/</link><pubDate>Thu, 02 Mar 2023 17:36:09 +0800</pubDate><guid>https://nnnewb.github.io/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/</guid><description>&lt;p>工作忙长话短说，写的匆忙，参考文章见文末。&lt;/p>
 &lt;h2 id="应对场景">应对场景&lt;/h2>
 &lt;p>因为工作面对的网络环境有点复杂，业务需要做了基于 Tun 网卡的隧道转发流量，然后流量会经过实体机-虚拟机（隧道网关）-虚拟机（蜜罐网络网关）-虚拟机/docker容器一长串转发，基本靠 &lt;code>ip rule&lt;/code>/&lt;code>ip route&lt;/code> 还有 &lt;code>iptables&lt;/code> 制定流量转发规则。&lt;/p>
 &lt;p>后来简化了整个流量路径，直接从实体机转蜜罐网络。最近就遇到一个 &lt;code>tcpdump&lt;/code> 抓到了隧道网卡流量，但没有进入 docker 创建的网桥的问题。虽然后来是靠重启了一下隧道服务端解决（问题根源没找到），但中间看另一个同事调规则还是直接 &lt;code>-j accept&lt;/code> 然后 &lt;code>iptables -t nat -nvL&lt;/code> 看流量，于是就想起来之前似乎看到过 netfilter 支持 &lt;code>-j LOG&lt;/code> 还是啥来着，可以把流量打条日志出来。&lt;/p>
@@ -90,10 +90,10 @@ Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:POSTROUTING:policy:1
 &lt;p>日志字段分几个主要部分：匹配的表链（&lt;code>mangle:POSTROUTING:policy:1&lt;/code>）、进出设备（&lt;code>IN= OUT=enp0s8&lt;/code>）、接收方以太网地址（&lt;code>MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00&lt;/code>）、收发IP（&lt;code>SRC=192.168.13.3 DST=192.168.13.6&lt;/code>）、协议（&lt;code>PROTO=TCP&lt;/code>）、收发端口（&lt;code>SPT=38660 DPT=80&lt;/code>）还有 flag（&lt;code>ACK FIN URGP=0&lt;/code>）&lt;/p>
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>原理图&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow.png"
 width="1900"
 height="605"
-srcset="https://nnnewb.github.io/blog/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow_hu2fb1d0d2fa972e6a81887037c93699c4_254789_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow_hu2fb1d0d2fa972e6a81887037c93699c4_254789_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow_hu2fb1d0d2fa972e6a81887037c93699c4_254789_480x0_resize_box_3.png 480w, https://nnnewb.github.io/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow_hu2fb1d0d2fa972e6a81887037c93699c4_254789_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="netfilter-packet-flow"
 class="gallery-image"
@@ -109,7 +109,7 @@ data-flex-basis="753px"
 &lt;li>&lt;a class="link" href="https://backreference.org/2010/06/11/iptables-debugging/" target="_blank" rel="noopener"
 >https://backreference.org/2010/06/11/iptables-debugging/&lt;/a>&lt;/li>
 &lt;/ul>
-&lt;p>建议就直接读原文，写得很细。&lt;/p></description></item><item><title>我的 Ubuntu Server 虚拟机配置</title><link>https://nnnewb.github.io/blog/p/%E6%88%91%E7%9A%84-ubuntu-server-%E8%99%9A%E6%8B%9F%E6%9C%BA%E9%85%8D%E7%BD%AE/</link><pubDate>Sat, 31 Dec 2022 17:15:43 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E6%88%91%E7%9A%84-ubuntu-server-%E8%99%9A%E6%8B%9F%E6%9C%BA%E9%85%8D%E7%BD%AE/</guid><description>&lt;p>Ubuntu Server 是我目前比较习惯用的开发用 Linux 虚拟机系统，选择 Ubuntu Server 的原因也很简单：问答资源什么的比较丰富，安装过程足够快捷可控，以及日常开发使用中相对没那么折腾。&lt;/p>
+&lt;p>建议就直接读原文，写得很细。&lt;/p></description></item><item><title>我的 Ubuntu Server 虚拟机配置</title><link>https://nnnewb.github.io/p/%E6%88%91%E7%9A%84-ubuntu-server-%E8%99%9A%E6%8B%9F%E6%9C%BA%E9%85%8D%E7%BD%AE/</link><pubDate>Sat, 31 Dec 2022 17:15:43 +0800</pubDate><guid>https://nnnewb.github.io/p/%E6%88%91%E7%9A%84-ubuntu-server-%E8%99%9A%E6%8B%9F%E6%9C%BA%E9%85%8D%E7%BD%AE/</guid><description>&lt;p>Ubuntu Server 是我目前比较习惯用的开发用 Linux 虚拟机系统，选择 Ubuntu Server 的原因也很简单：问答资源什么的比较丰富，安装过程足够快捷可控，以及日常开发使用中相对没那么折腾。&lt;/p>
 &lt;p>但 Ubuntu Server 默认配置也有些比较恶心人的东西，比如那个 &lt;code>snapd&lt;/code> ，平时基本用不到，但系统用了一段时间后经常看到 &lt;code>snapd&lt;/code> 关机的时候等待 120s 或者启动报错之类。同样比较烦人的是 &lt;code>systemd-networkd-wait-online&lt;/code> ，会拖慢开机时间，而且经常能看到失败。&lt;/p>
 &lt;p>且不说这个检查机制到底是怎么实现的，虚拟机环境基本不配什么开机启动依赖网络的服务，等网络确实没什么意义。&lt;/p>
 &lt;p>最后还有一个比较迷惑的问题，默认装完 Ubuntu Server 设置的 systemd target 是 graphical ，但安装选项是不含桌面的。所以为了不加载没啥用还可能导致问题的服务，默认 target 也得改成 multi-user 。&lt;/p>
@@ -181,7 +181,7 @@ sudo reboot
 &lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
 &lt;/div>
 &lt;/div>&lt;p>需要注意的是得看下虚拟机的 Host-Only 网卡配置的是哪个网段，以及 Host-Only 的网卡名是什么（我的机器上是 &lt;code>ens37&lt;/code>）。Host-Only 网卡配 &lt;code>nameservers&lt;/code> 没啥意义我这写了也就写了。&lt;/p>
-&lt;p>改好之后 &lt;code>sudo netplan aplpy&lt;/code> 应用，再试试 &lt;code>ip addr show&lt;/code> 看看生效了，&lt;code>ping -I ens37 192.168.129.xxx&lt;/code> 试下能不能通其他 Host-Only 网卡的 IP 。最好再试下 &lt;code>curl -L https://www.baidu.com/&lt;/code> 看看正常上网有没有问题。&lt;/p></description></item><item><title>排查一个kubectl无反应的问题</title><link>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</link><pubDate>Mon, 27 Dec 2021 15:21:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/</guid><description>&lt;p>懒得分段了，就当做是讲个故事吧。&lt;/p>
+&lt;p>改好之后 &lt;code>sudo netplan aplpy&lt;/code> 应用，再试试 &lt;code>ip addr show&lt;/code> 看看生效了，&lt;code>ping -I ens37 192.168.129.xxx&lt;/code> 试下能不能通其他 Host-Only 网卡的 IP 。最好再试下 &lt;code>curl -L https://www.baidu.com/&lt;/code> 看看正常上网有没有问题。&lt;/p></description></item><item><title>排查一个kubectl无反应的问题</title><link>https://nnnewb.github.io/p/why-my-kubectl-not-responding/</link><pubDate>Mon, 27 Dec 2021 15:21:00 +0800</pubDate><guid>https://nnnewb.github.io/p/why-my-kubectl-not-responding/</guid><description>&lt;p>懒得分段了，就当做是讲个故事吧。&lt;/p>
 &lt;p>背景大概是这样。&lt;/p>
 &lt;p>内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。&lt;/p>
 &lt;p>今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。&lt;/p>
@@ -251,7 +251,7 @@ sudo reboot
 &lt;li>再排查故障点日志，必要的时候参考下代码，毕竟有的时候日志没写清楚错误的上下文&lt;/li>
 &lt;/ol>
 &lt;/li>
-&lt;/ol></description></item><item><title>在raspbian上手动编译vim8.2</title><link>https://nnnewb.github.io/blog/p/build-vim8.2-manually-on-raspbian/</link><pubDate>Sat, 25 Dec 2021 10:37:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/build-vim8.2-manually-on-raspbian/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;/ol></description></item><item><title>在raspbian上手动编译vim8.2</title><link>https://nnnewb.github.io/p/build-vim8.2-manually-on-raspbian/</link><pubDate>Sat, 25 Dec 2021 10:37:00 +0800</pubDate><guid>https://nnnewb.github.io/p/build-vim8.2-manually-on-raspbian/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>raspbian上自带的vim版本还是低了点，像是&lt;code>coc.nvim&lt;/code>之类的插件弹警告就搞得很烦。我寻思自己编译一个吧。&lt;/p>
 &lt;h2 id="0x01-下载源码">0x01 下载源码&lt;/h2>
 &lt;p>从&lt;a class="link" href="https://www.vim.org/download.php" target="_blank" rel="noopener"
@@ -375,7 +375,7 @@ sudo update-alternatives --set vi /usr/local/bin/vim
 &lt;p>很多杂鱼公司根本不考虑系统维护，所谓的 &lt;strong>创造价值&lt;/strong> 就是以最快的速度 &lt;strong>应付需求&lt;/strong> ，想起几年前的自己还真的是天真，以为软件从业起码是有点基本的素养的，起码工程能力是有的。现在我的想法变了，软件从业不是有手就行？产品最想要的就是直接把别家的软件 &lt;em>copy&amp;amp;paste&lt;/em> 成自己的，我寻思做软件键盘上磨损最快的就是 &lt;code>ctrl&lt;/code> &lt;code>c&lt;/code> &lt;code>v&lt;/code>这三个键了。&lt;/p>
 &lt;p>产品嘛。什么工程性？什么可维护？那跟我有什么关系，反正改需求的dead line是码农的，修bug是码农修，我产品设计要与时俱进，要紧随市场，要服务客户，你就是个写代码的，这也不做那也不做雇你来干什么？&lt;/p>
 &lt;p>平常心平常心，扯远了。&lt;/p>
-&lt;p>总之，vim，好软件。顺便记得关注下乌干达儿童生存状况（不扯政治地说，vim自称慈善软件(charityware)还是有点东西的，再说下去鲁迅先生就要出来赶苍蝇了）。&lt;/p></description></item><item><title>简单的ECK部署</title><link>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</link><pubDate>Tue, 30 Nov 2021 11:13:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/simple-eck-cluster-deployment/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+&lt;p>总之，vim，好软件。顺便记得关注下乌干达儿童生存状况（不扯政治地说，vim自称慈善软件(charityware)还是有点东西的，再说下去鲁迅先生就要出来赶苍蝇了）。&lt;/p></description></item><item><title>简单的ECK部署</title><link>https://nnnewb.github.io/p/simple-eck-cluster-deployment/</link><pubDate>Tue, 30 Nov 2021 11:13:00 +0800</pubDate><guid>https://nnnewb.github.io/p/simple-eck-cluster-deployment/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>因为工作需要，得在自己搭建的集群里部署一个 Elasticsearch 。又因为是云端的集群，在 k8s 外用 docker 单独起一个 ES 明显更难维护（但部署更简单），于是选择用 ECK 。&lt;/p>
 &lt;p>ECK 就是 Elastic Cloud on Kubernetes 的缩写，可以理解成部署在 Kubernetes 上的 Elasticsearch 。当然不止 ES 。&lt;/p>
 &lt;p>部署 ES 的过程遇到几个问题记录下怎么解决的。&lt;/p>
@@ -591,7 +591,7 @@ sudo update-alternatives --set vi /usr/local/bin/vim
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>这几步配置下来，一个开发用的 ES 集群就算是配完了，资源给够就能开始玩了。&lt;/p>
 &lt;p>讲道理我不太会运维 ES 啊，ES 这东西实在有点重量级，现阶段的能力也就只能看文档这里那里配一下，在上面开发什么的。真要遇到大问题还得抓瞎。&lt;/p>
-&lt;p>就先这样吧。&lt;/p></description></item><item><title>运维瞎记 2021年11月11日</title><link>https://nnnewb.github.io/blog/p/blind-op-2021-11-11/</link><pubDate>Thu, 11 Nov 2021 10:19:00 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/blind-op-2021-11-11/</guid><description>&lt;img src="https://nnnewb.github.io/blog/p/blind-op-2021-11-11/cover.png" alt="Featured image of post 运维瞎记 2021年11月11日" />&lt;h2 id="记虚拟机网络未连接">记虚拟机网络未连接&lt;/h2>
+&lt;p>就先这样吧。&lt;/p></description></item><item><title>运维瞎记 2021年11月11日</title><link>https://nnnewb.github.io/p/blind-op-2021-11-11/</link><pubDate>Thu, 11 Nov 2021 10:19:00 +0800</pubDate><guid>https://nnnewb.github.io/p/blind-op-2021-11-11/</guid><description>&lt;img src="https://nnnewb.github.io/p/blind-op-2021-11-11/cover.png" alt="Featured image of post 运维瞎记 2021年11月11日" />&lt;h2 id="记虚拟机网络未连接">记虚拟机网络未连接&lt;/h2>
 &lt;h3 id="起因">起因&lt;/h3>
 &lt;p>因为Ubuntu server安装时更新的话需要从网络下载，慢的一批，所以安装的时候虚拟机的网络断开了，安装好启动之后才重新链接。&lt;/p>
 &lt;p>但是&amp;hellip;&lt;/p>
@@ -702,7 +702,7 @@ sudo netplan apply
 &lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
 &lt;/div>
 &lt;/div>&lt;p>注意 &lt;code>enp0s3&lt;/code> 已经变成了 &lt;code>configured&lt;/code> 状态，确认问题彻底处理完毕。&lt;/p>
-&lt;/blockquote></description></item><item><title>升级公司的 GitLab</title><link>https://nnnewb.github.io/blog/p/%E5%8D%87%E7%BA%A7%E5%85%AC%E5%8F%B8%E7%9A%84-gitlab/</link><pubDate>Thu, 15 Jul 2021 16:02:41 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/%E5%8D%87%E7%BA%A7%E5%85%AC%E5%8F%B8%E7%9A%84-gitlab/</guid><description>&lt;p>公司目前跑的 gitlab 是很久以前部署的，当前版本 &lt;em>8.4.2&lt;/em> 。升级目标是 &lt;em>13.12.Z&lt;/em> 。部署方式是 docker 。&lt;/p>
+&lt;/blockquote></description></item><item><title>升级公司的 GitLab</title><link>https://nnnewb.github.io/p/%E5%8D%87%E7%BA%A7%E5%85%AC%E5%8F%B8%E7%9A%84-gitlab/</link><pubDate>Thu, 15 Jul 2021 16:02:41 +0800</pubDate><guid>https://nnnewb.github.io/p/%E5%8D%87%E7%BA%A7%E5%85%AC%E5%8F%B8%E7%9A%84-gitlab/</guid><description>&lt;p>公司目前跑的 gitlab 是很久以前部署的，当前版本 &lt;em>8.4.2&lt;/em> 。升级目标是 &lt;em>13.12.Z&lt;/em> 。部署方式是 docker 。&lt;/p>
 &lt;!-- more -->
 &lt;p>宿主机配置不高，系统 &lt;em>Ubuntu 15.04&lt;/em> 。眼下这个时间，这个Ubuntu版本，基本宣告没法用了。直接在线升级容易把引导搞挂，到时候还得亲自去实体机上折腾引导，麻烦。暂时不管宿主机。&lt;/p>
 &lt;h2 id="情况概述">情况概述&lt;/h2>

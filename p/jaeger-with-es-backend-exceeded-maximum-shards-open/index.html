@@ -1,20 +1,20 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 jaeger 是一个比较常用的分布式追踪服务，后端可以选 es、cassandra 等存储，我司线上就是用了 es 作为 jaeger 存储。 jaeger 用 es 做查询后端的时候有个坏毛"><title>记一次 jaeger es 后端出现 maximum shards open 错误排查</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<link rel=canonical href=https://nnnewb.github.io/p/jaeger-with-es-backend-exceeded-maximum-shards-open/>
+<link rel=stylesheet href=/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
 <script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="记一次 jaeger es 后端出现 maximum shards open 错误排查">
 <meta property="og:description" content="前言 jaeger 是一个比较常用的分布式追踪服务，后端可以选 es、cassandra 等存储，我司线上就是用了 es 作为 jaeger 存储。 jaeger 用 es 做查询后端的时候有个坏毛">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/">
+<meta property="og:url" content="https://nnnewb.github.io/p/jaeger-with-es-backend-exceeded-maximum-shards-open/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="elasticsearch"><meta property="article:tag" content="kubernetes"><meta property="article:tag" content="jaeger"><meta property="article:published_time" content="2022-04-12T13:00:00+08:00"><meta property="article:modified_time" content="2022-04-12T13:00:00+08:00">
 <meta name=twitter:title content="记一次 jaeger es 后端出现 maximum shards open 错误排查">
 <meta name=twitter:description content="前言 jaeger 是一个比较常用的分布式追踪服务，后端可以选 es、cassandra 等存储，我司线上就是用了 es 作为 jaeger 存储。 jaeger 用 es 做查询后端的时候有个坏毛">
 </head>
 <body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
 <div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
 <button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
 <span class=hamburger-box>
@@ -23,13 +23,13 @@
 </button>
 <header>
 <figure class=site-avatar>
-<a href=/blog>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+<a href=/>
+<img src=/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
 <span class=emoji>🍑</span>
 </figure>
 <div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h1 class=site-name><a href=/>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
 </header><ol class=social-menu>
@@ -39,37 +39,37 @@
 </li>
 </ol><ol class=menu id=main-menu>
 <li>
-<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<a href=/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
 </a>
 </li>
 <li>
-<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<a href=/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
 <span>关于我</span>
 </a>
 </li>
 <li>
-<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<a href=/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
 <span>归档</span>
 </a>
 </li>
 <li>
-<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<a href=/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 <span>分类</span>
 </a>
 </li>
 <li>
-<a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<a href=/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
 <span>标签</span>
 </a>
 </li>
 <li>
-<a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<a href=/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
 </a>
 </li>
 <li>
-<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<a href=/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
 <span>搜索</span>
 </a>
 </li>
@@ -82,13 +82,13 @@
 <header class=article-header>
 <div class=article-details>
 <header class=article-category>
-<a href=/blog/categories/elasticsearch/>
+<a href=/categories/elasticsearch/>
 elasticsearch
 </a>
 </header>
 <div class=article-title-wrapper>
 <h2 class=article-title>
-<a href=/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/>记一次 jaeger es 后端出现 maximum shards open 错误排查</a>
+<a href=/p/jaeger-with-es-backend-exceeded-maximum-shards-open/>记一次 jaeger es 后端出现 maximum shards open 错误排查</a>
 </h2>
 </div>
 <footer class=article-time>
@@ -301,10 +301,10 @@ elasticsearch
 </code></pre></td></tr></table>
 </div>
 </div><p>这一步会创建几个新的 index 和别名</p>
-<p><img src=/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141559066.png width=1842 height=378 srcset="/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141559066_huf31b44a88e85ce036ecd9f25c7699fa0_33804_480x0_resize_box_3.png 480w, /blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141559066_huf31b44a88e85ce036ecd9f25c7699fa0_33804_1024x0_resize_box_3.png 1024w" loading=lazy alt="rollover init后" class=gallery-image data-flex-grow=487 data-flex-basis=1169px></p>
+<p><img src=/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141559066.png width=1842 height=378 srcset="/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141559066_huf31b44a88e85ce036ecd9f25c7699fa0_33804_480x0_resize_box_3.png 480w, /p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141559066_huf31b44a88e85ce036ecd9f25c7699fa0_33804_1024x0_resize_box_3.png 1024w" loading=lazy alt="rollover init后" class=gallery-image data-flex-grow=487 data-flex-basis=1169px></p>
 <p>注意图中标记的部分。</p>
 <p>下一步修改 jaeger 的启动参数，我这里直接 <code>kubectl edit -n jaeger deployment jaeger</code> 编辑。</p>
-<p><img src=/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141913088.png width=885 height=169 srcset="/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141913088_hu4a18394a943caa248bfd6f08f6042657_22472_480x0_resize_box_3.png 480w, /blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141913088_hu4a18394a943caa248bfd6f08f6042657_22472_1024x0_resize_box_3.png 1024w" loading=lazy alt=启动参数 class=gallery-image data-flex-grow=523 data-flex-basis=1256px></p>
+<p><img src=/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141913088.png width=885 height=169 srcset="/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141913088_hu4a18394a943caa248bfd6f08f6042657_22472_480x0_resize_box_3.png 480w, /p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413141913088_hu4a18394a943caa248bfd6f08f6042657_22472_1024x0_resize_box_3.png 1024w" loading=lazy alt=启动参数 class=gallery-image data-flex-grow=523 data-flex-basis=1256px></p>
 <p>应用后自动更新 pod，注意看下日志有没有错误或者警告。对于 docker-compose 用户改法差不多，如果 jaeger 是直接 <code>docker run</code> 起来的，那是真的牛啤。自己 <code>docker rm</code> 再 <code>docker run</code> 一次吧。真机部署 jaeger 还没见过直接略，无非是改 systemd 配置或者 /etc/init.d 。</p>
 <p>到这里 jaeger 部署的调整就完了，但问题还没解决：要是时间久了，会不会还创建一堆 indices？据我观察，应该不会再每天 2 个 index 的频率高强度创建 index 了（PS：因为第一天动手的时候没注意，jaeger 没加 <code>--es.use-aliases=true</code>，所以我也不敢说绝对不会，建议自己改了第二天看一眼。），新的 index 会写入到之前看到的 <code>jaeger-span-000001</code> 这种 index 里。</p>
 <p>文档里给了个从每日创建索引转到 rollover 的迁移方法：</p>
@@ -769,7 +769,7 @@ Options:
 <p>手动法我说个思路。首先你得有个 kibana console 可以访问，或者能直接请求到 es 的 9200 端口。</p>
 <p><code>GET /_cat/indices</code> 拿到 indices 列表，按名字正则过滤 <code>jaeger-(span|service)-\d{4}-\d{2}-\d{2}</code>，然后把后面的日期解析一下；或者粗暴点，直接<code>^(2022-04-\d{2})</code>过滤出本月（4月）以外的所有索引，拿到一个索引列表。</p>
 <p>具体点说，像是 kibana console 拿到的是一个每行格式如 <code>green open jaeger-span-2022-03-01 ....</code> 这样的纯文本，你可以放到 vscode 里然后用 <code>Filter Lines</code> 这样的插件快速正则过滤出来，再按 <code>alt+shift+方向键</code> 多光标，快速编辑出一个索引名称列表。</p>
-<p><img src=/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413154700392.png width=1338 height=315 srcset="/blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413154700392_huedcedc0cd6515fa937cef755447c928f_26312_480x0_resize_box_3.png 480w, /blog/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413154700392_huedcedc0cd6515fa937cef755447c928f_26312_1024x0_resize_box_3.png 1024w" loading=lazy alt=kibana class=gallery-image data-flex-grow=424 data-flex-basis=1019px></p>
+<p><img src=/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413154700392.png width=1338 height=315 srcset="/p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413154700392_huedcedc0cd6515fa937cef755447c928f_26312_480x0_resize_box_3.png 480w, /p/jaeger-with-es-backend-exceeded-maximum-shards-open/image-20220413154700392_huedcedc0cd6515fa937cef755447c928f_26312_1024x0_resize_box_3.png 1024w" loading=lazy alt=kibana class=gallery-image data-flex-grow=424 data-flex-basis=1019px></p>
 <p>然后把索引名前面加上 <code>DELETE /</code>，产生 <code>DELETE /jaeger-span-2022-03-01</code> 这样的列表，贴到 kibana console 里，全选运行，done。</p>
 <p>要是没 kibana ，只有 9200 访问，就改成 curl 请求，或者 httpie ，反正总有办法。最后批量执行就好。</p>
 <p>要是都没有，讲道理啊你跟负责人说下要个访问权限好吧&mldr;&mldr;</p>
@@ -783,9 +783,9 @@ Options:
 </section>
 <footer class=article-footer>
 <section class=article-tags>
-<a href=/blog/tags/elasticsearch/>elasticsearch</a>
-<a href=/blog/tags/kubernetes/>kubernetes</a>
-<a href=/blog/tags/jaeger/>jaeger</a>
+<a href=/tags/elasticsearch/>elasticsearch</a>
+<a href=/tags/kubernetes/>kubernetes</a>
+<a href=/tags/jaeger/>jaeger</a>
 </section>
 <section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
 <span>Licensed under CC BY-NC-SA 4.0</span>
@@ -798,7 +798,7 @@ Options:
 <div class=related-contents>
 <div class="flex article-list--tile">
 <article>
-<a href=/blog/p/simple-eck-cluster-deployment/>
+<a href=/p/simple-eck-cluster-deployment/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -817,7 +817,13 @@ Options:
 2023 weakptr's 笔记
 </section>
 <section class=powerby>
-GitHub Pages <br>
+<a href=https://beian.miit.gov.cn/>浙ICP备2021032371号-1</a>
+<span style=margin-left:16px></span>
+<a target=_blank href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33032402002231" style=display:inline-block;text-decoration:none;height:20px;line-height:20px>
+<img src=/blog/image/beian.png style=float:left>
+浙公网安备 33032402002231号
+</a>
+<br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 ，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
@@ -895,7 +901,7 @@ Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 </section>
 </aside>
 </div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>

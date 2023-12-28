@@ -1,21 +1,21 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 距离上一篇加壳原理已经过去挺久了，这段时间稍微折腾了一下 nasm，尝试手工制作了 PE32 文件，积累了一些基本的知识吧。 所以现在继续学习加壳——"><title>加壳原理03 - 支持没有重定位的程序</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<link rel=canonical href=https://nnnewb.github.io/p/learning-packer-03-support-no-relocations/>
+<link rel=stylesheet href=/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
 <script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="加壳原理03 - 支持没有重定位的程序">
 <meta property="og:description" content="前言 距离上一篇加壳原理已经过去挺久了，这段时间稍微折腾了一下 nasm，尝试手工制作了 PE32 文件，积累了一些基本的知识吧。 所以现在继续学习加壳——">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/">
+<meta property="og:url" content="https://nnnewb.github.io/p/learning-packer-03-support-no-relocations/">
 <meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="c++"><meta property="article:tag" content="python"><meta property="article:tag" content="汇编"><meta property="article:tag" content="windows"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-10-20T10:25:00+08:00"><meta property="article:modified_time" content="2021-10-20T10:25:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/cover.jpg">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="c++"><meta property="article:tag" content="python"><meta property="article:tag" content="汇编"><meta property="article:tag" content="windows"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-10-20T10:25:00+08:00"><meta property="article:modified_time" content="2021-10-20T10:25:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/p/learning-packer-03-support-no-relocations/cover.jpg">
 <meta name=twitter:title content="加壳原理03 - 支持没有重定位的程序">
 <meta name=twitter:description content="前言 距离上一篇加壳原理已经过去挺久了，这段时间稍微折腾了一下 nasm，尝试手工制作了 PE32 文件，积累了一些基本的知识吧。 所以现在继续学习加壳——"><meta name=twitter:card content="summary_large_image">
-<meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-03-support-no-relocations/cover.jpg">
+<meta name=twitter:image content="https://nnnewb.github.io/p/learning-packer-03-support-no-relocations/cover.jpg">
 </head>
 <body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
 <div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
 <button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
 <span class=hamburger-box>
@@ -24,13 +24,13 @@
 </button>
 <header>
 <figure class=site-avatar>
-<a href=/blog>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+<a href=/>
+<img src=/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
 <span class=emoji>🍑</span>
 </figure>
 <div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h1 class=site-name><a href=/>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
 </header><ol class=social-menu>
@@ -40,37 +40,37 @@
 </li>
 </ol><ol class=menu id=main-menu>
 <li>
-<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<a href=/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
 </a>
 </li>
 <li>
-<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<a href=/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
 <span>关于我</span>
 </a>
 </li>
 <li>
-<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<a href=/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
 <span>归档</span>
 </a>
 </li>
 <li>
-<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<a href=/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 <span>分类</span>
 </a>
 </li>
 <li>
-<a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<a href=/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
 <span>标签</span>
 </a>
 </li>
 <li>
-<a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<a href=/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
 </a>
 </li>
 <li>
-<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<a href=/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
 <span>搜索</span>
 </a>
 </li>
@@ -82,19 +82,19 @@
 <article class="has-image main-article">
 <header class=article-header>
 <div class=article-image>
-<a href=/blog/p/learning-packer-03-support-no-relocations/>
-<img src=/blog/p/learning-packer-03-support-no-relocations/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/blog/p/learning-packer-03-support-no-relocations/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /blog/p/learning-packer-03-support-no-relocations/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序">
+<a href=/p/learning-packer-03-support-no-relocations/>
+<img src=/p/learning-packer-03-support-no-relocations/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/p/learning-packer-03-support-no-relocations/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /p/learning-packer-03-support-no-relocations/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序">
 </a>
 </div>
 <div class=article-details>
 <header class=article-category>
-<a href=/blog/categories/%E9%80%86%E5%90%91/>
+<a href=/categories/%E9%80%86%E5%90%91/>
 逆向
 </a>
 </header>
 <div class=article-title-wrapper>
 <h2 class=article-title>
-<a href=/blog/p/learning-packer-03-support-no-relocations/>加壳原理03 - 支持没有重定位的程序</a>
+<a href=/p/learning-packer-03-support-no-relocations/>加壳原理03 - 支持没有重定位的程序</a>
 </h2>
 </div>
 <footer class=article-time>
@@ -122,7 +122,7 @@
 <p>将加壳后程序的基址设置为固定的 <code>0x04000000</code> 又会产生新的问题：加载器的代码段不能放在 <code>0x04000000</code> ，否则加载器运行时就会出现被被加载的代码覆盖的情况，导致程序跑飞。所以<strong>编译后的加载器所有 Section 都必须有一定的偏移，这个偏移值就是被加载程序的 Section 大小之和（对齐后）</strong>。而因此多出来的空间单独分成一个 Section ，正好用来放要加载的程序。</p>
 <p>另外，还必须确认文件头大小是否一致，因为<strong>我们需要将被加载程序的文件头覆盖加载器的文件头</strong>。而<strong>最开始预留的空间必须分配为一个 Section</strong>，让 Windows 的加载器能顺利加载程序而不报“不是有效的Win32程序”错误。</p>
 <p>内存布局示意图如下：</p>
-<p><img src=/blog/p/learning-packer-03-support-no-relocations/%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80.png width=1155 height=145 srcset="/blog/p/learning-packer-03-support-no-relocations/%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80_hu26017091af2f4be7bf70029e5d75a3ba_13811_480x0_resize_box_3.png 480w, /blog/p/learning-packer-03-support-no-relocations/%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80_hu26017091af2f4be7bf70029e5d75a3ba_13811_1024x0_resize_box_3.png 1024w" loading=lazy alt=内存布局 class=gallery-image data-flex-grow=796 data-flex-basis=1911px></p>
+<p><img src=/p/learning-packer-03-support-no-relocations/%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80.png width=1155 height=145 srcset="/p/learning-packer-03-support-no-relocations/%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80_hu26017091af2f4be7bf70029e5d75a3ba_13811_480x0_resize_box_3.png 480w, /p/learning-packer-03-support-no-relocations/%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80_hu26017091af2f4be7bf70029e5d75a3ba_13811_1024x0_resize_box_3.png 1024w" loading=lazy alt=内存布局 class=gallery-image data-flex-grow=796 data-flex-basis=1911px></p>
 <p>所以加载器的加载步骤如下：</p>
 <ol>
 <li>寻找被加载的 Section 。</li>
@@ -789,9 +789,9 @@
 <p><a class=link href=https://gist.github.com/nnnewb/28ca24ed4ee53f446120d64570c7ad01 target=_blank rel=noopener>完整代码的 GIST</a></p>
 <h2 id=0x05-成果>0x05 成果</h2>
 <p>加壳机运行效果。</p>
-<p><img src=/blog/%E5%8A%A0%E5%A3%B3%E6%9C%BA.gif loading=lazy alt=加壳机></p>
+<p><img src=/%E5%8A%A0%E5%A3%B3%E6%9C%BA.gif loading=lazy alt=加壳机></p>
 <p><code>packed.exe</code> 的节表信息如下。</p>
-<p><img src=/blog/p/learning-packer-03-support-no-relocations/image-20211020095008599.png width=507 height=296 srcset="/blog/p/learning-packer-03-support-no-relocations/image-20211020095008599_hu133cb724811b185855f9a631cc001e91_10916_480x0_resize_box_3.png 480w, /blog/p/learning-packer-03-support-no-relocations/image-20211020095008599_hu133cb724811b185855f9a631cc001e91_10916_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211020095008599 class=gallery-image data-flex-grow=171 data-flex-basis=411px></p>
+<p><img src=/p/learning-packer-03-support-no-relocations/image-20211020095008599.png width=507 height=296 srcset="/p/learning-packer-03-support-no-relocations/image-20211020095008599_hu133cb724811b185855f9a631cc001e91_10916_480x0_resize_box_3.png 480w, /p/learning-packer-03-support-no-relocations/image-20211020095008599_hu133cb724811b185855f9a631cc001e91_10916_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211020095008599 class=gallery-image data-flex-grow=171 data-flex-basis=411px></p>
 <h2 id=结论>结论</h2>
 <p>整个过程里踩了不少坑，几乎都要靠 x32dbg 调试和 CFF Explorer 挨个文件头字段检查。有个比较实用的做法是拿 LIEF 解析好加壳后的文件，把输出结果和原始加载器对比。</p>
 <div class=highlight><div class=chroma>
@@ -884,13 +884,13 @@
 </section>
 <footer class=article-footer>
 <section class=article-tags>
-<a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
-<a href=/blog/tags/c++/>c++</a>
-<a href=/blog/tags/python/>python</a>
-<a href=/blog/tags/%E6%B1%87%E7%BC%96/>汇编</a>
-<a href=/blog/tags/windows/>windows</a>
-<a href=/blog/tags/security/>security</a>
-<a href=/blog/tags/binary-analysis/>binary-analysis</a>
+<a href=/tags/%E9%80%86%E5%90%91/>逆向</a>
+<a href=/tags/c++/>c++</a>
+<a href=/tags/python/>python</a>
+<a href=/tags/%E6%B1%87%E7%BC%96/>汇编</a>
+<a href=/tags/windows/>windows</a>
+<a href=/tags/security/>security</a>
+<a href=/tags/binary-analysis/>binary-analysis</a>
 </section>
 <section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
 <span>Licensed under CC BY-NC-SA 4.0</span>
@@ -903,9 +903,9 @@
 <div class=related-contents>
 <div class="flex article-list--tile">
 <article class=has-image>
-<a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/>
+<a href=/p/learning-packer-04-zlib-compression-packer-demo/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -916,9 +916,9 @@
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-08/>
+<a href=/p/learning-packer-08/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -929,9 +929,9 @@
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-07/>
+<a href=/p/learning-packer-07/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -942,9 +942,9 @@
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-06/>
+<a href=/p/learning-packer-06/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -955,9 +955,9 @@
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-05/>
+<a href=/p/learning-packer-05/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-05/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理05：利用图片隐藏" data-key=learning-packer-05 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-05/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理05：利用图片隐藏" data-key=learning-packer-05 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -977,7 +977,13 @@
 2023 weakptr's 笔记
 </section>
 <section class=powerby>
-GitHub Pages <br>
+<a href=https://beian.miit.gov.cn/>浙ICP备2021032371号-1</a>
+<span style=margin-left:16px></span>
+<a target=_blank href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33032402002231" style=display:inline-block;text-decoration:none;height:20px;line-height:20px>
+<img src=/blog/image/beian.png style=float:left>
+浙公网安备 33032402002231号
+</a>
+<br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 ，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
@@ -1049,7 +1055,7 @@ Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 </section>
 </aside>
 </div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>

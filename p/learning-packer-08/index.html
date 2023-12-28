@@ -1,21 +1,21 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。 0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作"><title>加壳原理08：混淆技术入门</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-08/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<link rel=canonical href=https://nnnewb.github.io/p/learning-packer-08/>
+<link rel=stylesheet href=/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
 <script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="加壳原理08：混淆技术入门">
 <meta property="og:description" content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。 0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-08/">
+<meta property="og:url" content="https://nnnewb.github.io/p/learning-packer-08/">
 <meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="windows"><meta property="article:tag" content="c++"><meta property="article:tag" content="llvm"><meta property="article:tag" content="汇编"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-11-03T16:54:00+08:00"><meta property="article:modified_time" content="2021-11-03T16:54:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-08/cover.jpg">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="windows"><meta property="article:tag" content="c++"><meta property="article:tag" content="llvm"><meta property="article:tag" content="汇编"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-11-03T16:54:00+08:00"><meta property="article:modified_time" content="2021-11-03T16:54:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/p/learning-packer-08/cover.jpg">
 <meta name=twitter:title content="加壳原理08：混淆技术入门">
 <meta name=twitter:description content="前言 本篇尝试学习通过动手写一个 LLVM Pass 来学习编译阶段进行代码混淆的技术。 0x01 环境设置 LLVM 是个相当大的项目，做好环境设置是首先要做的事情。这里选择 msys2 作"><meta name=twitter:card content="summary_large_image">
-<meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-08/cover.jpg">
+<meta name=twitter:image content="https://nnnewb.github.io/p/learning-packer-08/cover.jpg">
 </head>
 <body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"dark")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
+<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
 <div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
 <button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
 <span class=hamburger-box>
@@ -24,13 +24,13 @@
 </button>
 <header>
 <figure class=site-avatar>
-<a href=/blog>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+<a href=/>
+<img src=/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
 <span class=emoji>🍑</span>
 </figure>
 <div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
+<h1 class=site-name><a href=/>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
 </header><ol class=social-menu>
@@ -40,37 +40,37 @@
 </li>
 </ol><ol class=menu id=main-menu>
 <li>
-<a href=/blog><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<a href=/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
 </a>
 </li>
 <li>
-<a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<a href=/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
 <span>关于我</span>
 </a>
 </li>
 <li>
-<a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<a href=/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
 <span>归档</span>
 </a>
 </li>
 <li>
-<a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<a href=/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 <span>分类</span>
 </a>
 </li>
 <li>
-<a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<a href=/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
 <span>标签</span>
 </a>
 </li>
 <li>
-<a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<a href=/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
 </a>
 </li>
 <li>
-<a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<a href=/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
 <span>搜索</span>
 </a>
 </li>
@@ -82,19 +82,19 @@
 <article class="has-image main-article">
 <header class=article-header>
 <div class=article-image>
-<a href=/blog/p/learning-packer-08/>
-<img src=/blog/p/learning-packer-08/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/blog/p/learning-packer-08/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /blog/p/learning-packer-08/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门">
+<a href=/p/learning-packer-08/>
+<img src=/p/learning-packer-08/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/p/learning-packer-08/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /p/learning-packer-08/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门">
 </a>
 </div>
 <div class=article-details>
 <header class=article-category>
-<a href=/blog/categories/%E9%80%86%E5%90%91/>
+<a href=/categories/%E9%80%86%E5%90%91/>
 逆向
 </a>
 </header>
 <div class=article-title-wrapper>
 <h2 class=article-title>
-<a href=/blog/p/learning-packer-08/>加壳原理08：混淆技术入门</a>
+<a href=/p/learning-packer-08/>加壳原理08：混淆技术入门</a>
 </h2>
 </div>
 <footer class=article-time>
@@ -582,7 +582,7 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
 <li>在原始块的结束部分再次分割基本块，分割后的块包含原始块的 terminator （<code>terminator</code>）</li>
 <li>创建一个恒真条件，跳转到原始块的 terminator，假则跳转到伪造块 （<code>condition2</code>）</li>
 </ol>
-<p><img src=/blog/p/learning-packer-08/image-20211102160422737.png width=435 height=648 srcset="/blog/p/learning-packer-08/image-20211102160422737_hu1adf2e2db9eba618ac02ebe93739a09a_98722_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/image-20211102160422737_hu1adf2e2db9eba618ac02ebe93739a09a_98722_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211102160422737 class=gallery-image data-flex-grow=67 data-flex-basis=161px></p>
+<p><img src=/p/learning-packer-08/image-20211102160422737.png width=435 height=648 srcset="/p/learning-packer-08/image-20211102160422737_hu1adf2e2db9eba618ac02ebe93739a09a_98722_480x0_resize_box_3.png 480w, /p/learning-packer-08/image-20211102160422737_hu1adf2e2db9eba618ac02ebe93739a09a_98722_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211102160422737 class=gallery-image data-flex-grow=67 data-flex-basis=161px></p>
 <p>混淆后的控制流长这样，两个 condition 都是恒真条件，原始块被分成了三个部分，<code>entry</code>、<code>origin</code>、<code>terminator</code> 。图中红色的部分是伪造块，包含垃圾指令，绿色的条件块都是恒真条件，只有绿色箭头的控制流能走通。蓝色节点是从原始基本块上分割出来的部分。</p>
 <h3 id=23-createalteredbasicblock>2.3 createAlteredBasicBlock</h3>
 <p>再看伪造块是如何生成的。</p>
@@ -974,7 +974,7 @@ opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -load build/hello
 <h2 id=0x03-创建自己的混淆>0x03 创建自己的混淆</h2>
 <p>对 OLLVM 的 bcf 混淆有了初步的映像之后，接下来就可以依样画葫芦抄一个自己的混淆出来啦。</p>
 <h3 id=31-方案>3.1 方案</h3>
-<p><img src=/blog/p/learning-packer-08/image-20211103105527721.png width=953 height=726 srcset="/blog/p/learning-packer-08/image-20211103105527721_huf9cff02c3a79573b2f021a9808299ab4_137978_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/image-20211103105527721_huf9cff02c3a79573b2f021a9808299ab4_137978_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211103105527721 class=gallery-image data-flex-grow=131 data-flex-basis=315px></p>
+<p><img src=/p/learning-packer-08/image-20211103105527721.png width=953 height=726 srcset="/p/learning-packer-08/image-20211103105527721_huf9cff02c3a79573b2f021a9808299ab4_137978_480x0_resize_box_3.png 480w, /p/learning-packer-08/image-20211103105527721_huf9cff02c3a79573b2f021a9808299ab4_137978_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211103105527721 class=gallery-image data-flex-grow=131 data-flex-basis=315px></p>
 <p>作为概念验证，我们的 pass 将原始代码分割成三个基本块，称为 <code>entry</code>、<code>original</code>和<code>terminator</code>。<code>entry</code> 通过一个恒真判断跳转至 <code>original</code>，<code>original</code> 通过恒真判断跳转至 <code>terminator</code>。伪造块 <code>altered</code> 则是 false 分支，内容仅复制 <code>original</code> 块，并在末尾跳转至 <code>original</code> 块。</p>
 <p>伪造块应该永远不会被执行。</p>
 <h3 id=32-llvm编程的重要概念>3.2 LLVM编程的重要概念</h3>
@@ -1445,11 +1445,11 @@ clang sample.s -o sample.exe
 <pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>opt -enable-new-pm<span class=o>=</span><span class=m>0</span> -dot-cfg -cfg-func-name<span class=o>=</span>main .<span class=se>\s</span>ample<span class=se>\s</span>ample-optimized.bc
 </code></pre></td></tr></table>
 </div>
-</div><p><img src=/blog/p/learning-packer-08/main.png width=755 height=555 srcset="/blog/p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_1024x0_resize_box_3.png 1024w" loading=lazy alt=main class=gallery-image data-flex-grow=136 data-flex-basis=326px></p>
+</div><p><img src=/p/learning-packer-08/main.png width=755 height=555 srcset="/p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_480x0_resize_box_3.png 480w, /p/learning-packer-08/main_hu9fb641053a057b276abc5a630d791922_51045_1024x0_resize_box_3.png 1024w" loading=lazy alt=main class=gallery-image data-flex-grow=136 data-flex-basis=326px></p>
 <p>在IDA打开后看到的结果如下。</p>
-<p><img src=/blog/p/learning-packer-08/image-20211103141258015.png width=370 height=668 srcset="/blog/p/learning-packer-08/image-20211103141258015_hu6b9a1833094321916938f7c8374d48d6_60703_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/image-20211103141258015_hu6b9a1833094321916938f7c8374d48d6_60703_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211103141258015 class=gallery-image data-flex-grow=55 data-flex-basis=132px></p>
+<p><img src=/p/learning-packer-08/image-20211103141258015.png width=370 height=668 srcset="/p/learning-packer-08/image-20211103141258015_hu6b9a1833094321916938f7c8374d48d6_60703_480x0_resize_box_3.png 480w, /p/learning-packer-08/image-20211103141258015_hu6b9a1833094321916938f7c8374d48d6_60703_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211103141258015 class=gallery-image data-flex-grow=55 data-flex-basis=132px></p>
 <p>再来个更复杂的例子：<a class=link href=https://github.com/nnnewb/crackmes/blob/main/cm02/main.c target=_blank rel=noopener>main.c</a></p>
-<p><img src=/blog/p/learning-packer-08/image-20211103142352174.png width=314 height=638 srcset="/blog/p/learning-packer-08/image-20211103142352174_hu6e7d17f0f44390d3241deebec431bcff_8522_480x0_resize_box_3.png 480w, /blog/p/learning-packer-08/image-20211103142352174_hu6e7d17f0f44390d3241deebec431bcff_8522_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211103142352174 class=gallery-image data-flex-grow=49 data-flex-basis=118px></p>
+<p><img src=/p/learning-packer-08/image-20211103142352174.png width=314 height=638 srcset="/p/learning-packer-08/image-20211103142352174_hu6e7d17f0f44390d3241deebec431bcff_8522_480x0_resize_box_3.png 480w, /p/learning-packer-08/image-20211103142352174_hu6e7d17f0f44390d3241deebec431bcff_8522_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211103142352174 class=gallery-image data-flex-grow=49 data-flex-basis=118px></p>
 <h3 id=36-扩展不透明谓词>3.6 扩展：不透明谓词</h3>
 <p>参考文章：<a class=link href=https://reverseengineering.stackexchange.com/questions/1669/what-is-an-opaque-predicate target=_blank rel=noopener>what is an opaque predicate</a></p>
 <p>PS：本人没有相关学术背景，内容东拼西凑，如果存在理解错误或者陈述不准确请指出。</p>
@@ -1484,13 +1484,13 @@ clang sample.s -o sample.exe
 </section>
 <footer class=article-footer>
 <section class=article-tags>
-<a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
-<a href=/blog/tags/windows/>windows</a>
-<a href=/blog/tags/c++/>c++</a>
-<a href=/blog/tags/llvm/>llvm</a>
-<a href=/blog/tags/%E6%B1%87%E7%BC%96/>汇编</a>
-<a href=/blog/tags/security/>security</a>
-<a href=/blog/tags/binary-analysis/>binary-analysis</a>
+<a href=/tags/%E9%80%86%E5%90%91/>逆向</a>
+<a href=/tags/windows/>windows</a>
+<a href=/tags/c++/>c++</a>
+<a href=/tags/llvm/>llvm</a>
+<a href=/tags/%E6%B1%87%E7%BC%96/>汇编</a>
+<a href=/tags/security/>security</a>
+<a href=/tags/binary-analysis/>binary-analysis</a>
 </section>
 <section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
 <span>Licensed under CC BY-NC-SA 4.0</span>
@@ -1503,9 +1503,9 @@ clang sample.s -o sample.exe
 <div class=related-contents>
 <div class="flex article-list--tile">
 <article class=has-image>
-<a href=/blog/p/learning-packer-07/>
+<a href=/p/learning-packer-07/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -1516,9 +1516,9 @@ clang sample.s -o sample.exe
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-06/>
+<a href=/p/learning-packer-06/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -1529,9 +1529,9 @@ clang sample.s -o sample.exe
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/>
+<a href=/p/learning-packer-04-zlib-compression-packer-demo/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -1542,9 +1542,9 @@ clang sample.s -o sample.exe
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-03-support-no-relocations/>
+<a href=/p/learning-packer-03-support-no-relocations/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-03-support-no-relocations/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序" data-key=learning-packer-03-support-no-relocations data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-03-support-no-relocations/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序" data-key=learning-packer-03-support-no-relocations data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -1555,9 +1555,9 @@ clang sample.s -o sample.exe
 </a>
 </article>
 <article class=has-image>
-<a href=/blog/p/learning-packer-05/>
+<a href=/p/learning-packer-05/>
 <div class=article-image>
-<img src=/blog/p/learning-packer-05/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理05：利用图片隐藏" data-key=learning-packer-05 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
+<img src=/p/learning-packer-05/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理05：利用图片隐藏" data-key=learning-packer-05 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -1577,7 +1577,13 @@ clang sample.s -o sample.exe
 2023 weakptr's 笔记
 </section>
 <section class=powerby>
-GitHub Pages <br>
+<a href=https://beian.miit.gov.cn/>浙ICP备2021032371号-1</a>
+<span style=margin-left:16px></span>
+<a target=_blank href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33032402002231" style=display:inline-block;text-decoration:none;height:20px;line-height:20px>
+<img src=/blog/image/beian.png style=float:left>
+浙公网安备 33032402002231号
+</a>
+<br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 ，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
@@ -1662,7 +1668,7 @@ Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 </section>
 </aside>
 </div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>

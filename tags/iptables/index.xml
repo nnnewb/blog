@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>iptables on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/tags/iptables/</link><description>Recent content in iptables on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 02 Mar 2023 17:36:09 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/tags/iptables/index.xml" rel="self" type="application/rss+xml"/><item><title>iptables 调试方法</title><link>https://nnnewb.github.io/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/</link><pubDate>Thu, 02 Mar 2023 17:36:09 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/</guid><description>&lt;p>工作忙长话短说，写的匆忙，参考文章见文末。&lt;/p>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>iptables on weakptr's 笔记</title><link>https://nnnewb.github.io/tags/iptables/</link><description>Recent content in iptables on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 02 Mar 2023 17:36:09 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/tags/iptables/index.xml" rel="self" type="application/rss+xml"/><item><title>iptables 调试方法</title><link>https://nnnewb.github.io/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/</link><pubDate>Thu, 02 Mar 2023 17:36:09 +0800</pubDate><guid>https://nnnewb.github.io/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/</guid><description>&lt;p>工作忙长话短说，写的匆忙，参考文章见文末。&lt;/p>
 &lt;h2 id="应对场景">应对场景&lt;/h2>
 &lt;p>因为工作面对的网络环境有点复杂，业务需要做了基于 Tun 网卡的隧道转发流量，然后流量会经过实体机-虚拟机（隧道网关）-虚拟机（蜜罐网络网关）-虚拟机/docker容器一长串转发，基本靠 &lt;code>ip rule&lt;/code>/&lt;code>ip route&lt;/code> 还有 &lt;code>iptables&lt;/code> 制定流量转发规则。&lt;/p>
 &lt;p>后来简化了整个流量路径，直接从实体机转蜜罐网络。最近就遇到一个 &lt;code>tcpdump&lt;/code> 抓到了隧道网卡流量，但没有进入 docker 创建的网桥的问题。虽然后来是靠重启了一下隧道服务端解决（问题根源没找到），但中间看另一个同事调规则还是直接 &lt;code>-j accept&lt;/code> 然后 &lt;code>iptables -t nat -nvL&lt;/code> 看流量，于是就想起来之前似乎看到过 netfilter 支持 &lt;code>-j LOG&lt;/code> 还是啥来着，可以把流量打条日志出来。&lt;/p>
@@ -90,10 +90,10 @@ Mar 02 13:56:16 localhost.localdomain kernel: TRACE: mangle:POSTROUTING:policy:1
 &lt;p>日志字段分几个主要部分：匹配的表链（&lt;code>mangle:POSTROUTING:policy:1&lt;/code>）、进出设备（&lt;code>IN= OUT=enp0s8&lt;/code>）、接收方以太网地址（&lt;code>MAC=08:00:27:f1:ac:7a:08:00:27:4e:0e:25:08:00&lt;/code>）、收发IP（&lt;code>SRC=192.168.13.3 DST=192.168.13.6&lt;/code>）、协议（&lt;code>PROTO=TCP&lt;/code>）、收发端口（&lt;code>SPT=38660 DPT=80&lt;/code>）还有 flag（&lt;code>ACK FIN URGP=0&lt;/code>）&lt;/p>
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>原理图&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow.png"
 width="1900"
 height="605"
-srcset="https://nnnewb.github.io/blog/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow_hu2fb1d0d2fa972e6a81887037c93699c4_254789_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow_hu2fb1d0d2fa972e6a81887037c93699c4_254789_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow_hu2fb1d0d2fa972e6a81887037c93699c4_254789_480x0_resize_box_3.png 480w, https://nnnewb.github.io/p/iptables-%E8%B0%83%E8%AF%95%E6%96%B9%E6%B3%95/netfilter-packet-flow_hu2fb1d0d2fa972e6a81887037c93699c4_254789_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="netfilter-packet-flow"
 class="gallery-image"
