@@ -1,6 +1,7 @@
 ---
 title: 一套Linux网络开发/调试/运维的三板斧
 date: 2023-12-12 19:08:56
+image: cover.jpg
 categories:
 - linux
 tags:
