@@ -1,18 +1,18 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 并不是 MySQL 的死锁检测报错，而是一个业务代码架构上的问题导致的死锁。MySQL 只报了 Error 1205: Lock wait timeout exceeded; try restarting transaction 。 感觉还是值得一谈的。 现象 客户端每天第"><title>一个MySQL死锁问题排查</title>
-<link rel=canonical href=https://nnnewb.github.io/p/a-mysql-deadlock-investigation/>
-<link rel=stylesheet href=/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/>
+<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
 <script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="一个MySQL死锁问题排查">
 <meta property="og:description" content="前言 并不是 MySQL 的死锁检测报错，而是一个业务代码架构上的问题导致的死锁。MySQL 只报了 Error 1205: Lock wait timeout exceeded; try restarting transaction 。 感觉还是值得一谈的。 现象 客户端每天第">
-<meta property="og:url" content="https://nnnewb.github.io/p/a-mysql-deadlock-investigation/">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/">
 <meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="mysql"><meta property="article:tag" content="golang"><meta property="article:published_time" content="2022-05-25T10:21:12+08:00"><meta property="article:modified_time" content="2022-05-25T10:21:12+08:00"><meta property="og:image" content="https://nnnewb.github.io/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash.jpg">
+<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="mysql"><meta property="article:tag" content="golang"><meta property="article:published_time" content="2022-05-25T10:21:12+08:00"><meta property="article:modified_time" content="2022-05-25T10:21:12+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash.jpg">
 <meta name=twitter:title content="一个MySQL死锁问题排查">
 <meta name=twitter:description content="前言 并不是 MySQL 的死锁检测报错，而是一个业务代码架构上的问题导致的死锁。MySQL 只报了 Error 1205: Lock wait timeout exceeded; try restarting transaction 。 感觉还是值得一谈的。 现象 客户端每天第"><meta name=twitter:card content="summary_large_image">
-<meta name=twitter:image content="https://nnnewb.github.io/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash.jpg">
+<meta name=twitter:image content="https://nnnewb.github.io/blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash.jpg">
 </head>
 <body class=article-page>
 <script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
@@ -24,13 +24,13 @@
 </button>
 <header>
 <figure class=site-avatar>
-<a href=/>
-<img src=/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+<a href=/blog/>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
 <span class=emoji>🍑</span>
 </figure>
 <div class=site-meta>
-<h1 class=site-name><a href=/>weakptr's 笔记</a></h1>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
 </header><ol class=social-menu>
@@ -40,37 +40,37 @@
 </li>
 </ol><ol class=menu id=main-menu>
 <li>
-<a href=/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
 </a>
 </li>
 <li>
-<a href=/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
 <span>关于我</span>
 </a>
 </li>
 <li>
-<a href=/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
 <span>归档</span>
 </a>
 </li>
 <li>
-<a href=/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 <span>分类</span>
 </a>
 </li>
 <li>
-<a href=/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
 <span>标签</span>
 </a>
 </li>
 <li>
-<a href=/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
 </a>
 </li>
 <li>
-<a href=/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
 <span>搜索</span>
 </a>
 </li>
@@ -82,19 +82,19 @@
 <article class="has-image main-article">
 <header class=article-header>
 <div class=article-image>
-<a href=/p/a-mysql-deadlock-investigation/>
-<img src=/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash_hu54d45def1a288887897b72824d269a44_887498_800x0_resize_q75_box.jpg srcset="/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash_hu54d45def1a288887897b72824d269a44_887498_800x0_resize_q75_box.jpg 800w, /p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash_hu54d45def1a288887897b72824d269a44_887498_1600x0_resize_q75_box.jpg 1600w" width=800 height=500 loading=lazy alt="Featured image of post 一个MySQL死锁问题排查">
+<a href=/blog/p/a-mysql-deadlock-investigation/>
+<img src=/blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash_hu54d45def1a288887897b72824d269a44_887498_800x0_resize_q75_box.jpg srcset="/blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash_hu54d45def1a288887897b72824d269a44_887498_800x0_resize_q75_box.jpg 800w, /blog/p/a-mysql-deadlock-investigation/pankaj-patel-Fi-GJaLRGKc-unsplash_hu54d45def1a288887897b72824d269a44_887498_1600x0_resize_q75_box.jpg 1600w" width=800 height=500 loading=lazy alt="Featured image of post 一个MySQL死锁问题排查">
 </a>
 </div>
 <div class=article-details>
 <header class=article-category>
-<a href=/categories/mysql/>
+<a href=/blog/categories/mysql/>
 mysql
 </a>
 </header>
 <div class=article-title-wrapper>
 <h2 class=article-title>
-<a href=/p/a-mysql-deadlock-investigation/>一个MySQL死锁问题排查</a>
+<a href=/blog/p/a-mysql-deadlock-investigation/>一个MySQL死锁问题排查</a>
 </h2>
 </div>
 <footer class=article-time>
@@ -116,8 +116,8 @@ mysql
 <h2 id=现象>现象</h2>
 <p>客户端每天第一次点评的时候响应速度极慢，从半分钟到一分钟不等。一开始测试跟我说这问题复现不出来，我暂时就没管。</p>
 <p>第二天测试告诉我稳定复现了，第一次点评一定这么慢，于是要了客户端的日志，拿到请求 ID 后开始看跟踪情况。</p>
-<p><img src=/p/a-mysql-deadlock-investigation/image-20220525092418014.png width=432 height=178 srcset="/p/a-mysql-deadlock-investigation/image-20220525092418014_hu752f829b91ccecf22ff250568853aca9_16764_480x0_resize_box_3.png 480w, /p/a-mysql-deadlock-investigation/image-20220525092418014_hu752f829b91ccecf22ff250568853aca9_16764_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525092418014 class=gallery-image data-flex-grow=242 data-flex-basis=582px></p>
-<p><img src=/p/a-mysql-deadlock-investigation/image-20220525092441881.png width=691 height=204 srcset="/p/a-mysql-deadlock-investigation/image-20220525092441881_hucc30c4051b8ae687225e03d8f66504e0_15879_480x0_resize_box_3.png 480w, /p/a-mysql-deadlock-investigation/image-20220525092441881_hucc30c4051b8ae687225e03d8f66504e0_15879_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525092441881 class=gallery-image data-flex-grow=338 data-flex-basis=812px></p>
+<p><img src=/blog/p/a-mysql-deadlock-investigation/image-20220525092418014.png width=432 height=178 srcset="/blog/p/a-mysql-deadlock-investigation/image-20220525092418014_hu752f829b91ccecf22ff250568853aca9_16764_480x0_resize_box_3.png 480w, /blog/p/a-mysql-deadlock-investigation/image-20220525092418014_hu752f829b91ccecf22ff250568853aca9_16764_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525092418014 class=gallery-image data-flex-grow=242 data-flex-basis=582px></p>
+<p><img src=/blog/p/a-mysql-deadlock-investigation/image-20220525092441881.png width=691 height=204 srcset="/blog/p/a-mysql-deadlock-investigation/image-20220525092441881_hucc30c4051b8ae687225e03d8f66504e0_15879_480x0_resize_box_3.png 480w, /blog/p/a-mysql-deadlock-investigation/image-20220525092441881_hucc30c4051b8ae687225e03d8f66504e0_15879_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525092441881 class=gallery-image data-flex-grow=338 data-flex-basis=812px></p>
 <h2 id=排查>排查</h2>
 <h3 id=代码审阅和整理>代码审阅和整理</h3>
 <p>查看源码，初步断定是一个 <em>每日点评奖励经验值</em> 的业务里调用了这个 <code>AddExperience</code> RPC 函数，因为 MySQL 错误提示是明确指出锁等待超时，所以还得看一眼 <code>AddExperience</code> 这个 RPC 函数里涉事的 SQL 语句。</p>
@@ -140,8 +140,8 @@ mysql
 <li>请求 RPC 时，事务还没提交。</li>
 </ol>
 <p>基本确认来源是事务内。排查发现并没有直接 <code>select ... from user</code> 这样的 SQL，但注意到有表和<code>user</code>表存在外键关联，涉事SQL是<code>insert into</code>。</p>
-<p><img src=/p/a-mysql-deadlock-investigation/image-20220525094926344.png width=1331 height=79 srcset="/p/a-mysql-deadlock-investigation/image-20220525094926344_hubcc82659852dc707364fe2175b10763b_3707_480x0_resize_box_3.png 480w, /p/a-mysql-deadlock-investigation/image-20220525094926344_hubcc82659852dc707364fe2175b10763b_3707_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525094926344 class=gallery-image data-flex-grow=1684 data-flex-basis=4043px></p>
-<p><img src=/p/a-mysql-deadlock-investigation/image-20220525095117983.png width=867 height=105 srcset="/p/a-mysql-deadlock-investigation/image-20220525095117983_hu7026973f0748ebba8e8b77571ead20d8_12762_480x0_resize_box_3.png 480w, /p/a-mysql-deadlock-investigation/image-20220525095117983_hu7026973f0748ebba8e8b77571ead20d8_12762_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525095117983 class=gallery-image data-flex-grow=825 data-flex-basis=1981px></p>
+<p><img src=/blog/p/a-mysql-deadlock-investigation/image-20220525094926344.png width=1331 height=79 srcset="/blog/p/a-mysql-deadlock-investigation/image-20220525094926344_hubcc82659852dc707364fe2175b10763b_3707_480x0_resize_box_3.png 480w, /blog/p/a-mysql-deadlock-investigation/image-20220525094926344_hubcc82659852dc707364fe2175b10763b_3707_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525094926344 class=gallery-image data-flex-grow=1684 data-flex-basis=4043px></p>
+<p><img src=/blog/p/a-mysql-deadlock-investigation/image-20220525095117983.png width=867 height=105 srcset="/blog/p/a-mysql-deadlock-investigation/image-20220525095117983_hu7026973f0748ebba8e8b77571ead20d8_12762_480x0_resize_box_3.png 480w, /blog/p/a-mysql-deadlock-investigation/image-20220525095117983_hu7026973f0748ebba8e8b77571ead20d8_12762_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220525095117983 class=gallery-image data-flex-grow=825 data-flex-basis=1981px></p>
 <p>查询MySQL文档没有收获（关于<code>insert</code>是否会锁外键的问题），但谷歌发现<a class=link href=https://stackoverflow.com/questions/54672633/do-mysql-transactions-for-insert-lock-foreign-key-referenced-tables target=_blank rel=noopener>stackoverflow 上已有相同的问题</a>，答案是 yes，会在记录上加共享锁。</p>
 <p>至此，死锁来源基本算查明了。</p>
 <h2 id=解决和预防>解决和预防</h2>
@@ -159,8 +159,8 @@ mysql
 </section>
 <footer class=article-footer>
 <section class=article-tags>
-<a href=/tags/mysql/>mysql</a>
-<a href=/tags/golang/>golang</a>
+<a href=/blog/tags/mysql/>mysql</a>
+<a href=/blog/tags/golang/>golang</a>
 </section>
 <section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
 <span>Licensed under CC BY-NC-SA 4.0</span>
@@ -173,7 +173,7 @@ mysql
 <div class=related-contents>
 <div class="flex article-list--tile">
 <article>
-<a href=/p/stored-procedure-function-and-triggers/>
+<a href=/blog/p/stored-procedure-function-and-triggers/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -183,9 +183,9 @@ mysql
 </a>
 </article>
 <article class=has-image>
-<a href=/p/note-of-mysql-join-optimize/>
+<a href=/blog/p/note-of-mysql-join-optimize/>
 <div class=article-image>
-<img src=/p/note-of-mysql-join-optimize/_hu8ccdbbcbbb5906798b24061f7093764d_181309_67981f9287890ebaff2246bbae2807cd.png width=250 height=150 loading=lazy alt="Featured image of post 记一次MySQL JOIN优化" data-key=note-of-mysql-join-optimize data-hash="md5-N9wuII+zC8DBGa8noaGMEA==">
+<img src=/blog/p/note-of-mysql-join-optimize/_hu8ccdbbcbbb5906798b24061f7093764d_181309_67981f9287890ebaff2246bbae2807cd.png width=250 height=150 loading=lazy alt="Featured image of post 记一次MySQL JOIN优化" data-key=note-of-mysql-join-optimize data-hash="md5-N9wuII+zC8DBGa8noaGMEA==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -196,7 +196,7 @@ mysql
 </a>
 </article>
 <article>
-<a href=/p/xa-transaction-theory-to-practice/>
+<a href=/blog/p/xa-transaction-theory-to-practice/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -206,7 +206,7 @@ mysql
 </a>
 </article>
 <article>
-<a href=/p/an-api-response-time-optimize/>
+<a href=/blog/p/an-api-response-time-optimize/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -225,13 +225,6 @@ mysql
 2024 weakptr's 笔记
 </section>
 <section class=powerby>
-<a href=https://beian.miit.gov.cn/>浙ICP备2021032371号-1</a>
-<span style=margin-left:16px></span>
-<a target=_blank href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33032402002231" style=display:inline-block;text-decoration:none;height:20px;line-height:20px>
-<img src=/blog/image/beian.png style=float:left>
-浙公网安备 33032402002231号
-</a>
-<br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 ，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
@@ -303,7 +296,7 @@ Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 </section>
 </aside>
 </div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>

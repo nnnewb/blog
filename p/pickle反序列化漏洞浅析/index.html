@@ -1,13 +1,13 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 挑了个好捏的软柿子下手，来看下反序列化漏洞一般什么原理。 原理 概述 Python 是个动态类型且高度灵活的语言，这意味着直接按内存布局序列化基本是没戏的"><title>pickle反序列化漏洞浅析</title>
-<link rel=canonical href=https://nnnewb.github.io/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/>
-<link rel=stylesheet href=/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/>
+<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
 <script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="pickle反序列化漏洞浅析">
 <meta property="og:description" content="前言 挑了个好捏的软柿子下手，来看下反序列化漏洞一般什么原理。 原理 概述 Python 是个动态类型且高度灵活的语言，这意味着直接按内存布局序列化基本是没戏的">
-<meta property="og:url" content="https://nnnewb.github.io/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="反序列化漏洞"><meta property="article:tag" content="pickle"><meta property="article:tag" content="python"><meta property="article:published_time" content="2022-06-24T18:11:00+08:00"><meta property="article:modified_time" content="2022-06-24T18:11:00+08:00">
 <meta name=twitter:title content="pickle反序列化漏洞浅析">
@@ -23,13 +23,13 @@
 </button>
 <header>
 <figure class=site-avatar>
-<a href=/>
-<img src=/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+<a href=/blog/>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
 <span class=emoji>🍑</span>
 </figure>
 <div class=site-meta>
-<h1 class=site-name><a href=/>weakptr's 笔记</a></h1>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
 </header><ol class=social-menu>
@@ -39,37 +39,37 @@
 </li>
 </ol><ol class=menu id=main-menu>
 <li>
-<a href=/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
 </a>
 </li>
 <li>
-<a href=/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
 <span>关于我</span>
 </a>
 </li>
 <li>
-<a href=/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
 <span>归档</span>
 </a>
 </li>
 <li>
-<a href=/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 <span>分类</span>
 </a>
 </li>
 <li>
-<a href=/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
 <span>标签</span>
 </a>
 </li>
 <li>
-<a href=/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
 </a>
 </li>
 <li>
-<a href=/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
 <span>搜索</span>
 </a>
 </li>
@@ -82,13 +82,13 @@
 <header class=article-header>
 <div class=article-details>
 <header class=article-category>
-<a href=/categories/security/>
+<a href=/blog/categories/security/>
 security
 </a>
 </header>
 <div class=article-title-wrapper>
 <h2 class=article-title>
-<a href=/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/>pickle反序列化漏洞浅析</a>
+<a href=/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/>pickle反序列化漏洞浅析</a>
 </h2>
 </div>
 <footer class=article-time>
@@ -111,7 +111,7 @@ security
 <p>Python 是个动态类型且高度灵活的语言，这意味着直接按内存布局序列化基本是没戏的。想序列化一个Python中的实例，很大程度要依靠Python的高度灵活性。</p>
 <p>pickle 是一种 Python 的序列化库（或者，序列化协议？），其优势是几乎能序列化任何 Python 对象，但为了实现这种优势，pickle 会根据输入而执行指定的函数，从而造成RCE。</p>
 <p>可以用 <code>fickling</code> 和 <code>pickletools</code> 这两个工具分析 pickle 序列化后的字节序列。</p>
-<p><img src=/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139.png width=1587 height=433 srcset="/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139_hu0f0622ef2bea9e4acb18c7285499bd00_36179_480x0_resize_box_3.png 480w, /p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139_hu0f0622ef2bea9e4acb18c7285499bd00_36179_1024x0_resize_box_3.png 1024w" loading=lazy alt=序列化简单列表 class=gallery-image data-flex-grow=366 data-flex-basis=879px></p>
+<p><img src=/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139.png width=1587 height=433 srcset="/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139_hu0f0622ef2bea9e4acb18c7285499bd00_36179_480x0_resize_box_3.png 480w, /blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624162554139_hu0f0622ef2bea9e4acb18c7285499bd00_36179_1024x0_resize_box_3.png 1024w" loading=lazy alt=序列化简单列表 class=gallery-image data-flex-grow=366 data-flex-basis=879px></p>
 <h3 id=反序列化>反序列化</h3>
 <p>接着分析下序列化后的这些数据是怎么还原成 Python 对象的。以 <code>pickle.dumps([1,2,3])</code> 的结果为例，以 <code>pickletools.dis</code> 还原成字节码，Python 3.7.9 pickle 模块源码 <a class=link href=https://github.com/python/cpython/blob/13c94747c74437e594b7fc242ff7da668e81887c/Lib/pickle.py target=_blank rel=noopener>pickle.py</a></p>
 <div class=highlight><div class=chroma>
@@ -433,7 +433,7 @@ security
 <p>提供 <code>__reduce__</code> 魔术方法以允许 pickle 将当前对象转为一系列构造和恢复实例所需的参数：类型、构造参数、状态参数等。</p>
 <p>一般对 <code>__reduce__</code> 的利用就是构造参数的部分，将构造方法指定为 <code>os.system</code> 即可执行任意命令。</p>
 <p>同样这里提供一个例子，在反序列化时会弹出计算器。</p>
-<p><img src=/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655.png width=1573 height=581 srcset="/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655_hub937d7691963b68ff3337ee6eb814a2f_51193_480x0_resize_box_3.png 480w, /p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655_hub937d7691963b68ff3337ee6eb814a2f_51193_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220624175833655 class=gallery-image data-flex-grow=270 data-flex-basis=649px></p>
+<p><img src=/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655.png width=1573 height=581 srcset="/blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655_hub937d7691963b68ff3337ee6eb814a2f_51193_480x0_resize_box_3.png 480w, /blog/p/pickle%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E6%B5%85%E6%9E%90/image-20220624175833655_hub937d7691963b68ff3337ee6eb814a2f_51193_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220624175833655 class=gallery-image data-flex-grow=270 data-flex-basis=649px></p>
 <div class=highlight><div class=chroma>
 <table class=lntable><tr><td class=lntd>
 <pre tabindex=0 class=chroma><code><span class=lnt> 1
@@ -563,9 +563,9 @@ None
 </section>
 <footer class=article-footer>
 <section class=article-tags>
-<a href=/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/>反序列化漏洞</a>
-<a href=/tags/pickle/>pickle</a>
-<a href=/tags/python/>python</a>
+<a href=/blog/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/>反序列化漏洞</a>
+<a href=/blog/tags/pickle/>pickle</a>
+<a href=/blog/tags/python/>python</a>
 </section>
 <section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
 <span>Licensed under CC BY-NC-SA 4.0</span>
@@ -578,7 +578,7 @@ None
 <div class=related-contents>
 <div class="flex article-list--tile">
 <article>
-<a href=/p/%E5%87%A0%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84-pwn-%E7%BB%83%E4%B9%A0/>
+<a href=/blog/p/%E5%87%A0%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84-pwn-%E7%BB%83%E4%B9%A0/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -588,7 +588,7 @@ None
 </a>
 </article>
 <article>
-<a href=/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/>
+<a href=/blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -598,7 +598,7 @@ None
 </a>
 </article>
 <article>
-<a href=/p/sqli-labs-training-5/>
+<a href=/blog/p/sqli-labs-training-5/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -608,7 +608,7 @@ None
 </a>
 </article>
 <article>
-<a href=/p/sqli-labs-training-4/>
+<a href=/blog/p/sqli-labs-training-4/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -618,7 +618,7 @@ None
 </a>
 </article>
 <article>
-<a href=/p/sqli-labs-training-3/>
+<a href=/blog/p/sqli-labs-training-3/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -637,13 +637,6 @@ None
 2024 weakptr's 笔记
 </section>
 <section class=powerby>
-<a href=https://beian.miit.gov.cn/>浙ICP备2021032371号-1</a>
-<span style=margin-left:16px></span>
-<a target=_blank href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33032402002231" style=display:inline-block;text-decoration:none;height:20px;line-height:20px>
-<img src=/blog/image/beian.png style=float:left>
-浙公网安备 33032402002231号
-</a>
-<br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 ，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
@@ -727,7 +720,7 @@ Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 </section>
 </aside>
 </div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>

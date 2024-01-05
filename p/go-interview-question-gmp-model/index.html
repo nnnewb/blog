@@ -1,13 +1,13 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 应付面试做的准备吧。当然单纯背书也没意思，所以还是结合源码尝试去理解。 GMP 模型 一图概述 G、M、P之间的关系 G=goroutine，毫无疑问"><title>Go面试八股之GMP模型</title>
-<link rel=canonical href=https://nnnewb.github.io/p/go-interview-question-gmp-model/>
-<link rel=stylesheet href=/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/go-interview-question-gmp-model/>
+<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
 <script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="Go面试八股之GMP模型">
 <meta property="og:description" content="前言 应付面试做的准备吧。当然单纯背书也没意思，所以还是结合源码尝试去理解。 GMP 模型 一图概述 G、M、P之间的关系 G=goroutine，毫无疑问">
-<meta property="og:url" content="https://nnnewb.github.io/p/go-interview-question-gmp-model/">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/go-interview-question-gmp-model/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="面试八股"><meta property="article:published_time" content="2022-05-31T16:14:47+08:00"><meta property="article:modified_time" content="2022-05-31T16:14:47+08:00">
 <meta name=twitter:title content="Go面试八股之GMP模型">
@@ -23,13 +23,13 @@
 </button>
 <header>
 <figure class=site-avatar>
-<a href=/>
-<img src=/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+<a href=/blog/>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
 <span class=emoji>🍑</span>
 </figure>
 <div class=site-meta>
-<h1 class=site-name><a href=/>weakptr's 笔记</a></h1>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
 </header><ol class=social-menu>
@@ -39,37 +39,37 @@
 </li>
 </ol><ol class=menu id=main-menu>
 <li>
-<a href=/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
 </a>
 </li>
 <li>
-<a href=/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
 <span>关于我</span>
 </a>
 </li>
 <li>
-<a href=/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
 <span>归档</span>
 </a>
 </li>
 <li>
-<a href=/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 <span>分类</span>
 </a>
 </li>
 <li>
-<a href=/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
 <span>标签</span>
 </a>
 </li>
 <li>
-<a href=/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
 </a>
 </li>
 <li>
-<a href=/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
 <span>搜索</span>
 </a>
 </li>
@@ -82,13 +82,13 @@
 <header class=article-header>
 <div class=article-details>
 <header class=article-category>
-<a href=/categories/golang/>
+<a href=/blog/categories/golang/>
 golang
 </a>
 </header>
 <div class=article-title-wrapper>
 <h2 class=article-title>
-<a href=/p/go-interview-question-gmp-model/>Go面试八股之GMP模型</a>
+<a href=/blog/p/go-interview-question-gmp-model/>Go面试八股之GMP模型</a>
 </h2>
 </div>
 <footer class=article-time>
@@ -108,7 +108,7 @@ golang
 <p>应付面试做的准备吧。当然单纯背书也没意思，所以还是结合源码尝试去理解。</p>
 <h2 id=gmp-模型>GMP 模型</h2>
 <h3 id=一图概述>一图概述</h3>
-<p><img src=/p/go-interview-question-gmp-model/image-20220530110613376.png width=1024 height=768 srcset="/p/go-interview-question-gmp-model/image-20220530110613376_hu14e2a0debf223a45a15aee79046d51a7_260344_480x0_resize_box_3.png 480w, /p/go-interview-question-gmp-model/image-20220530110613376_hu14e2a0debf223a45a15aee79046d51a7_260344_1024x0_resize_box_3.png 1024w" loading=lazy alt=GMP模型 class=gallery-image data-flex-grow=133 data-flex-basis=320px></p>
+<p><img src=/blog/p/go-interview-question-gmp-model/image-20220530110613376.png width=1024 height=768 srcset="/blog/p/go-interview-question-gmp-model/image-20220530110613376_hu14e2a0debf223a45a15aee79046d51a7_260344_480x0_resize_box_3.png 480w, /blog/p/go-interview-question-gmp-model/image-20220530110613376_hu14e2a0debf223a45a15aee79046d51a7_260344_1024x0_resize_box_3.png 1024w" loading=lazy alt=GMP模型 class=gallery-image data-flex-grow=133 data-flex-basis=320px></p>
 <h3 id=gmp之间的关系>G、M、P之间的关系</h3>
 <p><code>G</code>=<code>goroutine</code>，毫无疑问。<code>G</code>本身维护了一个跟踪它自己执行状态的结构。</p>
 <p><code>P</code>=<code>Logical Processors</code>，可以被视作一种抽象的资源或上下文，需要被OS线程<code>M</code>获取后，<code>M</code>才能执行<code>G</code>。</p>
@@ -157,7 +157,7 @@ TEXT _rt0_386_windows(SB),NOSPLIT,$0
 </code></pre></td></tr></table>
 </div>
 </div><p>对应的汇编</p>
-<p><img src=/p/go-interview-question-gmp-model/image-20220531101726696.png width=709 height=24 srcset="/p/go-interview-question-gmp-model/image-20220531101726696_hu8c80acd9c9230f7042f52e86cf292cdd_4459_480x0_resize_box_3.png 480w, /p/go-interview-question-gmp-model/image-20220531101726696_hu8c80acd9c9230f7042f52e86cf292cdd_4459_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220531101726696 class=gallery-image data-flex-grow=2954 data-flex-basis=7090px></p>
+<p><img src=/blog/p/go-interview-question-gmp-model/image-20220531101726696.png width=709 height=24 srcset="/blog/p/go-interview-question-gmp-model/image-20220531101726696_hu8c80acd9c9230f7042f52e86cf292cdd_4459_480x0_resize_box_3.png 480w, /blog/p/go-interview-question-gmp-model/image-20220531101726696_hu8c80acd9c9230f7042f52e86cf292cdd_4459_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220531101726696 class=gallery-image data-flex-grow=2954 data-flex-basis=7090px></p>
 <p>跳转到 <code>_rt0_386</code></p>
 <div class=highlight><div class=chroma>
 <table class=lntable><tr><td class=lntd>
@@ -188,7 +188,7 @@ TEXT _rt0_386(SB),NOSPLIT,$8
 </code></pre></td></tr></table>
 </div>
 </div><p>在调试器跟到汇编如下。</p>
-<p><img src=/p/go-interview-question-gmp-model/image-20220531101420890.png width=600 height=78 srcset="/p/go-interview-question-gmp-model/image-20220531101420890_hu2ec04fbbeae0cd7b2e3097146efedb10_10625_480x0_resize_box_3.png 480w, /p/go-interview-question-gmp-model/image-20220531101420890_hu2ec04fbbeae0cd7b2e3097146efedb10_10625_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220531101420890 class=gallery-image data-flex-grow=769 data-flex-basis=1846px></p>
+<p><img src=/blog/p/go-interview-question-gmp-model/image-20220531101420890.png width=600 height=78 srcset="/blog/p/go-interview-question-gmp-model/image-20220531101420890_hu2ec04fbbeae0cd7b2e3097146efedb10_10625_480x0_resize_box_3.png 480w, /blog/p/go-interview-question-gmp-model/image-20220531101420890_hu2ec04fbbeae0cd7b2e3097146efedb10_10625_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220531101420890 class=gallery-image data-flex-grow=769 data-flex-basis=1846px></p>
 <p>接着我们看 <code>runtime.rt0_go</code></p>
 <div class=highlight><div class=chroma>
 <table class=lntable><tr><td class=lntd>
@@ -306,7 +306,7 @@ MOVL	AX, g_m(DX)
 <p>第二是 <code>schedinit</code>，里面调用了 <code>procresize</code> ，从 <code>allp</code> 获取到 <code>p</code> 绑定到了 <code>m0</code> 上。</p>
 <p>再然后是在初始化之后看到一个 <code>newproc</code> 的调用，传入参数 <code>mainPC</code>，也就是 <code>runtime·main</code> 函数的地址。<code>newproc</code> 把 <code>runtime.main</code> 函数包装成 <code>G</code> 放进可运行的队列中，具体的请读源码<code>newproc</code>和<code>newproc1</code>。</p>
 <p>这里插一嘴，<code>runtime.main</code> 函数里启动了我们的 <code>main.main</code> 函数，也就是我们平时代码的入口点就在这了。</p>
-<p><img src=/p/go-interview-question-gmp-model/image-20220531104338694.png width=1163 height=121 srcset="/p/go-interview-question-gmp-model/image-20220531104338694_hudb41f3f91be68fc168eff6480777d5eb_15582_480x0_resize_box_3.png 480w, /p/go-interview-question-gmp-model/image-20220531104338694_hudb41f3f91be68fc168eff6480777d5eb_15582_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220531104338694 class=gallery-image data-flex-grow=961 data-flex-basis=2306px></p>
+<p><img src=/blog/p/go-interview-question-gmp-model/image-20220531104338694.png width=1163 height=121 srcset="/blog/p/go-interview-question-gmp-model/image-20220531104338694_hudb41f3f91be68fc168eff6480777d5eb_15582_480x0_resize_box_3.png 480w, /blog/p/go-interview-question-gmp-model/image-20220531104338694_hudb41f3f91be68fc168eff6480777d5eb_15582_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220531104338694 class=gallery-image data-flex-grow=961 data-flex-basis=2306px></p>
 <p>但到底为止还没有出现调度代码，我们继续看接下来调用的<code>mstart</code></p>
 <div class=highlight><div class=chroma>
 <table class=lntable><tr><td class=lntd>
@@ -767,8 +767,8 @@ TEXT runtime·mstart(SB),NOSPLIT|TOPFRAME,$0
 </section>
 <footer class=article-footer>
 <section class=article-tags>
-<a href=/tags/golang/>golang</a>
-<a href=/tags/%E9%9D%A2%E8%AF%95%E5%85%AB%E8%82%A1/>面试八股</a>
+<a href=/blog/tags/golang/>golang</a>
+<a href=/blog/tags/%E9%9D%A2%E8%AF%95%E5%85%AB%E8%82%A1/>面试八股</a>
 </section>
 <section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
 <span>Licensed under CC BY-NC-SA 4.0</span>
@@ -781,7 +781,7 @@ TEXT runtime·mstart(SB),NOSPLIT|TOPFRAME,$0
 <div class=related-contents>
 <div class="flex article-list--tile">
 <article>
-<a href=/p/go-sqlmock-%E4%B8%8A%E6%89%8B%E8%AE%B0%E5%BD%95%E5%92%8C%E5%BB%B6%E4%BC%B8%E7%9A%84%E4%B8%80%E4%BA%9B%E6%83%B3%E6%B3%95/>
+<a href=/blog/p/go-sqlmock-%E4%B8%8A%E6%89%8B%E8%AE%B0%E5%BD%95%E5%92%8C%E5%BB%B6%E4%BC%B8%E7%9A%84%E4%B8%80%E4%BA%9B%E6%83%B3%E6%B3%95/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -791,7 +791,7 @@ TEXT runtime·mstart(SB),NOSPLIT|TOPFRAME,$0
 </a>
 </article>
 <article>
-<a href=/p/gotypes-for-codegen/>
+<a href=/blog/p/gotypes-for-codegen/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -801,7 +801,7 @@ TEXT runtime·mstart(SB),NOSPLIT|TOPFRAME,$0
 </a>
 </article>
 <article>
-<a href=/p/unsafe-jwt/>
+<a href=/blog/p/unsafe-jwt/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -811,7 +811,7 @@ TEXT runtime·mstart(SB),NOSPLIT|TOPFRAME,$0
 </a>
 </article>
 <article>
-<a href=/p/refactoring-transaction-and-config-management-note/>
+<a href=/blog/p/refactoring-transaction-and-config-management-note/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -821,7 +821,7 @@ TEXT runtime·mstart(SB),NOSPLIT|TOPFRAME,$0
 </a>
 </article>
 <article>
-<a href=/p/my-opinion-of-gokit-architecture/>
+<a href=/blog/p/my-opinion-of-gokit-architecture/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -840,13 +840,6 @@ TEXT runtime·mstart(SB),NOSPLIT|TOPFRAME,$0
 2024 weakptr's 笔记
 </section>
 <section class=powerby>
-<a href=https://beian.miit.gov.cn/>浙ICP备2021032371号-1</a>
-<span style=margin-left:16px></span>
-<a target=_blank href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33032402002231" style=display:inline-block;text-decoration:none;height:20px;line-height:20px>
-<img src=/blog/image/beian.png style=float:left>
-浙公网安备 33032402002231号
-</a>
-<br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 ，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
@@ -927,7 +920,7 @@ Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 </section>
 </aside>
 </div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>assembly on weakptr's 笔记</title><link>https://nnnewb.github.io/categories/assembly/</link><description>Recent content in assembly on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 14 Jun 2022 10:38:47 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/categories/assembly/index.xml" rel="self" type="application/rss+xml"/><item><title>程序平地起-读书笔记</title><link>https://nnnewb.github.io/p/programming-ground-up-read-note-01/</link><pubDate>Tue, 14 Jun 2022 10:38:47 +0800</pubDate><guid>https://nnnewb.github.io/p/programming-ground-up-read-note-01/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>assembly on weakptr's 笔记</title><link>https://nnnewb.github.io/blog/categories/assembly/</link><description>Recent content in assembly on weakptr's 笔记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Tue, 14 Jun 2022 10:38:47 +0800</lastBuildDate><atom:link href="https://nnnewb.github.io/blog/categories/assembly/index.xml" rel="self" type="application/rss+xml"/><item><title>程序平地起-读书笔记</title><link>https://nnnewb.github.io/blog/p/programming-ground-up-read-note-01/</link><pubDate>Tue, 14 Jun 2022 10:38:47 +0800</pubDate><guid>https://nnnewb.github.io/blog/p/programming-ground-up-read-note-01/</guid><description>&lt;h2 id="前言">前言&lt;/h2>
 &lt;p>本来想继续前篇八股写GC的博客，但花了一天多的时间读&lt;code>mgc.go&lt;/code>还有推荐的那本 &lt;em>GC handbook&lt;/em> 发现还真不是一句两句话能讲清楚GC设计背后的理论。特别是关于写屏障的作用和如何生效这块尤其难读，go是个有编译器配合打辅助的GC，写屏障并不全在 runtime，还涉及编译时插入的代码，要深入还得分析 go 的内存模型巴拉巴拉 &amp;hellip;&lt;/p>
 &lt;p>但背八股就和这个没关系了，八股不用去看&lt;code>mgc.go&lt;/code>也不用分析编译器怎么插入的写屏障。&lt;/p>
 &lt;p>总而言之，时隔那么多天之后，决定把一本以前读过一点的书捡起来继续读，顺便做下读书笔记。书叫做 &lt;em>Programming from the Ground Up&lt;/em> ，我看没中译本所以瞎叫它程序平地起，无所谓啦。&lt;/p>
@@ -48,10 +48,10 @@
 &lt;h2 id="函数栈系统调用">函数、栈、系统调用&lt;/h2>
 &lt;h3 id="栈">栈&lt;/h3>
 &lt;p>说调用约定一般会讲 C calling conventions &lt;em>cdecl&lt;/em> 的吧，特点是调用方清栈。但继续之前必须先说栈，因为好久没看汇编连进程的内存布局都快忘了。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/p/programming-ground-up-read-note-01/memory-layout.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/memory-layout.png"
 width="179"
 height="456"
-srcset="https://nnnewb.github.io/p/programming-ground-up-read-note-01/memory-layout_hu5831238b9def8826a5ba2b3fc871d2cd_9288_480x0_resize_box_3.png 480w, https://nnnewb.github.io/p/programming-ground-up-read-note-01/memory-layout_hu5831238b9def8826a5ba2b3fc871d2cd_9288_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/memory-layout_hu5831238b9def8826a5ba2b3fc871d2cd_9288_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/memory-layout_hu5831238b9def8826a5ba2b3fc871d2cd_9288_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="memory-layout"
 class="gallery-image"
@@ -118,17 +118,17 @@ syscall
 &lt;/div>&lt;p>除了 &lt;code>_start&lt;/code> 是个特殊的标签用来标识程序入口外，&lt;code>add&lt;/code>和&lt;code>exit_syscall&lt;/code>都是所谓的“函数”。其中&lt;code>add&lt;/code>我尝试用&lt;code>stdcall&lt;/code>约定（被调方清栈）来编写。&lt;/p>
 &lt;p>可以亲手用 gdb 调试一下上面的程序，观察栈的变化。&lt;/p>
 &lt;p>还是说栈帧。栈帧是一个人为定义的概念，就和函数一样。从函数出发我们可以看到一个函数的上下文包括：返回地址、参数、局部变量，把这些东西在栈上排列好：&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/stack-frame.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/stack-frame.png"
 loading="lazy"
 alt="stack frame"
 >&lt;/p>
 &lt;p>其中参数和返回地址由调用方 &lt;em>caller&lt;/em> 通过 &lt;code>push&lt;/code> 和 &lt;code>call&lt;/code> 指令传入，局部变量由函数自己&lt;code>sub $24,%rsp&lt;/code>开辟。&lt;/p>
 &lt;p>中间有个可能造成误会的地方是 &lt;code>%ebp&lt;/code> 寄存器为什么没在布局里画出来，根据 &lt;a class="link" href="https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.95.pdf" target="_blank" rel="noopener"
 >System V Application Binary Interface Intel386 Architecture Processor Supplement&lt;/a> 中 Figure 3-15 可以看到这是可选的。&lt;/p>
-&lt;p>&lt;img src="https://nnnewb.github.io/p/programming-ground-up-read-note-01/image-20220613145716515.png"
+&lt;p>&lt;img src="https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/image-20220613145716515.png"
 width="869"
 height="376"
-srcset="https://nnnewb.github.io/p/programming-ground-up-read-note-01/image-20220613145716515_hu91debd50d526c020699b4beb28f33a86_55779_480x0_resize_box_3.png 480w, https://nnnewb.github.io/p/programming-ground-up-read-note-01/image-20220613145716515_hu91debd50d526c020699b4beb28f33a86_55779_1024x0_resize_box_3.png 1024w"
+srcset="https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/image-20220613145716515_hu91debd50d526c020699b4beb28f33a86_55779_480x0_resize_box_3.png 480w, https://nnnewb.github.io/blog/blog/p/programming-ground-up-read-note-01/image-20220613145716515_hu91debd50d526c020699b4beb28f33a86_55779_1024x0_resize_box_3.png 1024w"
 loading="lazy"
 alt="image-20220613145716515"
 class="gallery-image"

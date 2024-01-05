@@ -1,13 +1,13 @@
 <!doctype html><html lang=zh-cn dir=ltr>
 <head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析"><title>记一次API响应时间优化</title>
-<link rel=canonical href=https://nnnewb.github.io/p/an-api-response-time-optimize/>
-<link rel=stylesheet href=/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<link rel=canonical href=https://nnnewb.github.io/blog/p/an-api-response-time-optimize/>
+<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
 <script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="记一次API响应时间优化">
 <meta property="og:description" content="前言 刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析">
-<meta property="og:url" content="https://nnnewb.github.io/p/an-api-response-time-optimize/">
+<meta property="og:url" content="https://nnnewb.github.io/blog/p/an-api-response-time-optimize/">
 <meta property="og:site_name" content="weakptr's 笔记">
 <meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="工作杂谈"><meta property="article:tag" content="golang"><meta property="article:tag" content="mysql"><meta property="article:tag" content="kubernetes"><meta property="article:published_time" content="2021-12-31T18:30:00+08:00"><meta property="article:modified_time" content="2021-12-31T18:30:00+08:00">
 <meta name=twitter:title content="记一次API响应时间优化">
@@ -23,13 +23,13 @@
 </button>
 <header>
 <figure class=site-avatar>
-<a href=/>
-<img src=/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+<a href=/blog/>
+<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
 </a>
 <span class=emoji>🍑</span>
 </figure>
 <div class=site-meta>
-<h1 class=site-name><a href=/>weakptr's 笔记</a></h1>
+<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
 <h2 class=site-description>弃船！</h2>
 </div>
 </header><ol class=social-menu>
@@ -39,37 +39,37 @@
 </li>
 </ol><ol class=menu id=main-menu>
 <li>
-<a href=/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
 <span>首页</span>
 </a>
 </li>
 <li>
-<a href=/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
 <span>关于我</span>
 </a>
 </li>
 <li>
-<a href=/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
 <span>归档</span>
 </a>
 </li>
 <li>
-<a href=/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
+<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
 <span>分类</span>
 </a>
 </li>
 <li>
-<a href=/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
 <span>标签</span>
 </a>
 </li>
 <li>
-<a href=/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
 <span>友链</span>
 </a>
 </li>
 <li>
-<a href=/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
 <span>搜索</span>
 </a>
 </li>
@@ -82,13 +82,13 @@
 <header class=article-header>
 <div class=article-details>
 <header class=article-category>
-<a href=/categories/%E6%9D%82%E8%B0%88/>
+<a href=/blog/categories/%E6%9D%82%E8%B0%88/>
 杂谈
 </a>
 </header>
 <div class=article-title-wrapper>
 <h2 class=article-title>
-<a href=/p/an-api-response-time-optimize/>记一次API响应时间优化</a>
+<a href=/blog/p/an-api-response-time-optimize/>记一次API响应时间优化</a>
 </h2>
 </div>
 <footer class=article-time>
@@ -134,7 +134,7 @@
 </div>
 </div><p>如此一来， 当go的<code>sql</code>库访问数据库的时候，就会在<code>jaeger</code>里记录一个<code>span</code>，可以清晰地看到耗时情况。</p>
 <h3 id=分析>分析</h3>
-<p><img src=/p/an-api-response-time-optimize/image-20211231103911728.png width=1166 height=563 srcset="/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_480x0_resize_box_3.png 480w, /p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231103911728 class=gallery-image data-flex-grow=207 data-flex-basis=497px></p>
+<p><img src=/blog/p/an-api-response-time-optimize/image-20211231103911728.png width=1166 height=563 srcset="/blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231103911728 class=gallery-image data-flex-grow=207 data-flex-basis=497px></p>
 <p>收集到耗时情况后开始观察，注意到两个问题：</p>
 <ol>
 <li><code>ConnectorConnect</code> 在每个请求前出现，每次耗时 2ms 左右。但 <code>sql</code> 是有连接池的，这里每次执行查询都产生一次连接显然不对劲。</li>
@@ -195,9 +195,9 @@
 </div><p>因为我司这个项目没有配置 metrics 收集和分析，自然也没收集服务的连接池情况。所以当初入职后遇到一个奇怪的连接池耗尽，服务假死，调用栈全部卡在连接池上的问题时，为了判断是不是出现连接泄露，写了个goroutine去监测连接池里连接获取和释放的情况&mldr;</p>
 <p>为了调试方便，还把<code>SetMaxIdleConns</code>设置为了0。</p>
 <p>于是初步怀疑就是这个原因导致连接池罢工，将整段调试代码注释掉之后，再次访问接口，响应时间降低至9.8ms。</p>
-<p><img src=/p/an-api-response-time-optimize/image-20211231110219407.png width=212 height=111 srcset="/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_480x0_resize_box_3.png 480w, /p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110219407 class=gallery-image data-flex-grow=190 data-flex-basis=458px></p>
+<p><img src=/blog/p/an-api-response-time-optimize/image-20211231110219407.png width=212 height=111 srcset="/blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110219407 class=gallery-image data-flex-grow=190 data-flex-basis=458px></p>
 <p>最大头的耗时依然是<code>count(1)</code>查询。</p>
-<p><img src=/p/an-api-response-time-optimize/image-20211231110316414.png width=1559 height=438 srcset="/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_480x0_resize_box_3.png 480w, /p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110316414 class=gallery-image data-flex-grow=355 data-flex-basis=854px></p>
+<p><img src=/blog/p/an-api-response-time-optimize/image-20211231110316414.png width=1559 height=438 srcset="/blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110316414 class=gallery-image data-flex-grow=355 data-flex-basis=854px></p>
 <p>默认情况下 IdleConn 只有 2，超时也比较短。实际参数应该根据业务访问情况来安排。我这也没什么好的计算公式。连接池参数有问题会影响单条SQL的基本耗时，请求里三四条查询，每条加上几个ms，整个请求时间就拖长了十几ms。在微服务系统里影响还可能放大，别的服务要是多次调用，积累的时延可能就要上百ms了。</p>
 <h3 id=缓存优化>缓存优化</h3>
 <p>进一步的优化思路就是做缓存。是为了提高服务响应速度，也是为了提高负载能力、减轻查询压力，保护 MySQL 服务。过去年轻无知犯过错，就是考虑性能的时候只关注到了自己写的代码，认为代码跑得快重要——比如把 C 的执行性能吹上天。但事情从来不是这么简单——辩证法说实事求是，要具体问题具体分析。后端从来不是“我的代码”这么简单，如果不能从整个系统的角度出发发现问题，那就算是 CPU 成精了也没辙。</p>
@@ -222,10 +222,10 @@
 </section>
 <footer class=article-footer>
 <section class=article-tags>
-<a href=/tags/%E5%B7%A5%E4%BD%9C%E6%9D%82%E8%B0%88/>工作杂谈</a>
-<a href=/tags/golang/>golang</a>
-<a href=/tags/mysql/>mysql</a>
-<a href=/tags/kubernetes/>kubernetes</a>
+<a href=/blog/tags/%E5%B7%A5%E4%BD%9C%E6%9D%82%E8%B0%88/>工作杂谈</a>
+<a href=/blog/tags/golang/>golang</a>
+<a href=/blog/tags/mysql/>mysql</a>
+<a href=/blog/tags/kubernetes/>kubernetes</a>
 </section>
 <section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
 <span>Licensed under CC BY-NC-SA 4.0</span>
@@ -238,7 +238,7 @@
 <div class=related-contents>
 <div class="flex article-list--tile">
 <article>
-<a href=/p/2022-05-27-interview-note/>
+<a href=/blog/p/2022-05-27-interview-note/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -248,7 +248,7 @@
 </a>
 </article>
 <article>
-<a href=/p/2022%E5%B9%B4%E5%BA%A6%E6%80%BB%E7%BB%93/>
+<a href=/blog/p/2022%E5%B9%B4%E5%BA%A6%E6%80%BB%E7%BB%93/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -258,7 +258,7 @@
 </a>
 </article>
 <article>
-<a href=/p/%E5%85%83%E6%97%A6%E5%BF%AB%E4%B9%90/>
+<a href=/blog/p/%E5%85%83%E6%97%A6%E5%BF%AB%E4%B9%90/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -268,9 +268,9 @@
 </a>
 </article>
 <article class=has-image>
-<a href=/p/%E7%BE%8A%E4%BA%86/>
+<a href=/blog/p/%E7%BE%8A%E4%BA%86/>
 <div class=article-image>
-<img src=/p/%E7%BE%8A%E4%BA%86/cover.42c3a73872f2ab599630056ce849f365_hub369136724894891ad018e968112bc7b_73106_250x150_fill_q75_h2_box_smart1_2.webp width=250 height=150 loading=lazy alt="Featured image of post 羊了" data-hash="md5-QsOnOHLyq1mWMAVs6EnzZQ==">
+<img src=/blog/p/%E7%BE%8A%E4%BA%86/cover.42c3a73872f2ab599630056ce849f365_hub369136724894891ad018e968112bc7b_73106_250x150_fill_q75_h2_box_smart1_2.webp width=250 height=150 loading=lazy alt="Featured image of post 羊了" data-hash="md5-QsOnOHLyq1mWMAVs6EnzZQ==">
 </div>
 <div class=light>
 <div class=lamp></div>
@@ -281,7 +281,7 @@
 </a>
 </article>
 <article>
-<a href=/p/systemd-%E9%85%8D%E7%BD%AE-ssh-agent-%E7%94%A8%E6%88%B7%E6%9C%8D%E5%8A%A1%E8%87%AA%E5%90%AF/>
+<a href=/blog/p/systemd-%E9%85%8D%E7%BD%AE-ssh-agent-%E7%94%A8%E6%88%B7%E6%9C%8D%E5%8A%A1%E8%87%AA%E5%90%AF/>
 <div class=light>
 <div class=lamp></div>
 </div>
@@ -300,13 +300,6 @@
 2024 weakptr's 笔记
 </section>
 <section class=powerby>
-<a href=https://beian.miit.gov.cn/>浙ICP备2021032371号-1</a>
-<span style=margin-left:16px></span>
-<a target=_blank href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33032402002231" style=display:inline-block;text-decoration:none;height:20px;line-height:20px>
-<img src=/blog/image/beian.png style=float:left>
-浙公网安备 33032402002231号
-</a>
-<br>
 Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
 ，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
@@ -379,7 +372,7 @@ Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
 </section>
 </aside>
 </div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.js defer></script>
+<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
 <script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
 </body>
 </html>
