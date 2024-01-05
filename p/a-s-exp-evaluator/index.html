@@ -1,148 +1,23 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 翻没看过的藏书的时候找出一本《SICP》的 PDF（PS：已经买了正版书），想起曾经拿 Rust 写玩具解释器，结果现在连 Rust 本身都已经快忘光了。 所以"><title>一个s表达式求值器</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/a-s-exp-evaluator/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 翻没看过的藏书的时候找出一本《SICP》的 PDF（PS：已经买了正版书），想起曾经拿 Rust 写玩具解释器，结果现在连 Rust 本身都已经快忘光了。 所以"><title>一个s表达式求值器</title><link rel=canonical href=https://nnnewb.github.io/blog/p/a-s-exp-evaluator/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="一个s表达式求值器">
-<meta property="og:description" content="前言 翻没看过的藏书的时候找出一本《SICP》的 PDF（PS：已经买了正版书），想起曾经拿 Rust 写玩具解释器，结果现在连 Rust 本身都已经快忘光了。 所以">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/a-s-exp-evaluator/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="gocc"><meta property="article:tag" content="编译技术"><meta property="article:tag" content="scheme"><meta property="article:published_time" content="2021-12-09T17:11:00+08:00"><meta property="article:modified_time" content="2021-12-09T17:11:00+08:00">
-<meta name=twitter:title content="一个s表达式求值器">
-<meta name=twitter:description content="前言 翻没看过的藏书的时候找出一本《SICP》的 PDF（PS：已经买了正版书），想起曾经拿 Rust 写玩具解释器，结果现在连 Rust 本身都已经快忘光了。 所以">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/golang/>
-golang
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/a-s-exp-evaluator/>一个s表达式求值器</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2021-12-09T17:11:00+08:00>2021年 12月 9日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 5 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=前言>前言</h2>
-<p>翻没看过的藏书的时候找出一本《SICP》的 PDF（PS：已经买了正版书），想起曾经拿 Rust 写玩具解释器，结果现在连 Rust 本身都已经快忘光了。</p>
-<p>所以就当怀旧，写个很简单的玩具，s表达式求值器。</p>
-<h2 id=技术栈>技术栈</h2>
-<p>语言选择了 Go，用 gocc 生成 Parser/Lexer 。虽然说手写+调试 Lexer/Parser 也是挺快乐的，但毕竟只是怀旧重温下当年愣头青的自己，不想花太多时间。</p>
-<h2 id=词法定义>词法定义</h2>
-<p>简单解释下 gocc 定义词法元素的 DSL 是怎么回事。gocc 的这个 DSL 是类似于 EBNF 的语法（自称）， <code>_letter: 'a'-'z'</code> 就是一条产生式，<code>:</code>前面是产生式的名称，后面是模式。</p>
-<p>产生式名称也有特殊含义。</p>
-<ul>
-<li><code>!</code> 开头的产生式会被 Lexer 忽略。</li>
-<li><code>_</code> 开头的产生式叫做 <code>regDefId</code>，可以理解成给后面的模式定义的别名。</li>
-<li><code>a-z</code>小写字母开头的是 <code>token</code>，也就是一般说的词法元素定义了。</li>
-</ul>
-<p>值得注意的是 <code>token</code> 不能被用作其他词法元素产生式的模式部分，但 <code>regDefId</code> 可以，所以要注意要复用的规则应该定义成下划线开头。</p>
-<p>比如说下面的例子。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="一个s表达式求值器"><meta property="og:description" content="前言 翻没看过的藏书的时候找出一本《SICP》的 PDF（PS：已经买了正版书），想起曾经拿 Rust 写玩具解释器，结果现在连 Rust 本身都已经快忘光了。 所以"><meta property="og:url" content="https://nnnewb.github.io/blog/p/a-s-exp-evaluator/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="gocc"><meta property="article:tag" content="编译技术"><meta property="article:tag" content="scheme"><meta property="article:published_time" content="2021-12-09T17:11:00+08:00"><meta property="article:modified_time" content="2021-12-09T17:11:00+08:00"><meta name=twitter:title content="一个s表达式求值器"><meta name=twitter:description content="前言 翻没看过的藏书的时候找出一本《SICP》的 PDF（PS：已经买了正版书），想起曾经拿 Rust 写玩具解释器，结果现在连 Rust 本身都已经快忘光了。 所以"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/golang/>golang</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/a-s-exp-evaluator/>一个s表达式求值器</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2021-12-09T17:11:00+08:00>2021年 12月 9日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 5 分钟</time></div></footer></div></header><section class=article-content><h2 id=前言>前言</h2><p>翻没看过的藏书的时候找出一本《SICP》的 PDF（PS：已经买了正版书），想起曾经拿 Rust 写玩具解释器，结果现在连 Rust 本身都已经快忘光了。</p><p>所以就当怀旧，写个很简单的玩具，s表达式求值器。</p><h2 id=技术栈>技术栈</h2><p>语言选择了 Go，用 gocc 生成 Parser/Lexer 。虽然说手写+调试 Lexer/Parser 也是挺快乐的，但毕竟只是怀旧重温下当年愣头青的自己，不想花太多时间。</p><h2 id=词法定义>词法定义</h2><p>简单解释下 gocc 定义词法元素的 DSL 是怎么回事。gocc 的这个 DSL 是类似于 EBNF 的语法（自称）， <code>_letter: 'a'-'z'</code> 就是一条产生式，<code>:</code>前面是产生式的名称，后面是模式。</p><p>产生式名称也有特殊含义。</p><ul><li><code>!</code> 开头的产生式会被 Lexer 忽略。</li><li><code>_</code> 开头的产生式叫做 <code>regDefId</code>，可以理解成给后面的模式定义的别名。</li><li><code>a-z</code>小写字母开头的是 <code>token</code>，也就是一般说的词法元素定义了。</li></ul><p>值得注意的是 <code>token</code> 不能被用作其他词法元素产生式的模式部分，但 <code>regDefId</code> 可以，所以要注意要复用的规则应该定义成下划线开头。</p><p>比如说下面的例子。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
 </span><span class=lnt>7
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>// example 1
-letter: &#39;a&#39;-&#39;z&#39;;
-identifier: letter; // Error!
-
-// example 2
-_letter: &#39;a&#39;-&#39;z&#39;;
-identifier: _letter; // OK
-</code></pre></td></tr></table>
-</div>
-</div><p>下面是求值器的词法元素定义。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext><span class=line><span class=cl>// example 1
+</span></span><span class=line><span class=cl>letter: &#39;a&#39;-&#39;z&#39;;
+</span></span><span class=line><span class=cl>identifier: letter; // Error!
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>// example 2
+</span></span><span class=line><span class=cl>_letter: &#39;a&#39;-&#39;z&#39;;
+</span></span><span class=line><span class=cl>identifier: _letter; // OK
+</span></span></code></pre></td></tr></table></div></div><p>下面是求值器的词法元素定义。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -181,56 +56,46 @@ identifier: _letter; // OK
 </span><span class=lnt>37
 </span><span class=lnt>38
 </span><span class=lnt>39
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>!whitespace: &#39; &#39; | &#39;\t&#39; | &#39;\r&#39; | &#39;\n&#39;;
-!comment: &#39;;&#39; {.} &#39;\n&#39;;
-
-//
-// identifier
-//
-_letter : &#39;a&#39;-&#39;z&#39; | &#39;A&#39;-&#39;Z&#39;;
-_initial: _letter;
-_digit  : &#39;0&#39;-&#39;9&#39; ;
-_special_subsequent : &#39;.&#39; | &#39;+&#39; | &#39;-&#39; | &#39;!&#39; | &#39;?&#39;;
-_subsequent: _initial | _digit | _special_subsequent;
-_peculiar_identifier: &#39;+&#39; | &#39;-&#39; | &#39;.&#39; &#39;.&#39; &#39;.&#39;;
-_identifier : _initial { _subsequent } | _peculiar_identifier;
-identifier: _identifier;
-quoted_identifier: &#39;#&#39; _identifier;
-
-//
-// boolean
-//
-_boolean_t: &#39;#&#39; &#39;t&#39;;
-_boolean_f: &#39;#&#39; &#39;f&#39;;
-boolean_t: _boolean_t;
-boolean_f: _boolean_f;
-
-//
-// string
-//
-_string_element: &#39;\\&#39; &#39;&#34;&#39; | . | &#39;\\&#39; &#39;\\&#39;;
-_string : &#39;&#34;&#39; { _string_element } &#39;&#34;&#39;;
-string: _string;
-
-//
-// number
-//
-_sign: &#39;+&#39; | &#39;-&#39;;
-_uint10: _digit { _digit };
-_ureal10 : [&#39;.&#39;] _uint10 | _uint10 &#39;.&#39; _digit {_digit};
-_number : [_sign] _ureal10;
-number: _number;
-</code></pre></td></tr></table>
-</div>
-</div><p>词法元素很简单，运算符也当成 identifier 处理了，万一要扩展也容易。</p>
-<h2 id=语法定义>语法定义</h2>
-<p>gocc 的语法元素定义和词法元素定义差不多。产生式名称要用大写字母开头，后面跟的元素只能是 <code>token</code>、语法元素还有字符串字面量。另外就是在每个规则后面可以加上一个 “动作”，用过 flex/bison 的应该知道我说的啥。这个动作是一个表达式，求值后必须是 <code>interface{}, error</code> 这样的元组。这个求值结果会被 Parser 返回，所以需要在 Action 里就把 AST 组装好。</p>
-<p>另外值得一提的就是语法元素的定义是不支持 <code>[]</code>、<code>{}</code> 这样的糖的，所以可选就得自己写成 <code>Opt: Value | empty</code> ，重复一或多次就得自己写成 <code>Elements: Element | Elements Element</code> 诸如此类。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext><span class=line><span class=cl>!whitespace: &#39; &#39; | &#39;\t&#39; | &#39;\r&#39; | &#39;\n&#39;;
+</span></span><span class=line><span class=cl>!comment: &#39;;&#39; {.} &#39;\n&#39;;
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>// identifier
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>_letter : &#39;a&#39;-&#39;z&#39; | &#39;A&#39;-&#39;Z&#39;;
+</span></span><span class=line><span class=cl>_initial: _letter;
+</span></span><span class=line><span class=cl>_digit  : &#39;0&#39;-&#39;9&#39; ;
+</span></span><span class=line><span class=cl>_special_subsequent : &#39;.&#39; | &#39;+&#39; | &#39;-&#39; | &#39;!&#39; | &#39;?&#39;;
+</span></span><span class=line><span class=cl>_subsequent: _initial | _digit | _special_subsequent;
+</span></span><span class=line><span class=cl>_peculiar_identifier: &#39;+&#39; | &#39;-&#39; | &#39;.&#39; &#39;.&#39; &#39;.&#39;;
+</span></span><span class=line><span class=cl>_identifier : _initial { _subsequent } | _peculiar_identifier;
+</span></span><span class=line><span class=cl>identifier: _identifier;
+</span></span><span class=line><span class=cl>quoted_identifier: &#39;#&#39; _identifier;
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>// boolean
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>_boolean_t: &#39;#&#39; &#39;t&#39;;
+</span></span><span class=line><span class=cl>_boolean_f: &#39;#&#39; &#39;f&#39;;
+</span></span><span class=line><span class=cl>boolean_t: _boolean_t;
+</span></span><span class=line><span class=cl>boolean_f: _boolean_f;
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>// string
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>_string_element: &#39;\\&#39; &#39;&#34;&#39; | . | &#39;\\&#39; &#39;\\&#39;;
+</span></span><span class=line><span class=cl>_string : &#39;&#34;&#39; { _string_element } &#39;&#34;&#39;;
+</span></span><span class=line><span class=cl>string: _string;
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>// number
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>_sign: &#39;+&#39; | &#39;-&#39;;
+</span></span><span class=line><span class=cl>_uint10: _digit { _digit };
+</span></span><span class=line><span class=cl>_ureal10 : [&#39;.&#39;] _uint10 | _uint10 &#39;.&#39; _digit {_digit};
+</span></span><span class=line><span class=cl>_number : [_sign] _ureal10;
+</span></span><span class=line><span class=cl>number: _number;
+</span></span></code></pre></td></tr></table></div></div><p>词法元素很简单，运算符也当成 identifier 处理了，万一要扩展也容易。</p><h2 id=语法定义>语法定义</h2><p>gocc 的语法元素定义和词法元素定义差不多。产生式名称要用大写字母开头，后面跟的元素只能是 <code>token</code>、语法元素还有字符串字面量。另外就是在每个规则后面可以加上一个 “动作”，用过 flex/bison 的应该知道我说的啥。这个动作是一个表达式，求值后必须是 <code>interface{}, error</code> 这样的元组。这个求值结果会被 Parser 返回，所以需要在 Action 里就把 AST 组装好。</p><p>另外值得一提的就是语法元素的定义是不支持 <code>[]</code>、<code>{}</code> 这样的糖的，所以可选就得自己写成 <code>Opt: Value | empty</code> ，重复一或多次就得自己写成 <code>Elements: Element | Elements Element</code> 诸如此类。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -267,54 +132,44 @@ number: _number;
 </span><span class=lnt>35
 </span><span class=lnt>36
 </span><span class=lnt>37
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>//
-// Syntax start here
-//
-
-&lt;&lt;
-import (
-    &#34;github.com/nnnewb/minilang/pkg/ast&#34;
-    &#34;github.com/nnnewb/minilang/pkg/bnf/token&#34;
-)
-&gt;&gt;
-
-//
-// value
-//
-Value
-    : identifier            &lt;&lt; ast.Identifier(string($0.(*token.Token).Lit)), nil &gt;&gt;
-    | quoted_identifier     &lt;&lt; ast.NewQuoted(ast.Identifier(string($0.(*token.Token).Lit[1:]))), nil &gt;&gt;
-    | boolean_t             &lt;&lt; ast.Boolean(true), nil &gt;&gt;
-    | boolean_f             &lt;&lt; ast.Boolean(false), nil &gt;&gt;
-    | number                &lt;&lt; ast.NewNumber(string($0.(*token.Token).Lit)) &gt;&gt;
-    | string                &lt;&lt; ast.String(string($0.(*token.Token).Lit)), nil &gt;&gt;
-    | List                  &lt;&lt; $0, nil &gt;&gt;
-;
-
-//
-// list
-//
-ListElements
-    : Value                 &lt;&lt; ast.NewListWithInitial($0.(ast.Node)), nil &gt;&gt;
-    | ListElements Value    &lt;&lt; $0.(*ast.List).Append($1.(ast.Node)), nil &gt;&gt;
-;
-List
-    : &#34;(&#34; ListElements &#34;)&#34;  &lt;&lt; $1, nil &gt;&gt;
-    | &#34;(&#34; &#34;)&#34;               &lt;&lt; ast.NewList(), nil &gt;&gt;
-    | &#34;#(&#34; ListElements &#34;)&#34; &lt;&lt; ast.NewQuoted($1.(ast.Node)), nil &gt;&gt;
-    | &#34;#(&#34; &#34;)&#34;              &lt;&lt; ast.NewQuoted(ast.NewList()), nil &gt;&gt;
-;
-</code></pre></td></tr></table>
-</div>
-</div><p>s表达式本身就是一个括号括起来的列表，所以语法元素更简单了，直接把词法元素放进去就行。</p>
-<h2 id=解析和执行>解析和执行</h2>
-<h3 id=执行环境>执行环境</h3>
-<p>执行环境就是保存变量（考虑作用域的话还要嵌套）、函数（或者叫 procedure）、解释器内建的函数之类的东西的地方，简单实现成一个 map 就完事了。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>// Syntax start here
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>&lt;&lt;
+</span></span><span class=line><span class=cl>import (
+</span></span><span class=line><span class=cl>    &#34;github.com/nnnewb/minilang/pkg/ast&#34;
+</span></span><span class=line><span class=cl>    &#34;github.com/nnnewb/minilang/pkg/bnf/token&#34;
+</span></span><span class=line><span class=cl>)
+</span></span><span class=line><span class=cl>&gt;&gt;
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>// value
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>Value
+</span></span><span class=line><span class=cl>    : identifier            &lt;&lt; ast.Identifier(string($0.(*token.Token).Lit)), nil &gt;&gt;
+</span></span><span class=line><span class=cl>    | quoted_identifier     &lt;&lt; ast.NewQuoted(ast.Identifier(string($0.(*token.Token).Lit[1:]))), nil &gt;&gt;
+</span></span><span class=line><span class=cl>    | boolean_t             &lt;&lt; ast.Boolean(true), nil &gt;&gt;
+</span></span><span class=line><span class=cl>    | boolean_f             &lt;&lt; ast.Boolean(false), nil &gt;&gt;
+</span></span><span class=line><span class=cl>    | number                &lt;&lt; ast.NewNumber(string($0.(*token.Token).Lit)) &gt;&gt;
+</span></span><span class=line><span class=cl>    | string                &lt;&lt; ast.String(string($0.(*token.Token).Lit)), nil &gt;&gt;
+</span></span><span class=line><span class=cl>    | List                  &lt;&lt; $0, nil &gt;&gt;
+</span></span><span class=line><span class=cl>;
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>// list
+</span></span><span class=line><span class=cl>//
+</span></span><span class=line><span class=cl>ListElements
+</span></span><span class=line><span class=cl>    : Value                 &lt;&lt; ast.NewListWithInitial($0.(ast.Node)), nil &gt;&gt;
+</span></span><span class=line><span class=cl>    | ListElements Value    &lt;&lt; $0.(*ast.List).Append($1.(ast.Node)), nil &gt;&gt;
+</span></span><span class=line><span class=cl>;
+</span></span><span class=line><span class=cl>List
+</span></span><span class=line><span class=cl>    : &#34;(&#34; ListElements &#34;)&#34;  &lt;&lt; $1, nil &gt;&gt;
+</span></span><span class=line><span class=cl>    | &#34;(&#34; &#34;)&#34;               &lt;&lt; ast.NewList(), nil &gt;&gt;
+</span></span><span class=line><span class=cl>    | &#34;#(&#34; ListElements &#34;)&#34; &lt;&lt; ast.NewQuoted($1.(ast.Node)), nil &gt;&gt;
+</span></span><span class=line><span class=cl>    | &#34;#(&#34; &#34;)&#34;              &lt;&lt; ast.NewQuoted(ast.NewList()), nil &gt;&gt;
+</span></span><span class=line><span class=cl>;
+</span></span></code></pre></td></tr></table></div></div><p>s表达式本身就是一个括号括起来的列表，所以语法元素更简单了，直接把词法元素放进去就行。</p><h2 id=解析和执行>解析和执行</h2><h3 id=执行环境>执行环境</h3><p>执行环境就是保存变量（考虑作用域的话还要嵌套）、函数（或者叫 procedure）、解释器内建的函数之类的东西的地方，简单实现成一个 map 就完事了。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -348,51 +203,41 @@ List
 </span><span class=lnt>32
 </span><span class=lnt>33
 </span><span class=lnt>34
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>type</span> <span class=nx>ExecutionEnv</span> <span class=kd>struct</span> <span class=p>{</span>
-	<span class=nx>symbols</span> <span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=nx>Value</span>
-	<span class=nx>parent</span>  <span class=o>*</span><span class=nx>ExecutionEnv</span>
-<span class=p>}</span>
-
-<span class=kd>func</span> <span class=nf>NewExecutionEnv</span><span class=p>(</span><span class=nx>parent</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=o>*</span><span class=nx>ExecutionEnv</span> <span class=p>{</span>
-	<span class=k>return</span> <span class=o>&amp;</span><span class=nx>ExecutionEnv</span><span class=p>{</span>
-		<span class=nx>symbols</span><span class=p>:</span> <span class=nb>make</span><span class=p>(</span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=nx>Value</span><span class=p>),</span>
-		<span class=nx>parent</span><span class=p>:</span>  <span class=nx>parent</span><span class=p>,</span>
-	<span class=p>}</span>
-<span class=p>}</span>
-
-<span class=kd>func</span> <span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=nf>SetValue</span><span class=p>(</span><span class=nx>name</span> <span class=kt>string</span><span class=p>,</span> <span class=nx>val</span> <span class=nx>Value</span><span class=p>)</span> <span class=nx>Value</span> <span class=p>{</span>
-	<span class=nx>old</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nx>symbols</span><span class=p>[</span><span class=nx>name</span><span class=p>]</span>
-	<span class=nx>ee</span><span class=p>.</span><span class=nx>symbols</span><span class=p>[</span><span class=nx>name</span><span class=p>]</span> <span class=p>=</span> <span class=nx>val</span>
-	<span class=k>if</span> <span class=nx>ok</span> <span class=p>{</span>
-		<span class=k>return</span> <span class=nx>old</span>
-	<span class=p>}</span>
-	<span class=k>return</span> <span class=kc>nil</span>
-<span class=p>}</span>
-
-<span class=kd>func</span> <span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=nf>LookupName</span><span class=p>(</span><span class=nx>name</span> <span class=kt>string</span><span class=p>)</span> <span class=nx>Value</span> <span class=p>{</span>
-	<span class=k>if</span> <span class=nx>val</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>LookupLocalName</span><span class=p>(</span><span class=nx>name</span><span class=p>);</span> <span class=nx>val</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
-		<span class=k>return</span> <span class=nx>val</span>
-	<span class=p>}</span>
-	<span class=k>return</span> <span class=nx>ee</span><span class=p>.</span><span class=nx>parent</span><span class=p>.</span><span class=nf>LookupName</span><span class=p>(</span><span class=nx>name</span><span class=p>)</span>
-<span class=p>}</span>
-
-<span class=kd>func</span> <span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=nf>LookupLocalName</span><span class=p>(</span><span class=nx>name</span> <span class=kt>string</span><span class=p>)</span> <span class=nx>Value</span> <span class=p>{</span>
-	<span class=k>if</span> <span class=nx>val</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nx>symbols</span><span class=p>[</span><span class=nx>name</span><span class=p>];</span> <span class=nx>ok</span> <span class=p>{</span>
-		<span class=k>return</span> <span class=nx>val</span>
-	<span class=p>}</span>
-	<span class=k>return</span> <span class=kc>nil</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><h3 id=求值>求值</h3>
-<p>语言定义里（不是 scheme 的语言定义，那个去参考 r4rs/r5rs/r6rs/r7rs，这里指的是我给这个玩具求值器的语言定义），<code>(a b c)</code> 这样的列表等于是 <code>a(b, c)</code> 这样的函数调用，而原始列表得写成 <code>#(a b c)</code>，可以理解成告诉求值器要把给出的表达式当成数据还是代码。</p>
-<p>类似的还有<code>ident</code>会被求值，在执行环境里寻找对应的变量；<code>#ident</code> 求值结果就是标识符<code>ident</code>。</p>
-<p>求值过程就是简单的做个 type switch，字面量不管，原始列表和标识符返回内容，再然后就是列表当成函数求值。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>ExecutionEnv</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>symbols</span> <span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=nx>Value</span>
+</span></span><span class=line><span class=cl>	<span class=nx>parent</span>  <span class=o>*</span><span class=nx>ExecutionEnv</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=nf>NewExecutionEnv</span><span class=p>(</span><span class=nx>parent</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=o>*</span><span class=nx>ExecutionEnv</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=o>&amp;</span><span class=nx>ExecutionEnv</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>symbols</span><span class=p>:</span> <span class=nb>make</span><span class=p>(</span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=nx>Value</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>		<span class=nx>parent</span><span class=p>:</span>  <span class=nx>parent</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=nf>SetValue</span><span class=p>(</span><span class=nx>name</span> <span class=kt>string</span><span class=p>,</span> <span class=nx>val</span> <span class=nx>Value</span><span class=p>)</span> <span class=nx>Value</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>old</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nx>symbols</span><span class=p>[</span><span class=nx>name</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>	<span class=nx>ee</span><span class=p>.</span><span class=nx>symbols</span><span class=p>[</span><span class=nx>name</span><span class=p>]</span> <span class=p>=</span> <span class=nx>val</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>ok</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>old</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=nf>LookupName</span><span class=p>(</span><span class=nx>name</span> <span class=kt>string</span><span class=p>)</span> <span class=nx>Value</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>val</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>LookupLocalName</span><span class=p>(</span><span class=nx>name</span><span class=p>);</span> <span class=nx>val</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>val</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>ee</span><span class=p>.</span><span class=nx>parent</span><span class=p>.</span><span class=nf>LookupName</span><span class=p>(</span><span class=nx>name</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=nf>LookupLocalName</span><span class=p>(</span><span class=nx>name</span> <span class=kt>string</span><span class=p>)</span> <span class=nx>Value</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>val</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nx>symbols</span><span class=p>[</span><span class=nx>name</span><span class=p>];</span> <span class=nx>ok</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>val</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=求值>求值</h3><p>语言定义里（不是 scheme 的语言定义，那个去参考 r4rs/r5rs/r6rs/r7rs，这里指的是我给这个玩具求值器的语言定义），<code>(a b c)</code> 这样的列表等于是 <code>a(b, c)</code> 这样的函数调用，而原始列表得写成 <code>#(a b c)</code>，可以理解成告诉求值器要把给出的表达式当成数据还是代码。</p><p>类似的还有<code>ident</code>会被求值，在执行环境里寻找对应的变量；<code>#ident</code> 求值结果就是标识符<code>ident</code>。</p><p>求值过程就是简单的做个 type switch，字面量不管，原始列表和标识符返回内容，再然后就是列表当成函数求值。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -429,53 +274,44 @@ List
 </span><span class=lnt>35
 </span><span class=lnt>36
 </span><span class=lnt>37
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=nf>EvaluateList</span><span class=p>(</span><span class=nx>list</span> <span class=nx>List</span><span class=p>)</span> <span class=p>(</span><span class=nx>Value</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
-	<span class=k>if</span> <span class=nb>len</span><span class=p>(</span><span class=nx>list</span><span class=p>)</span> <span class=p>&gt;</span> <span class=mi>0</span> <span class=p>{</span>
-		<span class=nx>first</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>Evaluate</span><span class=p>(</span><span class=nx>list</span><span class=p>[</span><span class=mi>0</span><span class=p>])</span>
-		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
-			<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>err</span>
-		<span class=p>}</span>
-
-		<span class=k>if</span> <span class=nx>fn</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nx>first</span><span class=p>.(</span><span class=nx>BuiltinFunc</span><span class=p>);</span> <span class=p>!</span><span class=nx>ok</span> <span class=p>{</span>
-			<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;TypeError: %v(%T) is not callable&#34;</span><span class=p>,</span> <span class=nx>first</span><span class=p>,</span> <span class=nx>first</span><span class=p>)</span>
-		<span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
-			<span class=nx>args</span> <span class=o>:=</span> <span class=nb>make</span><span class=p>([]</span><span class=nx>Value</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=nb>len</span><span class=p>(</span><span class=nx>list</span><span class=p>[</span><span class=mi>1</span><span class=p>:]))</span>
-			<span class=k>for</span> <span class=nx>_</span><span class=p>,</span> <span class=nx>v</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>list</span><span class=p>[</span><span class=mi>1</span><span class=p>:]</span> <span class=p>{</span>
-				<span class=nx>arg</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>Evaluate</span><span class=p>(</span><span class=nx>v</span><span class=p>)</span>
-				<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
-					<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>err</span>
-				<span class=p>}</span>
-
-				<span class=nx>args</span> <span class=p>=</span> <span class=nb>append</span><span class=p>(</span><span class=nx>args</span><span class=p>,</span> <span class=nx>arg</span><span class=p>)</span>
-			<span class=p>}</span>
-			<span class=k>return</span> <span class=nf>fn</span><span class=p>(</span><span class=nx>ee</span><span class=p>,</span> <span class=nx>args</span><span class=p>)</span>
-		<span class=p>}</span>
-	<span class=p>}</span>
-	<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=kc>nil</span>
-<span class=p>}</span>
-
-<span class=kd>func</span> <span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=nf>Evaluate</span><span class=p>(</span><span class=nx>val</span> <span class=nx>Value</span><span class=p>)</span> <span class=p>(</span><span class=nx>Value</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
-	<span class=k>switch</span> <span class=nx>v</span> <span class=o>:=</span> <span class=nx>val</span><span class=p>.(</span><span class=kd>type</span><span class=p>)</span> <span class=p>{</span>
-	<span class=k>case</span> <span class=o>*</span><span class=nx>List</span><span class=p>:</span>
-		<span class=k>return</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>EvaluateList</span><span class=p>(</span><span class=o>*</span><span class=nx>v</span><span class=p>)</span>
-	<span class=k>case</span> <span class=nx>Identifier</span><span class=p>:</span>
-		<span class=k>return</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>LookupName</span><span class=p>(</span><span class=nb>string</span><span class=p>(</span><span class=nx>v</span><span class=p>)),</span> <span class=kc>nil</span>
-	<span class=k>case</span> <span class=o>*</span><span class=nx>Quoted</span><span class=p>:</span>
-		<span class=k>return</span> <span class=nx>v</span><span class=p>.</span><span class=nf>GetValue</span><span class=p>().(</span><span class=nx>Value</span><span class=p>),</span> <span class=kc>nil</span>
-	<span class=k>default</span><span class=p>:</span>
-		<span class=k>return</span> <span class=nx>v</span><span class=p>,</span> <span class=kc>nil</span>
-	<span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>因为还没写 procdure 的定义，所以直接拿 Builtin 做了类型断言判断是不是可以调用。我寻思传参大概会是个挺麻烦的事情。</p>
-<h3 id=repl>REPL</h3>
-<p>最后就是解释器本体了，用 <code>go-prompt</code> 做了个简单的循环，再加上一点算数函数。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=nf>EvaluateList</span><span class=p>(</span><span class=nx>list</span> <span class=nx>List</span><span class=p>)</span> <span class=p>(</span><span class=nx>Value</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nb>len</span><span class=p>(</span><span class=nx>list</span><span class=p>)</span> <span class=p>&gt;</span> <span class=mi>0</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>first</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>Evaluate</span><span class=p>(</span><span class=nx>list</span><span class=p>[</span><span class=mi>0</span><span class=p>])</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>fn</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nx>first</span><span class=p>.(</span><span class=nx>BuiltinFunc</span><span class=p>);</span> <span class=p>!</span><span class=nx>ok</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;TypeError: %v(%T) is not callable&#34;</span><span class=p>,</span> <span class=nx>first</span><span class=p>,</span> <span class=nx>first</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>args</span> <span class=o>:=</span> <span class=nb>make</span><span class=p>([]</span><span class=nx>Value</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=nb>len</span><span class=p>(</span><span class=nx>list</span><span class=p>[</span><span class=mi>1</span><span class=p>:]))</span>
+</span></span><span class=line><span class=cl>			<span class=k>for</span> <span class=nx>_</span><span class=p>,</span> <span class=nx>v</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>list</span><span class=p>[</span><span class=mi>1</span><span class=p>:]</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=nx>arg</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>Evaluate</span><span class=p>(</span><span class=nx>v</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>				<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>					<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl>				<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>				<span class=nx>args</span> <span class=p>=</span> <span class=nb>append</span><span class=p>(</span><span class=nx>args</span><span class=p>,</span> <span class=nx>arg</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span> <span class=nf>fn</span><span class=p>(</span><span class=nx>ee</span><span class=p>,</span> <span class=nx>args</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>ExecutionEnv</span><span class=p>)</span> <span class=nf>Evaluate</span><span class=p>(</span><span class=nx>val</span> <span class=nx>Value</span><span class=p>)</span> <span class=p>(</span><span class=nx>Value</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>switch</span> <span class=nx>v</span> <span class=o>:=</span> <span class=nx>val</span><span class=p>.(</span><span class=kd>type</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>case</span> <span class=o>*</span><span class=nx>List</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>EvaluateList</span><span class=p>(</span><span class=o>*</span><span class=nx>v</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>case</span> <span class=nx>Identifier</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>LookupName</span><span class=p>(</span><span class=nb>string</span><span class=p>(</span><span class=nx>v</span><span class=p>)),</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl>	<span class=k>case</span> <span class=o>*</span><span class=nx>Quoted</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>v</span><span class=p>.</span><span class=nf>GetValue</span><span class=p>().(</span><span class=nx>Value</span><span class=p>),</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl>	<span class=k>default</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>v</span><span class=p>,</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>因为还没写 procdure 的定义，所以直接拿 Builtin 做了类型断言判断是不是可以调用。我寻思传参大概会是个挺麻烦的事情。</p><h3 id=repl>REPL</h3><p>最后就是解释器本体了，用 <code>go-prompt</code> 做了个简单的循环，再加上一点算数函数。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -525,224 +361,71 @@ List
 </span><span class=lnt>48
 </span><span class=lnt>49
 </span><span class=lnt>50
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kn>package</span> <span class=nx>main</span>
-
-<span class=kn>import</span> <span class=p>(</span>
-	<span class=s>&#34;fmt&#34;</span>
-
-	<span class=s>&#34;github.com/c-bata/go-prompt&#34;</span>
-	<span class=s>&#34;github.com/nnnewb/minilang/internal/builtin&#34;</span>
-	<span class=s>&#34;github.com/nnnewb/minilang/internal/environment&#34;</span>
-	<span class=s>&#34;github.com/nnnewb/minilang/pkg/ast&#34;</span>
-	<span class=s>&#34;github.com/nnnewb/minilang/pkg/bnf/lexer&#34;</span>
-	<span class=s>&#34;github.com/nnnewb/minilang/pkg/bnf/parser&#34;</span>
-<span class=p>)</span>
-
-<span class=kd>func</span> <span class=nf>main</span><span class=p>()</span> <span class=p>{</span>
-	<span class=k>for</span> <span class=p>{</span>
-		<span class=nx>input</span> <span class=o>:=</span> <span class=nx>prompt</span><span class=p>.</span><span class=nf>Input</span><span class=p>(</span><span class=s>&#34;&gt;&#34;</span><span class=p>,</span> <span class=kd>func</span><span class=p>(</span><span class=nx>d</span> <span class=nx>prompt</span><span class=p>.</span><span class=nx>Document</span><span class=p>)</span> <span class=p>[]</span><span class=nx>prompt</span><span class=p>.</span><span class=nx>Suggest</span> <span class=p>{</span>
-			<span class=k>return</span> <span class=p>[]</span><span class=nx>prompt</span><span class=p>.</span><span class=nx>Suggest</span><span class=p>{}</span>
-		<span class=p>})</span>
-
-		<span class=k>if</span> <span class=nx>input</span> <span class=o>==</span> <span class=s>&#34;.quit&#34;</span> <span class=p>{</span>
-			<span class=k>break</span>
-		<span class=p>}</span>
-
-		<span class=nx>ee</span> <span class=o>:=</span> <span class=nx>environment</span><span class=p>.</span><span class=nf>NewExecutionEnv</span><span class=p>(</span><span class=kc>nil</span><span class=p>)</span>
-		<span class=nx>builtin</span><span class=p>.</span><span class=nf>RegisterArithmeticBuiltin</span><span class=p>(</span><span class=nx>ee</span><span class=p>)</span>
-		<span class=nx>ee</span><span class=p>.</span><span class=nf>SetValue</span><span class=p>(</span><span class=s>&#34;display&#34;</span><span class=p>,</span> <span class=nx>environment</span><span class=p>.</span><span class=nf>BuiltinFunc</span><span class=p>(</span><span class=kd>func</span><span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>environment</span><span class=p>.</span><span class=nx>ExecutionEnv</span><span class=p>,</span> <span class=nx>args</span> <span class=p>[]</span><span class=nx>environment</span><span class=p>.</span><span class=nx>Value</span><span class=p>)</span> <span class=p>(</span><span class=nx>environment</span><span class=p>.</span><span class=nx>Value</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
-			<span class=k>for</span> <span class=nx>_</span><span class=p>,</span> <span class=nx>v</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>args</span> <span class=p>{</span>
-				<span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;%v&#34;</span><span class=p>,</span> <span class=nx>v</span><span class=p>)</span>
-			<span class=p>}</span>
-			<span class=nb>println</span><span class=p>()</span>
-			<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=kc>nil</span>
-		<span class=p>}))</span>
-
-		<span class=nx>lexer</span> <span class=o>:=</span> <span class=nx>lexer</span><span class=p>.</span><span class=nf>NewLexer</span><span class=p>([]</span><span class=nb>byte</span><span class=p>(</span><span class=nx>input</span><span class=p>))</span>
-		<span class=nx>parser</span> <span class=o>:=</span> <span class=nx>parser</span><span class=p>.</span><span class=nf>NewParser</span><span class=p>()</span>
-		<span class=nx>parseResult</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>parser</span><span class=p>.</span><span class=nf>Parse</span><span class=p>(</span><span class=nx>lexer</span><span class=p>)</span>
-		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
-			<span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;parse error %v\n&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
-			<span class=k>continue</span>
-		<span class=p>}</span>
-
-		<span class=nx>val</span> <span class=o>:=</span> <span class=nx>environment</span><span class=p>.</span><span class=nf>NewValueFromASTNode</span><span class=p>(</span><span class=nx>parseResult</span><span class=p>.(</span><span class=nx>ast</span><span class=p>.</span><span class=nx>Node</span><span class=p>))</span>
-		<span class=nx>evaluated</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>Evaluate</span><span class=p>(</span><span class=nx>val</span><span class=p>)</span>
-		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
-			<span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;evaluation failed, error %v\n&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
-			<span class=k>continue</span>
-		<span class=p>}</span>
-		<span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;# (%T) %v\n&#34;</span><span class=p>,</span> <span class=nx>evaluated</span><span class=p>,</span> <span class=nx>evaluated</span><span class=p>)</span>
-	<span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>最后执行的效果就是这样：</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kn>package</span> <span class=nx>main</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kn>import</span> <span class=p>(</span>
+</span></span><span class=line><span class=cl>	<span class=s>&#34;fmt&#34;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=s>&#34;github.com/c-bata/go-prompt&#34;</span>
+</span></span><span class=line><span class=cl>	<span class=s>&#34;github.com/nnnewb/minilang/internal/builtin&#34;</span>
+</span></span><span class=line><span class=cl>	<span class=s>&#34;github.com/nnnewb/minilang/internal/environment&#34;</span>
+</span></span><span class=line><span class=cl>	<span class=s>&#34;github.com/nnnewb/minilang/pkg/ast&#34;</span>
+</span></span><span class=line><span class=cl>	<span class=s>&#34;github.com/nnnewb/minilang/pkg/bnf/lexer&#34;</span>
+</span></span><span class=line><span class=cl>	<span class=s>&#34;github.com/nnnewb/minilang/pkg/bnf/parser&#34;</span>
+</span></span><span class=line><span class=cl><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=nf>main</span><span class=p>()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>input</span> <span class=o>:=</span> <span class=nx>prompt</span><span class=p>.</span><span class=nf>Input</span><span class=p>(</span><span class=s>&#34;&gt;&#34;</span><span class=p>,</span> <span class=kd>func</span><span class=p>(</span><span class=nx>d</span> <span class=nx>prompt</span><span class=p>.</span><span class=nx>Document</span><span class=p>)</span> <span class=p>[]</span><span class=nx>prompt</span><span class=p>.</span><span class=nx>Suggest</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span> <span class=p>[]</span><span class=nx>prompt</span><span class=p>.</span><span class=nx>Suggest</span><span class=p>{}</span>
+</span></span><span class=line><span class=cl>		<span class=p>})</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>input</span> <span class=o>==</span> <span class=s>&#34;.quit&#34;</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>break</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=nx>ee</span> <span class=o>:=</span> <span class=nx>environment</span><span class=p>.</span><span class=nf>NewExecutionEnv</span><span class=p>(</span><span class=kc>nil</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=nx>builtin</span><span class=p>.</span><span class=nf>RegisterArithmeticBuiltin</span><span class=p>(</span><span class=nx>ee</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=nx>ee</span><span class=p>.</span><span class=nf>SetValue</span><span class=p>(</span><span class=s>&#34;display&#34;</span><span class=p>,</span> <span class=nx>environment</span><span class=p>.</span><span class=nf>BuiltinFunc</span><span class=p>(</span><span class=kd>func</span><span class=p>(</span><span class=nx>ee</span> <span class=o>*</span><span class=nx>environment</span><span class=p>.</span><span class=nx>ExecutionEnv</span><span class=p>,</span> <span class=nx>args</span> <span class=p>[]</span><span class=nx>environment</span><span class=p>.</span><span class=nx>Value</span><span class=p>)</span> <span class=p>(</span><span class=nx>environment</span><span class=p>.</span><span class=nx>Value</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>for</span> <span class=nx>_</span><span class=p>,</span> <span class=nx>v</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>args</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;%v&#34;</span><span class=p>,</span> <span class=nx>v</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=nb>println</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl>		<span class=p>}))</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=nx>lexer</span> <span class=o>:=</span> <span class=nx>lexer</span><span class=p>.</span><span class=nf>NewLexer</span><span class=p>([]</span><span class=nb>byte</span><span class=p>(</span><span class=nx>input</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>		<span class=nx>parser</span> <span class=o>:=</span> <span class=nx>parser</span><span class=p>.</span><span class=nf>NewParser</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=nx>parseResult</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>parser</span><span class=p>.</span><span class=nf>Parse</span><span class=p>(</span><span class=nx>lexer</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;parse error %v\n&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>			<span class=k>continue</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=nx>val</span> <span class=o>:=</span> <span class=nx>environment</span><span class=p>.</span><span class=nf>NewValueFromASTNode</span><span class=p>(</span><span class=nx>parseResult</span><span class=p>.(</span><span class=nx>ast</span><span class=p>.</span><span class=nx>Node</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>		<span class=nx>evaluated</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>ee</span><span class=p>.</span><span class=nf>Evaluate</span><span class=p>(</span><span class=nx>val</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;evaluation failed, error %v\n&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>			<span class=k>continue</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>		<span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;# (%T) %v\n&#34;</span><span class=p>,</span> <span class=nx>evaluated</span><span class=p>,</span> <span class=nx>evaluated</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>最后执行的效果就是这样：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>&gt;(display &#34;Hello world!&#34;)
-&#34;Hello world!&#34;
-# (&lt;nil&gt;) &lt;nil&gt;
-</code></pre></td></tr></table>
-</div>
-</div><h2 id=总结>总结</h2>
-<p>s表达式求值不是什么大不了的东西，但 Lisp/Scheme 中体现出的那种 “代码即数据” 的思想还是很有意思的，甚至是很有想象力的。</p>
-<p>不管是命令式语言还是函数式语言，代码和数据都是被分开讨论的。“代码”处理“数据”，放在 Lisp 家族里就是 “代码”处理“代码”，有没有联想到 AI ？</p>
-<p>好吧，毕竟是上世纪的古董了，现在说起 AI 都是 Python 和神经网络。但不管怎么说吧，Lisp/Scheme 还是挺好玩的对吧？没事可以上 <a class=link href=https://racket-lang.org/ target=_blank rel=noopener>Racket</a> 官网看看，说不定会喜欢上 Lisp 的奇妙之处呢。</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/golang/>golang</a>
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext><span class=line><span class=cl>&gt;(display &#34;Hello world!&#34;)
+</span></span><span class=line><span class=cl>&#34;Hello world!&#34;
+</span></span><span class=line><span class=cl># (&lt;nil&gt;) &lt;nil&gt;
+</span></span></code></pre></td></tr></table></div></div><h2 id=总结>总结</h2><p>s表达式求值不是什么大不了的东西，但 Lisp/Scheme 中体现出的那种 “代码即数据” 的思想还是很有意思的，甚至是很有想象力的。</p><p>不管是命令式语言还是函数式语言，代码和数据都是被分开讨论的。“代码”处理“数据”，放在 Lisp 家族里就是 “代码”处理“代码”，有没有联想到 AI ？</p><p>好吧，毕竟是上世纪的古董了，现在说起 AI 都是 Python 和神经网络。但不管怎么说吧，Lisp/Scheme 还是挺好玩的对吧？没事可以上 <a class=link href=https://racket-lang.org/ target=_blank rel=noopener>Racket</a> 官网看看，说不定会喜欢上 Lisp 的奇妙之处呢。</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/golang/>golang</a>
 <a href=/blog/tags/gocc/>gocc</a>
 <a href=/blog/tags/%E7%BC%96%E8%AF%91%E6%8A%80%E6%9C%AF/>编译技术</a>
-<a href=/blog/tags/scheme/>scheme</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/stack-based-virtual-machine-for-minilang/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>基于栈的虚拟机</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/go-sqlmock-%E4%B8%8A%E6%89%8B%E8%AE%B0%E5%BD%95%E5%92%8C%E5%BB%B6%E4%BC%B8%E7%9A%84%E4%B8%80%E4%BA%9B%E6%83%B3%E6%B3%95/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>go-sqlmock 上手记录和延伸的一些想法</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/go-interview-question-gmp-model/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>Go面试八股之GMP模型</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/gotypes-for-codegen/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>codegen 利器 go/types</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/unsafe-jwt/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>不安全的 jwt</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+<a href=/blog/tags/scheme/>scheme</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/stack-based-virtual-machine-for-minilang/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>基于栈的虚拟机</h2></div></a></article><article><a href=/blog/p/go-sqlmock-%E4%B8%8A%E6%89%8B%E8%AE%B0%E5%BD%95%E5%92%8C%E5%BB%B6%E4%BC%B8%E7%9A%84%E4%B8%80%E4%BA%9B%E6%83%B3%E6%B3%95/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>go-sqlmock 上手记录和延伸的一些想法</h2></div></a></article><article><a href=/blog/p/go-interview-question-gmp-model/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>Go面试八股之GMP模型</h2></div></a></article><article><a href=/blog/p/gotypes-for-codegen/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>codegen 利器 go/types</h2></div></a></article><article><a href=/blog/p/unsafe-jwt/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>不安全的 jwt</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#技术栈>技术栈</a></li>
-<li><a href=#词法定义>词法定义</a></li>
-<li><a href=#语法定义>语法定义</a></li>
-<li><a href=#解析和执行>解析和执行</a>
-<ol>
-<li><a href=#执行环境>执行环境</a></li>
-<li><a href=#求值>求值</a></li>
-<li><a href=#repl>REPL</a></li>
-</ol>
-</li>
-<li><a href=#总结>总结</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#前言>前言</a></li><li><a href=#技术栈>技术栈</a></li><li><a href=#词法定义>词法定义</a></li><li><a href=#语法定义>语法定义</a></li><li><a href=#解析和执行>解析和执行</a><ol><li><a href=#执行环境>执行环境</a></li><li><a href=#求值>求值</a></li><li><a href=#repl>REPL</a></li></ol></li><li><a href=#总结>总结</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

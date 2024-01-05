@@ -1,119 +1,9 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 众所周知，API网关是微服务架构的重要组件，起到一个整流过滤的作用。虽然 gRPC-Gateway 要啥没啥，和 API 网关的模式也扯不上太多关系，但总之先起个高调。 然"><title>gRPC-Gateway 用作多个 gRPC 服务的网关</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 众所周知，API网关是微服务架构的重要组件，起到一个整流过滤的作用。虽然 gRPC-Gateway 要啥没啥，和 API 网关的模式也扯不上太多关系，但总之先起个高调。 然"><title>gRPC-Gateway 用作多个 gRPC 服务的网关</title><link rel=canonical href=https://nnnewb.github.io/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="gRPC-Gateway 用作多个 gRPC 服务的网关">
-<meta property="og:description" content="前言 众所周知，API网关是微服务架构的重要组件，起到一个整流过滤的作用。虽然 gRPC-Gateway 要啥没啥，和 API 网关的模式也扯不上太多关系，但总之先起个高调。 然">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="kubernetes"><meta property="article:tag" content="microservice"><meta property="article:published_time" content="2022-02-23T17:30:00+08:00"><meta property="article:modified_time" content="2022-02-23T17:30:00+08:00">
-<meta name=twitter:title content="gRPC-Gateway 用作多个 gRPC 服务的网关">
-<meta name=twitter:description content="前言 众所周知，API网关是微服务架构的重要组件，起到一个整流过滤的作用。虽然 gRPC-Gateway 要啥没啥，和 API 网关的模式也扯不上太多关系，但总之先起个高调。 然">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/golang/>
-golang
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/>gRPC-Gateway 用作多个 gRPC 服务的网关</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2022-02-23T17:30:00+08:00>2022年 2月 23日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 4 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=前言>前言</h2>
-<p>众所周知，API网关是微服务架构的重要组件，起到一个整流过滤的作用。虽然 gRPC-Gateway 要啥没啥，和 API 网关的模式也扯不上太多关系，但总之先起个高调。</p>
-<p>然后就是真正遇到的问题了。在旧的架构里，gRPC-Gateway 的用法，是对每个需要暴露 HTTP 服务的 gRPC 服务都起一个对应的 gRPC-Gateway 。最早的做法是 gRPC-Gateway 服务单独作为一个 POD ，gRPC 服务实现也单独一个 POD 。后来我改成了 Gateway 和 服务在同一个 POD 内，起两个 container 。</p>
-<p>之前的做法都存在一个问题，就是 gRPC-Gateway 要分配少量的 CPU 和内存配额，虽然每个 gRPC-Gateway 服务分到的内存和CPU都很少，但架不住服务多，内存和 CPU 的配额都占用了不少，实际用到的少得可怜，大部分配额都是浪费。</p>
-<p>下面具体分析下怎么把 gateway 单独提取成一个 POD，给所有 gRPC 服务当网关，同时保持负载均衡发挥作用，提供无缝扩容。</p>
-<h2 id=实现网关>实现网关</h2>
-<h3 id=官方demo>官方demo</h3>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="gRPC-Gateway 用作多个 gRPC 服务的网关"><meta property="og:description" content="前言 众所周知，API网关是微服务架构的重要组件，起到一个整流过滤的作用。虽然 gRPC-Gateway 要啥没啥，和 API 网关的模式也扯不上太多关系，但总之先起个高调。 然"><meta property="og:url" content="https://nnnewb.github.io/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="golang"><meta property="article:tag" content="kubernetes"><meta property="article:tag" content="microservice"><meta property="article:published_time" content="2022-02-23T17:30:00+08:00"><meta property="article:modified_time" content="2022-02-23T17:30:00+08:00"><meta name=twitter:title content="gRPC-Gateway 用作多个 gRPC 服务的网关"><meta name=twitter:description content="前言 众所周知，API网关是微服务架构的重要组件，起到一个整流过滤的作用。虽然 gRPC-Gateway 要啥没啥，和 API 网关的模式也扯不上太多关系，但总之先起个高调。 然"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/golang/>golang</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/>gRPC-Gateway 用作多个 gRPC 服务的网关</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2022-02-23T17:30:00+08:00>2022年 2月 23日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 4 分钟</time></div></footer></div></header><section class=article-content><h2 id=前言>前言</h2><p>众所周知，API网关是微服务架构的重要组件，起到一个整流过滤的作用。虽然 gRPC-Gateway 要啥没啥，和 API 网关的模式也扯不上太多关系，但总之先起个高调。</p><p>然后就是真正遇到的问题了。在旧的架构里，gRPC-Gateway 的用法，是对每个需要暴露 HTTP 服务的 gRPC 服务都起一个对应的 gRPC-Gateway 。最早的做法是 gRPC-Gateway 服务单独作为一个 POD ，gRPC 服务实现也单独一个 POD 。后来我改成了 Gateway 和 服务在同一个 POD 内，起两个 container 。</p><p>之前的做法都存在一个问题，就是 gRPC-Gateway 要分配少量的 CPU 和内存配额，虽然每个 gRPC-Gateway 服务分到的内存和CPU都很少，但架不住服务多，内存和 CPU 的配额都占用了不少，实际用到的少得可怜，大部分配额都是浪费。</p><p>下面具体分析下怎么把 gateway 单独提取成一个 POD，给所有 gRPC 服务当网关，同时保持负载均衡发挥作用，提供无缝扩容。</p><h2 id=实现网关>实现网关</h2><h3 id=官方demo>官方demo</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -139,83 +29,45 @@ golang
 </span><span class=lnt>24
 </span><span class=lnt>25
 </span><span class=lnt>26
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=c1>// Create a client connection to the gRPC server we just started
-</span><span class=c1>// This is where the gRPC-Gateway proxies the requests
-</span><span class=c1></span><span class=nx>conn</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>grpc</span><span class=p>.</span><span class=nf>DialContext</span><span class=p>(</span>
-    <span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>(),</span>
-    <span class=s>&#34;0.0.0.0:8080&#34;</span><span class=p>,</span>
-    <span class=nx>grpc</span><span class=p>.</span><span class=nf>WithBlock</span><span class=p>(),</span>
-    <span class=nx>grpc</span><span class=p>.</span><span class=nf>WithTransportCredentials</span><span class=p>(</span><span class=nx>insecure</span><span class=p>.</span><span class=nf>NewCredentials</span><span class=p>()),</span>
-<span class=p>)</span>
-<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
-    <span class=nx>log</span><span class=p>.</span><span class=nf>Fatalln</span><span class=p>(</span><span class=s>&#34;Failed to dial server:&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
-<span class=p>}</span>
-
-<span class=nx>gwmux</span> <span class=o>:=</span> <span class=nx>runtime</span><span class=p>.</span><span class=nf>NewServeMux</span><span class=p>()</span>
-<span class=c1>// Register Greeter
-</span><span class=c1></span><span class=nx>err</span> <span class=p>=</span> <span class=nx>helloworldpb</span><span class=p>.</span><span class=nf>RegisterGreeterHandler</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>(),</span> <span class=nx>gwmux</span><span class=p>,</span> <span class=nx>conn</span><span class=p>)</span>
-<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
-    <span class=nx>log</span><span class=p>.</span><span class=nf>Fatalln</span><span class=p>(</span><span class=s>&#34;Failed to register gateway:&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
-<span class=p>}</span>
-
-<span class=nx>gwServer</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>http</span><span class=p>.</span><span class=nx>Server</span><span class=p>{</span>
-    <span class=nx>Addr</span><span class=p>:</span>    <span class=s>&#34;:8090&#34;</span><span class=p>,</span>
-    <span class=nx>Handler</span><span class=p>:</span> <span class=nx>gwmux</span><span class=p>,</span>
-<span class=p>}</span>
-
-<span class=nx>log</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=s>&#34;Serving gRPC-Gateway on http://0.0.0.0:8090&#34;</span><span class=p>)</span>
-<span class=nx>log</span><span class=p>.</span><span class=nf>Fatalln</span><span class=p>(</span><span class=nx>gwServer</span><span class=p>.</span><span class=nf>ListenAndServe</span><span class=p>())</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>核心逻辑在这两行：</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Create a client connection to the gRPC server we just started
+</span></span></span><span class=line><span class=cl><span class=c1>// This is where the gRPC-Gateway proxies the requests
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=nx>conn</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>grpc</span><span class=p>.</span><span class=nf>DialContext</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>    <span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>(),</span>
+</span></span><span class=line><span class=cl>    <span class=s>&#34;0.0.0.0:8080&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=nx>grpc</span><span class=p>.</span><span class=nf>WithBlock</span><span class=p>(),</span>
+</span></span><span class=line><span class=cl>    <span class=nx>grpc</span><span class=p>.</span><span class=nf>WithTransportCredentials</span><span class=p>(</span><span class=nx>insecure</span><span class=p>.</span><span class=nf>NewCredentials</span><span class=p>()),</span>
+</span></span><span class=line><span class=cl><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nx>log</span><span class=p>.</span><span class=nf>Fatalln</span><span class=p>(</span><span class=s>&#34;Failed to dial server:&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=nx>gwmux</span> <span class=o>:=</span> <span class=nx>runtime</span><span class=p>.</span><span class=nf>NewServeMux</span><span class=p>()</span>
+</span></span><span class=line><span class=cl><span class=c1>// Register Greeter
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=nx>err</span> <span class=p>=</span> <span class=nx>helloworldpb</span><span class=p>.</span><span class=nf>RegisterGreeterHandler</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>(),</span> <span class=nx>gwmux</span><span class=p>,</span> <span class=nx>conn</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nx>log</span><span class=p>.</span><span class=nf>Fatalln</span><span class=p>(</span><span class=s>&#34;Failed to register gateway:&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=nx>gwServer</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>http</span><span class=p>.</span><span class=nx>Server</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nx>Addr</span><span class=p>:</span>    <span class=s>&#34;:8090&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=nx>Handler</span><span class=p>:</span> <span class=nx>gwmux</span><span class=p>,</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=nx>log</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=s>&#34;Serving gRPC-Gateway on http://0.0.0.0:8090&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=nx>log</span><span class=p>.</span><span class=nf>Fatalln</span><span class=p>(</span><span class=nx>gwServer</span><span class=p>.</span><span class=nf>ListenAndServe</span><span class=p>())</span>
+</span></span></code></pre></td></tr></table></div></div><p>核心逻辑在这两行：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=nx>gwmux</span> <span class=o>:=</span> <span class=nx>runtime</span><span class=p>.</span><span class=nf>NewServeMux</span><span class=p>()</span>
-<span class=c1>// Register Greeter
-</span><span class=c1></span><span class=nx>err</span> <span class=p>=</span> <span class=nx>helloworldpb</span><span class=p>.</span><span class=nf>RegisterGreeterHandler</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>(),</span> <span class=nx>gwmux</span><span class=p>,</span> <span class=nx>conn</span><span class=p>)</span>
-<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
-    <span class=nx>log</span><span class=p>.</span><span class=nf>Fatalln</span><span class=p>(</span><span class=s>&#34;Failed to register gateway:&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p><code>gwmux</code>是 gRPC-Gateway 的运行时 <code>mux</code> 实例，可以理解成路由。 标准库的 <code>http</code> 包也有自己的 <code>mux</code> ，但 gRPC-Gateway 项目自己实现了一个。看到 <code>gwmux</code>应该就能想到这肯定是注册路由，理论上来说——如果你有多个 gRPC 服务，而且 url 没有冲突的话，注册多个服务到路由上应该是没有问题的。</p>
-<p>所以剩下的问题就是这个 <code>RegisterGreeterHandler</code> 内是不是我们预期的那样，类似 <code>mux</code> 注册路由的用法？</p>
-<h3 id=registerxxxhandlerclient-实现>RegisterXXXHandlerClient 实现</h3>
-<p><img src=/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918.png width=1207 height=132 srcset="/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918_huae7e9726eb83dcb6808b9604bde89ea7_31321_480x0_resize_box_3.png 480w, /blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918_huae7e9726eb83dcb6808b9604bde89ea7_31321_1024x0_resize_box_3.png 1024w" loading=lazy alt=RegisterXXXHandlerClient实现 class=gallery-image data-flex-grow=914 data-flex-basis=2194px></p>
-<p>顺着 <code>RegisterXXXHandler</code>很快就能找到实现，<code>RegisterXXXHandlerClient</code>。<code>Handle</code>的用法正如预期的那样，是一个类似 <code>http.ServeMux</code> 的对象。处理函数里的逻辑很清晰。</p>
-<p><img src=/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463.png width=1167 height=420 srcset="/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463_hu5863f8bc3c05d0c34f00482d4fdc41e8_65629_480x0_resize_box_3.png 480w, /blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463_hu5863f8bc3c05d0c34f00482d4fdc41e8_65629_1024x0_resize_box_3.png 1024w" loading=lazy alt=HandleFunc class=gallery-image data-flex-grow=277 data-flex-basis=666px></p>
-<p>函数体可以简单划分成两部分：</p>
-<ul>
-<li>构造和发送请求
-<ul>
-<li>根据请求的 <code>Content-Type</code> 选择 <code>Marshaler</code> 。</li>
-<li>构造请求上下文，从HTTP请求里提取<code>grpc-metadata</code>开头的元数据到 <code>context</code> 里。</li>
-<li><code>request_XXX_0</code> 反序列化 HTTP 请求体到 protobuf 生成的结构，并发送请求。</li>
-</ul>
-</li>
-<li>构造和返回响应
-<ul>
-<li>从响应元数据里构造上下文</li>
-<li>构造和返回 HTTP 响应</li>
-</ul>
-</li>
-</ul>
-<p>整个流程是无状态也和 <code>gwmux</code> 本身无绑定的。换言之，理论上来说完全可以把所有 gRPC-Gateway 生成的 <code>Register</code> 函数注册到同一个 <code>gwmux</code> 上。</p>
-<h3 id=backend和注册>Backend和注册</h3>
-<p>出于清晰化的考虑，Gateway 服务的构造过程我写成了 Builder 模式。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=nx>gwmux</span> <span class=o>:=</span> <span class=nx>runtime</span><span class=p>.</span><span class=nf>NewServeMux</span><span class=p>()</span>
+</span></span><span class=line><span class=cl><span class=c1>// Register Greeter
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=nx>err</span> <span class=p>=</span> <span class=nx>helloworldpb</span><span class=p>.</span><span class=nf>RegisterGreeterHandler</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>(),</span> <span class=nx>gwmux</span><span class=p>,</span> <span class=nx>conn</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nx>log</span><span class=p>.</span><span class=nf>Fatalln</span><span class=p>(</span><span class=s>&#34;Failed to register gateway:&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p><code>gwmux</code>是 gRPC-Gateway 的运行时 <code>mux</code> 实例，可以理解成路由。 标准库的 <code>http</code> 包也有自己的 <code>mux</code> ，但 gRPC-Gateway 项目自己实现了一个。看到 <code>gwmux</code>应该就能想到这肯定是注册路由，理论上来说——如果你有多个 gRPC 服务，而且 url 没有冲突的话，注册多个服务到路由上应该是没有问题的。</p><p>所以剩下的问题就是这个 <code>RegisterGreeterHandler</code> 内是不是我们预期的那样，类似 <code>mux</code> 注册路由的用法？</p><h3 id=registerxxxhandlerclient-实现>RegisterXXXHandlerClient 实现</h3><p><img src=/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918.png width=1207 height=132 srcset="/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918_huae7e9726eb83dcb6808b9604bde89ea7_31321_480x0_resize_box_3.png 480w, /blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222154718918_huae7e9726eb83dcb6808b9604bde89ea7_31321_1024x0_resize_box_3.png 1024w" loading=lazy alt=RegisterXXXHandlerClient实现 class=gallery-image data-flex-grow=914 data-flex-basis=2194px></p><p>顺着 <code>RegisterXXXHandler</code>很快就能找到实现，<code>RegisterXXXHandlerClient</code>。<code>Handle</code>的用法正如预期的那样，是一个类似 <code>http.ServeMux</code> 的对象。处理函数里的逻辑很清晰。</p><p><img src=/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463.png width=1167 height=420 srcset="/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463_hu5863f8bc3c05d0c34f00482d4fdc41e8_65629_480x0_resize_box_3.png 480w, /blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222155630463_hu5863f8bc3c05d0c34f00482d4fdc41e8_65629_1024x0_resize_box_3.png 1024w" loading=lazy alt=HandleFunc class=gallery-image data-flex-grow=277 data-flex-basis=666px></p><p>函数体可以简单划分成两部分：</p><ul><li>构造和发送请求<ul><li>根据请求的 <code>Content-Type</code> 选择 <code>Marshaler</code> 。</li><li>构造请求上下文，从HTTP请求里提取<code>grpc-metadata</code>开头的元数据到 <code>context</code> 里。</li><li><code>request_XXX_0</code> 反序列化 HTTP 请求体到 protobuf 生成的结构，并发送请求。</li></ul></li><li>构造和返回响应<ul><li>从响应元数据里构造上下文</li><li>构造和返回 HTTP 响应</li></ul></li></ul><p>整个流程是无状态也和 <code>gwmux</code> 本身无绑定的。换言之，理论上来说完全可以把所有 gRPC-Gateway 生成的 <code>Register</code> 函数注册到同一个 <code>gwmux</code> 上。</p><h3 id=backend和注册>Backend和注册</h3><p>出于清晰化的考虑，Gateway 服务的构造过程我写成了 Builder 模式。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -244,197 +96,43 @@ golang
 </span><span class=lnt>27
 </span><span class=lnt>28
 </span><span class=lnt>29
-</span><span class=lnt>30
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>type</span> <span class=nx>registerHandlerFn</span> <span class=kd>func</span><span class=p>(</span><span class=nx>ctx</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span> <span class=nx>mux</span> <span class=o>*</span><span class=nx>runtime</span><span class=p>.</span><span class=nx>ServeMux</span><span class=p>,</span> <span class=nx>conn</span> <span class=o>*</span><span class=nx>grpc</span><span class=p>.</span><span class=nx>ClientConn</span><span class=p>)</span> <span class=p>(</span><span class=nx>err</span> <span class=kt>error</span><span class=p>)</span>
-
-<span class=kd>type</span> <span class=nx>GRPCBackend</span> <span class=kd>struct</span> <span class=p>{</span>
-	<span class=nx>RegisterHandlerFunc</span> <span class=nx>registerHandlerFn</span>
-	<span class=nx>BackendAddr</span>         <span class=kt>string</span>
-<span class=p>}</span>
-
-<span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>DonviewGRPCGatewayServer</span><span class=p>)</span> <span class=nf>Serve</span><span class=p>()</span> <span class=kt>error</span> <span class=p>{</span>
-	<span class=nx>mux</span> <span class=o>:=</span> <span class=nx>runtime</span><span class=p>.</span><span class=nf>NewServeMux</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>muxOptions</span><span class=o>...</span><span class=p>)</span>
-
-	<span class=k>for</span> <span class=nx>_</span><span class=p>,</span> <span class=nx>backend</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>s</span><span class=p>.</span><span class=nx>backends</span> <span class=p>{</span>
-		<span class=nx>conn</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>grpc</span><span class=p>.</span><span class=nf>DialContext</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>TODO</span><span class=p>(),</span> <span class=nx>backend</span><span class=p>.</span><span class=nx>BackendAddr</span><span class=p>,</span> <span class=nx>s</span><span class=p>.</span><span class=nx>dialOptions</span><span class=o>...</span><span class=p>)</span>
-		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
-			<span class=k>return</span> <span class=nx>err</span>
-		<span class=p>}</span>
-
-		<span class=nx>err</span> <span class=p>=</span> <span class=nx>backend</span><span class=p>.</span><span class=nf>RegisterHandlerFunc</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>TODO</span><span class=p>(),</span> <span class=nx>mux</span><span class=p>,</span> <span class=nx>conn</span><span class=p>)</span>
-		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
-			<span class=k>return</span> <span class=nx>err</span>
-		<span class=p>}</span>
-	<span class=p>}</span>
-
-	<span class=kd>var</span> <span class=nx>handler</span> <span class=nx>http</span><span class=p>.</span><span class=nx>Handler</span> <span class=p>=</span> <span class=nx>mux</span>
-	<span class=k>for</span> <span class=nx>_</span><span class=p>,</span> <span class=nx>wrapperFn</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>s</span><span class=p>.</span><span class=nx>httpHandlerWrappers</span> <span class=p>{</span>
-		<span class=nx>handler</span> <span class=p>=</span> <span class=nf>wrapperFn</span><span class=p>(</span><span class=nx>handler</span><span class=p>)</span>
-	<span class=p>}</span>
-
-	<span class=k>return</span> <span class=nx>http</span><span class=p>.</span><span class=nf>ListenAndServe</span><span class=p>(</span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;0.0.0.0:%d&#34;</span><span class=p>,</span> <span class=nx>s</span><span class=p>.</span><span class=nx>port</span><span class=p>),</span> <span class=nx>handler</span><span class=p>)</span>
-<span class=p>}</span>
-
-</code></pre></td></tr></table>
-</div>
-</div><p>所有 gRPC 后端被注册到 <code>s.backends</code> ，在开始服务的时候调用 <code>Serve</code> 函数，把 gRPC 服务注册到 <code>mux</code> 里。因为事前确保了服务路由不会重叠，理论上来说注册完就能用。</p>
-<h2 id=负载均衡>负载均衡</h2>
-<p>最初的架构里，一个 gRPC-Gateway 服务对应一个 gRPC 服务，请求进入服务的过程是从云服务提供商的 LB => kubernetes service (load balancer) => gateway => ClusterIP => gRPC Server 。</p>
-<p>后来改成一个 POD 包含 gateway 和 gRPC 两个 container 后，gateway 访问 gRPC 服务就不在经过 ClusterIP 这一层代理了，路径变成云服务商的 LB => kubernetes service (load balancer) => gateway => gRPC Server 。</p>
-<p>最后是现在的版本，网关统一成一个容器，路径和上述一样。</p>
-<p>三者的区别在于负载均衡的时机。Kubernetes 的 ClusterIP 是同样具备负载均衡能力的，最初架构中负载均衡一共进行了三次，从云服务商的LB到主机端口（kubernetes），kubernetes再次负载均衡，转发到 gateway。gateway再经由 ClusterIP 转发至 gRPC 服务，每一次转发都经历一次负载均衡，分别提供了虚拟主机的扩容能力、gateway服务的扩容能力、gRPC服务的扩容能力。</p>
-<p>第二版修改去掉了 gateway 到 gRPC 服务的负载均衡，变成了直连，延迟表现上理论上来说会有改善，但我没做过基准测试，所以这个“理论上”也只是凭感觉说。但可以明确的是 gateway 会额外占据资源配额，造成浪费，不好说值不值，个人感觉没太大意义。</p>
-<p>第三版，统一了 gateway，还是三次负载均衡。不过Gateway对资源配额的使用效率会更好一点，依然保持了主机、gateway、gRPC 服务的可伸缩性。</p>
-<p><img src=/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894.png width=176 height=714 srcset="/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894_huca7a171cf394f94ea2cc15092e42ada3_10452_480x0_resize_box_3.png 480w, /blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894_huca7a171cf394f94ea2cc15092e42ada3_10452_1024x0_resize_box_3.png 1024w" loading=lazy alt=三次LB class=gallery-image data-flex-grow=24 data-flex-basis=59px></p>
-<h2 id=总结>总结</h2>
-<p>单从理论上来说这样设计应该是 OK 的，但是 gRPC-Gateway 官方对负载均衡没有说法，对能不能注册多个 gRPC 服务到一个 <code>mux</code> 上也没有官方的文档说明，很难说这帮人能不能保证向后兼容，万一之后的版本不支持注册到一个 <code>mux</code> 上了，到时候改起来就麻烦了，比较坏的情况就是你得自己写一个 <code>protoc-gen-gateway</code> 这样的玩意儿来生成一个自己的网关。</p>
-<p>此外还有一个缺陷，gRPC-Gateway 到 gRPC Server 的负载均衡由 Kubernetes ClusterIP 提供，但是 <a class=link href=https://stackoverflow.com/questions/49888133/kubernetes-service-cluster-ip-how-is-this-internally-load-balanced-across-diffe target=_blank rel=noopener>ClusterIP 的负载均衡算法是 Round Robin/Random</a> ，并不支持根据负载或其他维度的测量数据来决定如何均衡负载，未来如果需要根据负载情况分发请求，可能还得在网关到 gRPC 服务之间加个负载均衡组件，再提供一个服务发现/注册中心来帮助调度。</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/golang/>golang</a>
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>registerHandlerFn</span> <span class=kd>func</span><span class=p>(</span><span class=nx>ctx</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span> <span class=nx>mux</span> <span class=o>*</span><span class=nx>runtime</span><span class=p>.</span><span class=nx>ServeMux</span><span class=p>,</span> <span class=nx>conn</span> <span class=o>*</span><span class=nx>grpc</span><span class=p>.</span><span class=nx>ClientConn</span><span class=p>)</span> <span class=p>(</span><span class=nx>err</span> <span class=kt>error</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>type</span> <span class=nx>GRPCBackend</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>RegisterHandlerFunc</span> <span class=nx>registerHandlerFn</span>
+</span></span><span class=line><span class=cl>	<span class=nx>BackendAddr</span>         <span class=kt>string</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>DonviewGRPCGatewayServer</span><span class=p>)</span> <span class=nf>Serve</span><span class=p>()</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>mux</span> <span class=o>:=</span> <span class=nx>runtime</span><span class=p>.</span><span class=nf>NewServeMux</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>muxOptions</span><span class=o>...</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>_</span><span class=p>,</span> <span class=nx>backend</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>s</span><span class=p>.</span><span class=nx>backends</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>conn</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>grpc</span><span class=p>.</span><span class=nf>DialContext</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>TODO</span><span class=p>(),</span> <span class=nx>backend</span><span class=p>.</span><span class=nx>BackendAddr</span><span class=p>,</span> <span class=nx>s</span><span class=p>.</span><span class=nx>dialOptions</span><span class=o>...</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=nx>err</span> <span class=p>=</span> <span class=nx>backend</span><span class=p>.</span><span class=nf>RegisterHandlerFunc</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>TODO</span><span class=p>(),</span> <span class=nx>mux</span><span class=p>,</span> <span class=nx>conn</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=kd>var</span> <span class=nx>handler</span> <span class=nx>http</span><span class=p>.</span><span class=nx>Handler</span> <span class=p>=</span> <span class=nx>mux</span>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>_</span><span class=p>,</span> <span class=nx>wrapperFn</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>s</span><span class=p>.</span><span class=nx>httpHandlerWrappers</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>handler</span> <span class=p>=</span> <span class=nf>wrapperFn</span><span class=p>(</span><span class=nx>handler</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>http</span><span class=p>.</span><span class=nf>ListenAndServe</span><span class=p>(</span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;0.0.0.0:%d&#34;</span><span class=p>,</span> <span class=nx>s</span><span class=p>.</span><span class=nx>port</span><span class=p>),</span> <span class=nx>handler</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>所有 gRPC 后端被注册到 <code>s.backends</code> ，在开始服务的时候调用 <code>Serve</code> 函数，把 gRPC 服务注册到 <code>mux</code> 里。因为事前确保了服务路由不会重叠，理论上来说注册完就能用。</p><h2 id=负载均衡>负载均衡</h2><p>最初的架构里，一个 gRPC-Gateway 服务对应一个 gRPC 服务，请求进入服务的过程是从云服务提供商的 LB => kubernetes service (load balancer) => gateway => ClusterIP => gRPC Server 。</p><p>后来改成一个 POD 包含 gateway 和 gRPC 两个 container 后，gateway 访问 gRPC 服务就不在经过 ClusterIP 这一层代理了，路径变成云服务商的 LB => kubernetes service (load balancer) => gateway => gRPC Server 。</p><p>最后是现在的版本，网关统一成一个容器，路径和上述一样。</p><p>三者的区别在于负载均衡的时机。Kubernetes 的 ClusterIP 是同样具备负载均衡能力的，最初架构中负载均衡一共进行了三次，从云服务商的LB到主机端口（kubernetes），kubernetes再次负载均衡，转发到 gateway。gateway再经由 ClusterIP 转发至 gRPC 服务，每一次转发都经历一次负载均衡，分别提供了虚拟主机的扩容能力、gateway服务的扩容能力、gRPC服务的扩容能力。</p><p>第二版修改去掉了 gateway 到 gRPC 服务的负载均衡，变成了直连，延迟表现上理论上来说会有改善，但我没做过基准测试，所以这个“理论上”也只是凭感觉说。但可以明确的是 gateway 会额外占据资源配额，造成浪费，不好说值不值，个人感觉没太大意义。</p><p>第三版，统一了 gateway，还是三次负载均衡。不过Gateway对资源配额的使用效率会更好一点，依然保持了主机、gateway、gRPC 服务的可伸缩性。</p><p><img src=/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894.png width=176 height=714 srcset="/blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894_huca7a171cf394f94ea2cc15092e42ada3_10452_480x0_resize_box_3.png 480w, /blog/p/grpc-gateway-used-as-multiple-grpc-server-gateway/image-20220222165344894_huca7a171cf394f94ea2cc15092e42ada3_10452_1024x0_resize_box_3.png 1024w" loading=lazy alt=三次LB class=gallery-image data-flex-grow=24 data-flex-basis=59px></p><h2 id=总结>总结</h2><p>单从理论上来说这样设计应该是 OK 的，但是 gRPC-Gateway 官方对负载均衡没有说法，对能不能注册多个 gRPC 服务到一个 <code>mux</code> 上也没有官方的文档说明，很难说这帮人能不能保证向后兼容，万一之后的版本不支持注册到一个 <code>mux</code> 上了，到时候改起来就麻烦了，比较坏的情况就是你得自己写一个 <code>protoc-gen-gateway</code> 这样的玩意儿来生成一个自己的网关。</p><p>此外还有一个缺陷，gRPC-Gateway 到 gRPC Server 的负载均衡由 Kubernetes ClusterIP 提供，但是 <a class=link href=https://stackoverflow.com/questions/49888133/kubernetes-service-cluster-ip-how-is-this-internally-load-balanced-across-diffe target=_blank rel=noopener>ClusterIP 的负载均衡算法是 Round Robin/Random</a> ，并不支持根据负载或其他维度的测量数据来决定如何均衡负载，未来如果需要根据负载情况分发请求，可能还得在网关到 gRPC 服务之间加个负载均衡组件，再提供一个服务发现/注册中心来帮助调度。</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/golang/>golang</a>
 <a href=/blog/tags/kubernetes/>kubernetes</a>
-<a href=/blog/tags/microservice/>microservice</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/go-kit-note/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>go-kit 笔记</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/go-sqlmock-%E4%B8%8A%E6%89%8B%E8%AE%B0%E5%BD%95%E5%92%8C%E5%BB%B6%E4%BC%B8%E7%9A%84%E4%B8%80%E4%BA%9B%E6%83%B3%E6%B3%95/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>go-sqlmock 上手记录和延伸的一些想法</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/go-interview-question-gmp-model/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>Go面试八股之GMP模型</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/gotypes-for-codegen/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>codegen 利器 go/types</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/unsafe-jwt/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>不安全的 jwt</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+<a href=/blog/tags/microservice/>microservice</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/go-kit-note/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>go-kit 笔记</h2></div></a></article><article><a href=/blog/p/go-sqlmock-%E4%B8%8A%E6%89%8B%E8%AE%B0%E5%BD%95%E5%92%8C%E5%BB%B6%E4%BC%B8%E7%9A%84%E4%B8%80%E4%BA%9B%E6%83%B3%E6%B3%95/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>go-sqlmock 上手记录和延伸的一些想法</h2></div></a></article><article><a href=/blog/p/go-interview-question-gmp-model/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>Go面试八股之GMP模型</h2></div></a></article><article><a href=/blog/p/gotypes-for-codegen/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>codegen 利器 go/types</h2></div></a></article><article><a href=/blog/p/unsafe-jwt/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>不安全的 jwt</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#实现网关>实现网关</a>
-<ol>
-<li><a href=#官方demo>官方demo</a></li>
-<li><a href=#registerxxxhandlerclient-实现>RegisterXXXHandlerClient 实现</a></li>
-<li><a href=#backend和注册>Backend和注册</a></li>
-</ol>
-</li>
-<li><a href=#负载均衡>负载均衡</a></li>
-<li><a href=#总结>总结</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#前言>前言</a></li><li><a href=#实现网关>实现网关</a><ol><li><a href=#官方demo>官方demo</a></li><li><a href=#registerxxxhandlerclient-实现>RegisterXXXHandlerClient 实现</a></li><li><a href=#backend和注册>Backend和注册</a></li></ol></li><li><a href=#负载均衡>负载均衡</a></li><li><a href=#总结>总结</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

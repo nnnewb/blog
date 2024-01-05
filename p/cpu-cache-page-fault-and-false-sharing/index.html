@@ -1,123 +1,9 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美"><title>CPU缓存、缺页和伪共享</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美"><title>CPU缓存、缺页和伪共享</title><link rel=canonical href=https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="CPU缓存、缺页和伪共享">
-<meta property="og:description" content="前言 看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="c++"><meta property="article:published_time" content="2022-02-15T17:11:00+08:00"><meta property="article:modified_time" content="2022-02-15T17:11:00+08:00">
-<meta name=twitter:title content="CPU缓存、缺页和伪共享">
-<meta name=twitter:description content="前言 看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/c++/>
-c++
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/cpu-cache-page-fault-and-false-sharing/>CPU缓存、缺页和伪共享</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2022-02-15T17:11:00+08:00>2022年 2月 15日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 9 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=前言>前言</h2>
-<p>看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美哉。结合下面的参考文章大概聊一下。</p>
-<ul>
-<li><a class=link href=http://igoro.com/archive/gallery-of-processor-cache-effects/ target=_blank rel=noopener>Gallery of Processor Cache Effects</a></li>
-</ul>
-<h2 id=缓存行>缓存行</h2>
-<h3 id=介绍>介绍</h3>
-<p>首先，缓存行<strong>不是</strong>“行”，这是对 <em>cache line</em> 的直译，<em>cache line</em> 和 <em>cache block</em> 是同义的，忽略这个“行”字即可。</p>
-<p>cache line 指的是 CPU 高速缓存（L1~L3）中的一个缓存块，通常大小在 32/64/128 bytes ，现在常见的应该是 64 bytes 。cache line 之所以重要，是因为这是 CPU 访问主存的必经之路，频繁访问主存数据的场合，或者并发编程时，cache line 的影响还是不容忽视的。</p>
-<h3 id=简单的基准测试>简单的基准测试</h3>
-<p>光是说 cache line 多重要没有卵用，写个 demo 看看 cache line 的影响更直观。来一个最简单不过的单链表遍历。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="CPU缓存、缺页和伪共享"><meta property="og:description" content="前言 看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美"><meta property="og:url" content="https://nnnewb.github.io/blog/p/cpu-cache-page-fault-and-false-sharing/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="c++"><meta property="article:published_time" content="2022-02-15T17:11:00+08:00"><meta property="article:modified_time" content="2022-02-15T17:11:00+08:00"><meta name=twitter:title content="CPU缓存、缺页和伪共享"><meta name=twitter:description content="前言 看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/c++/>c++</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/cpu-cache-page-fault-and-false-sharing/>CPU缓存、缺页和伪共享</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2022-02-15T17:11:00+08:00>2022年 2月 15日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 9 分钟</time></div></footer></div></header><section class=article-content><h2 id=前言>前言</h2><p>看B树的时候发现对缓存还是不够了解，但 cache line 又很神奇。要是有些比较吃CPU的代码改一下结构和访问方式啥的就能白嫖个50%性能提升那岂不是美哉。结合下面的参考文章大概聊一下。</p><ul><li><a class=link href=http://igoro.com/archive/gallery-of-processor-cache-effects/ target=_blank rel=noopener>Gallery of Processor Cache Effects</a></li></ul><h2 id=缓存行>缓存行</h2><h3 id=介绍>介绍</h3><p>首先，缓存行<strong>不是</strong>“行”，这是对 <em>cache line</em> 的直译，<em>cache line</em> 和 <em>cache block</em> 是同义的，忽略这个“行”字即可。</p><p>cache line 指的是 CPU 高速缓存（L1~L3）中的一个缓存块，通常大小在 32/64/128 bytes ，现在常见的应该是 64 bytes 。cache line 之所以重要，是因为这是 CPU 访问主存的必经之路，频繁访问主存数据的场合，或者并发编程时，cache line 的影响还是不容忽视的。</p><h3 id=简单的基准测试>简单的基准测试</h3><p>光是说 cache line 多重要没有卵用，写个 demo 看看 cache line 的影响更直观。来一个最简单不过的单链表遍历。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -174,109 +60,80 @@ c++
 </span><span class=lnt>55
 </span><span class=lnt>56
 </span><span class=lnt>57
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cp>#include</span> <span class=cpf>&lt;chrono&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;cstddef&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;functional&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;iterator&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;ostream&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;string&gt;</span><span class=cp>
-</span><span class=cp></span>
-<span class=k>using</span> <span class=k>namespace</span> <span class=n>std</span><span class=p>;</span>
-<span class=k>using</span> <span class=k>namespace</span> <span class=n>std</span><span class=o>::</span><span class=n>chrono</span><span class=p>;</span>
-
-<span class=k>typedef</span> <span class=k>struct</span> <span class=nc>_data</span> <span class=p>{</span>
-  <span class=k>struct</span> <span class=nc>_data</span> <span class=o>*</span><span class=n>next</span><span class=p>;</span>
-  <span class=kt>int</span> <span class=n>value</span><span class=p>;</span>
-<span class=p>}</span> <span class=n>mydata</span><span class=p>;</span>
-
-<span class=kt>void</span> <span class=nf>time_it</span><span class=p>(</span><span class=k>const</span> <span class=n>std</span><span class=o>::</span><span class=n>string</span> <span class=n>name</span><span class=p>,</span> <span class=n>function</span><span class=o>&lt;</span><span class=kt>void</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span><span class=o>&gt;</span> <span class=n>fn</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>auto</span> <span class=n>start</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
-  <span class=n>fn</span><span class=p>();</span>
-  <span class=k>auto</span> <span class=n>stop</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
-  <span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=n>name</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;: &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>duration_cast</span><span class=o>&lt;</span><span class=n>milliseconds</span><span class=o>&gt;</span><span class=p>(</span><span class=n>stop</span> <span class=o>-</span> <span class=n>start</span><span class=p>).</span><span class=n>count</span><span class=p>()</span>
-       <span class=o>&lt;&lt;</span> <span class=s>&#34;ms&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>endl</span><span class=p>;</span>
-<span class=p>}</span>
-
-<span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=c1>// 一次分配，内存连续
-</span><span class=c1></span>  <span class=k>auto</span> <span class=n>list1</span> <span class=o>=</span> <span class=k>new</span> <span class=n>mydata</span><span class=p>[</span><span class=mi>1024</span> <span class=o>*</span> <span class=mi>1024</span> <span class=o>*</span> <span class=mi>64</span><span class=p>];</span>
-  <span class=k>auto</span> <span class=n>cur</span> <span class=o>=</span> <span class=n>list1</span><span class=p>;</span>
-  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>1024</span> <span class=o>*</span> <span class=mi>1024</span> <span class=o>*</span> <span class=mi>64</span> <span class=o>-</span> <span class=mi>1</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>cur</span><span class=o>-&gt;</span><span class=n>next</span> <span class=o>=</span> <span class=o>&amp;</span><span class=n>list1</span><span class=p>[</span><span class=n>i</span> <span class=o>+</span> <span class=mi>1</span><span class=p>];</span>
-    <span class=n>cur</span> <span class=o>=</span> <span class=n>cur</span><span class=o>-&gt;</span><span class=n>next</span><span class=p>;</span>
-  <span class=p>}</span>
-  <span class=n>list1</span><span class=p>[</span><span class=mi>1024</span> <span class=o>*</span> <span class=mi>1024</span> <span class=o>-</span> <span class=mi>1</span><span class=p>].</span><span class=n>next</span> <span class=o>=</span> <span class=nb>NULL</span><span class=p>;</span>
-
-  <span class=c1>// 分别分配，内存不连续
-</span><span class=c1></span>  <span class=k>auto</span> <span class=n>list2</span> <span class=o>=</span> <span class=k>new</span> <span class=n>mydata</span><span class=p>();</span>
-  <span class=k>auto</span> <span class=n>cur2</span> <span class=o>=</span> <span class=n>list2</span><span class=p>;</span>
-  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>1024</span> <span class=o>*</span> <span class=mi>1024</span> <span class=o>*</span> <span class=mi>64</span> <span class=o>-</span> <span class=mi>1</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>cur2</span><span class=o>-&gt;</span><span class=n>next</span> <span class=o>=</span> <span class=k>new</span> <span class=n>mydata</span><span class=p>();</span>
-    <span class=n>cur2</span> <span class=o>=</span> <span class=n>cur2</span><span class=o>-&gt;</span><span class=n>next</span><span class=p>;</span>
-  <span class=p>}</span>
-
-  <span class=c1>// 遍历连续的链表
-</span><span class=c1></span>  <span class=n>time_it</span><span class=p>(</span><span class=s>&#34;first&#34;</span><span class=p>,</span> <span class=p>[</span><span class=o>&amp;</span><span class=p>]()</span> <span class=p>{</span>
-    <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>list1</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>next</span><span class=p>)</span> <span class=p>{</span>
-      <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>value</span> <span class=o>*=</span> <span class=mi>3</span><span class=p>;</span>
-    <span class=p>}</span>
-  <span class=p>});</span>
-
-  <span class=c1>// 遍历不连续的链表
-</span><span class=c1></span>  <span class=n>time_it</span><span class=p>(</span><span class=s>&#34;second&#34;</span><span class=p>,</span> <span class=p>[</span><span class=o>&amp;</span><span class=p>]()</span> <span class=p>{</span>
-    <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>list2</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>next</span><span class=p>)</span> <span class=p>{</span>
-      <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>value</span> <span class=o>*=</span> <span class=mi>3</span><span class=p>;</span>
-    <span class=p>}</span>
-  <span class=p>});</span>
-  <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>为了体现出差异，一共遍历了 <code>1024*1024*64</code>个元素，每个元素 8 个字节，一共是512M数据。</p>
-<p>结果如下。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;chrono&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;cstddef&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;functional&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;iterator&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;ostream&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;string&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=k>using</span> <span class=k>namespace</span> <span class=n>std</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=k>using</span> <span class=k>namespace</span> <span class=n>std</span><span class=o>::</span><span class=n>chrono</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>typedef</span> <span class=k>struct</span> <span class=nc>_data</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>struct</span> <span class=nc>_data</span> <span class=o>*</span><span class=n>next</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=kt>int</span> <span class=n>value</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span> <span class=n>mydata</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>time_it</span><span class=p>(</span><span class=k>const</span> <span class=n>std</span><span class=o>::</span><span class=n>string</span> <span class=n>name</span><span class=p>,</span> <span class=n>function</span><span class=o>&lt;</span><span class=kt>void</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span><span class=o>&gt;</span> <span class=n>fn</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>start</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=n>fn</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>stop</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=n>name</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;: &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>duration_cast</span><span class=o>&lt;</span><span class=n>milliseconds</span><span class=o>&gt;</span><span class=p>(</span><span class=n>stop</span> <span class=o>-</span> <span class=n>start</span><span class=p>).</span><span class=n>count</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>       <span class=o>&lt;&lt;</span> <span class=s>&#34;ms&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// 一次分配，内存连续
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=k>auto</span> <span class=n>list1</span> <span class=o>=</span> <span class=k>new</span> <span class=n>mydata</span><span class=p>[</span><span class=mi>1024</span> <span class=o>*</span> <span class=mi>1024</span> <span class=o>*</span> <span class=mi>64</span><span class=p>];</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>cur</span> <span class=o>=</span> <span class=n>list1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>1024</span> <span class=o>*</span> <span class=mi>1024</span> <span class=o>*</span> <span class=mi>64</span> <span class=o>-</span> <span class=mi>1</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>cur</span><span class=o>-&gt;</span><span class=n>next</span> <span class=o>=</span> <span class=o>&amp;</span><span class=n>list1</span><span class=p>[</span><span class=n>i</span> <span class=o>+</span> <span class=mi>1</span><span class=p>];</span>
+</span></span><span class=line><span class=cl>    <span class=n>cur</span> <span class=o>=</span> <span class=n>cur</span><span class=o>-&gt;</span><span class=n>next</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=n>list1</span><span class=p>[</span><span class=mi>1024</span> <span class=o>*</span> <span class=mi>1024</span> <span class=o>-</span> <span class=mi>1</span><span class=p>].</span><span class=n>next</span> <span class=o>=</span> <span class=nb>NULL</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// 分别分配，内存不连续
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=k>auto</span> <span class=n>list2</span> <span class=o>=</span> <span class=k>new</span> <span class=n>mydata</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>cur2</span> <span class=o>=</span> <span class=n>list2</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>1024</span> <span class=o>*</span> <span class=mi>1024</span> <span class=o>*</span> <span class=mi>64</span> <span class=o>-</span> <span class=mi>1</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>cur2</span><span class=o>-&gt;</span><span class=n>next</span> <span class=o>=</span> <span class=k>new</span> <span class=n>mydata</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=n>cur2</span> <span class=o>=</span> <span class=n>cur2</span><span class=o>-&gt;</span><span class=n>next</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// 遍历连续的链表
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>time_it</span><span class=p>(</span><span class=s>&#34;first&#34;</span><span class=p>,</span> <span class=p>[</span><span class=o>&amp;</span><span class=p>]()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>list1</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>next</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>value</span> <span class=o>*=</span> <span class=mi>3</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=p>});</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// 遍历不连续的链表
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>time_it</span><span class=p>(</span><span class=s>&#34;second&#34;</span><span class=p>,</span> <span class=p>[</span><span class=o>&amp;</span><span class=p>]()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>list2</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>next</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>value</span> <span class=o>*=</span> <span class=mi>3</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=p>});</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>为了体现出差异，一共遍历了 <code>1024*1024*64</code>个元素，每个元素 8 个字节，一共是512M数据。</p><p>结果如下。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>weakptr  数据结构  ♥ 09:42  clang++.exe -m32 -O2 main.cpp -o main.exe
-weakptr  数据结构  ♥ 09:43  ./main.exe
-first: 2ms
-second: 239ms
-</code></pre></td></tr></table>
-</div>
-</div><p>启用了<code>O2</code>级别优化的情况下，遍历连续分配和不连续分配的链表时，速度相差达到了惊人的一百多倍。</p>
-<p>是<code>O2</code>优化掉了第一种连续分配的链表遍历吗？<code>-O0</code> 禁止优化看看。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext><span class=line><span class=cl>weakptr  数据结构  ♥ 09:42  clang++.exe -m32 -O2 main.cpp -o main.exe
+</span></span><span class=line><span class=cl>weakptr  数据结构  ♥ 09:43  ./main.exe
+</span></span><span class=line><span class=cl>first: 2ms
+</span></span><span class=line><span class=cl>second: 239ms
+</span></span></code></pre></td></tr></table></div></div><p>启用了<code>O2</code>级别优化的情况下，遍历连续分配和不连续分配的链表时，速度相差达到了惊人的一百多倍。</p><p>是<code>O2</code>优化掉了第一种连续分配的链表遍历吗？<code>-O0</code> 禁止优化看看。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>weakptr  数据结构  ♥ 09:44  clang++.exe -m32 -O0 main.cpp -o main.exe
-weakptr  数据结构  ♥ 09:45  ./main.exe
-first: 3ms
-second: 262ms
-</code></pre></td></tr></table>
-</div>
-</div><p>并没有任何改善。</p>
-<p>因为考虑是和内存相关，影响内存访问性能的因素可以很自然想到缓存和缺页这两条。</p>
-<p>缓存指的是 cache line，一般说 false sharing 的时候提加 padding 对齐比较多。另一个情况就是遍历的时候，如果数据比较密集，那从主存刷新 cache line 就会更少，缓存利用更充分。所以像是数组这样的连续内存遍历速度通常远比链表之类的结构快。</p>
-<p>缺页又是另一个问题，缺页异常发生的几个常见场景包括：第一次访问分配好的内存，访问被交换到硬盘上的内存，<code>mmap</code> ，以及<code>SIGSEGV</code>等情况。一般来说的话，连续的内存分配下一次缺页可以得到连续的N个元素，不连续的分配第一次访问N个元素，最坏的情况下可能就要N次缺页异常。</p>
-<h3 id=缺页异常>缺页异常</h3>
-<p>先看缺页。这里使用微软的 Process Explorer 来观察 Page Fault 的出现情况。为了有效观察到page fault发生，我修改了一下代码，在 <code>time_it</code> 函数里添加上了简单的 page fault 观测。</p>
-<p><em>提示，也可以用 Process Explorer 等工具观测程序运行时的 Page Fault 数量，但直接在代码里嵌入观测还是最准确的。如果有更好用的性能分析工具的话当然更好。</em></p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext><span class=line><span class=cl>weakptr  数据结构  ♥ 09:44  clang++.exe -m32 -O0 main.cpp -o main.exe
+</span></span><span class=line><span class=cl>weakptr  数据结构  ♥ 09:45  ./main.exe
+</span></span><span class=line><span class=cl>first: 3ms
+</span></span><span class=line><span class=cl>second: 262ms
+</span></span></code></pre></td></tr></table></div></div><p>并没有任何改善。</p><p>因为考虑是和内存相关，影响内存访问性能的因素可以很自然想到缓存和缺页这两条。</p><p>缓存指的是 cache line，一般说 false sharing 的时候提加 padding 对齐比较多。另一个情况就是遍历的时候，如果数据比较密集，那从主存刷新 cache line 就会更少，缓存利用更充分。所以像是数组这样的连续内存遍历速度通常远比链表之类的结构快。</p><p>缺页又是另一个问题，缺页异常发生的几个常见场景包括：第一次访问分配好的内存，访问被交换到硬盘上的内存，<code>mmap</code> ，以及<code>SIGSEGV</code>等情况。一般来说的话，连续的内存分配下一次缺页可以得到连续的N个元素，不连续的分配第一次访问N个元素，最坏的情况下可能就要N次缺页异常。</p><h3 id=缺页异常>缺页异常</h3><p>先看缺页。这里使用微软的 Process Explorer 来观察 Page Fault 的出现情况。为了有效观察到page fault发生，我修改了一下代码，在 <code>time_it</code> 函数里添加上了简单的 page fault 观测。</p><p><em>提示，也可以用 Process Explorer 等工具观测程序运行时的 Page Fault 数量，但直接在代码里嵌入观测还是最准确的。如果有更好用的性能分析工具的话当然更好。</em></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -294,84 +151,47 @@ second: 262ms
 </span><span class=lnt>16
 </span><span class=lnt>17
 </span><span class=lnt>18
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=n>DWORD</span> <span class=nf>getPageFaultCount</span><span class=p>()</span> <span class=p>{</span>
-    <span class=k>auto</span> <span class=n>proc</span> <span class=o>=</span> <span class=n>GetCurrentProcess</span><span class=p>();</span>
-    <span class=n>PROCESS_MEMORY_COUNTERS</span> <span class=n>counters</span><span class=p>;</span>
-    <span class=k>if</span> <span class=p>(</span><span class=n>GetProcessMemoryInfo</span><span class=p>(</span><span class=n>proc</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>counters</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>counters</span><span class=p>))</span> <span class=o>==</span> <span class=n>FALSE</span><span class=p>)</span> <span class=p>{</span>
-        <span class=n>cerr</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;GetProcessMemoryInfo failed, error &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>GetLastError</span><span class=p>()</span> <span class=o>&lt;&lt;</span> <span class=n>endl</span><span class=p>;</span>
-    <span class=p>}</span>
-    <span class=k>return</span> <span class=n>counters</span><span class=p>.</span><span class=n>PageFaultCount</span><span class=p>;</span>
-<span class=p>}</span>
-
-<span class=kt>void</span> <span class=nf>time_it</span><span class=p>(</span><span class=k>const</span> <span class=n>string</span> <span class=n>name</span><span class=p>,</span> <span class=n>function</span><span class=o>&lt;</span><span class=kt>void</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span><span class=o>&gt;</span> <span class=n>fn</span><span class=p>)</span> <span class=p>{</span>
-    <span class=k>auto</span> <span class=n>before</span> <span class=o>=</span> <span class=n>getPageFaultCount</span><span class=p>();</span>
-    <span class=k>auto</span> <span class=n>start</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
-    <span class=n>fn</span><span class=p>();</span>
-    <span class=k>auto</span> <span class=n>stop</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
-    <span class=k>auto</span> <span class=n>after</span> <span class=o>=</span> <span class=n>getPageFaultCount</span><span class=p>();</span>
-    <span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=n>name</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;: &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>duration_cast</span><span class=o>&lt;</span><span class=n>milliseconds</span><span class=o>&gt;</span><span class=p>(</span><span class=n>stop</span> <span class=o>-</span> <span class=n>start</span><span class=p>).</span><span class=n>count</span><span class=p>()</span>
-         <span class=o>&lt;&lt;</span> <span class=s>&#34;ms, page fault count: &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>after</span> <span class=o>-</span> <span class=n>before</span> <span class=o>&lt;&lt;</span> <span class=n>endl</span><span class=p>;</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>然后对两个用例进行测试。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=line><span class=cl><span class=n>DWORD</span> <span class=nf>getPageFaultCount</span><span class=p>()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>auto</span> <span class=n>proc</span> <span class=o>=</span> <span class=n>GetCurrentProcess</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=n>PROCESS_MEMORY_COUNTERS</span> <span class=n>counters</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>GetProcessMemoryInfo</span><span class=p>(</span><span class=n>proc</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>counters</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>counters</span><span class=p>))</span> <span class=o>==</span> <span class=n>FALSE</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=n>cerr</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;GetProcessMemoryInfo failed, error &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>GetLastError</span><span class=p>()</span> <span class=o>&lt;&lt;</span> <span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>counters</span><span class=p>.</span><span class=n>PageFaultCount</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>time_it</span><span class=p>(</span><span class=k>const</span> <span class=n>string</span> <span class=n>name</span><span class=p>,</span> <span class=n>function</span><span class=o>&lt;</span><span class=kt>void</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span><span class=o>&gt;</span> <span class=n>fn</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>auto</span> <span class=n>before</span> <span class=o>=</span> <span class=n>getPageFaultCount</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=k>auto</span> <span class=n>start</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=n>fn</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=k>auto</span> <span class=n>stop</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=k>auto</span> <span class=n>after</span> <span class=o>=</span> <span class=n>getPageFaultCount</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=n>name</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;: &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>duration_cast</span><span class=o>&lt;</span><span class=n>milliseconds</span><span class=o>&gt;</span><span class=p>(</span><span class=n>stop</span> <span class=o>-</span> <span class=n>start</span><span class=p>).</span><span class=n>count</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>         <span class=o>&lt;&lt;</span> <span class=s>&#34;ms, page fault count: &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>after</span> <span class=o>-</span> <span class=n>before</span> <span class=o>&lt;&lt;</span> <span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>然后对两个用例进行测试。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>initialization-1: 337ms, page fault count: 131329
-initialization-2: 3591ms, page fault count: 265660
-iteration-1: 3ms, page fault count: 0
-iteration-2: 294ms, page fault count: 0
-</code></pre></td></tr></table>
-</div>
-</div><p>可以清晰地看到，在链表的初始化阶段，非连续分配的链表产生了连续分配的链表差不多两倍的 page fault，耗时接近十倍——我还得澄清一下这不是在暗示十倍的耗时都是 page fault 造成的，但 page fault 在其中也消耗了一部分资源总归是毫无疑问的。</p>
-<p>但随后的迭代阶段里并没有新的 page fault 产生，因为 两次 512M 的分配再加上循环new，堆维护指针的开销，差不多1.5G，还没有耗尽可用内存。</p>
-<p>排除 page fault 的影响后，现在考虑另一个影响因素：缓存。</p>
-<h3 id=缓存行-1>缓存行</h3>
-<p>关于缓存的分析这里使用了 Intel VTune Profiler 作为分析工具，来提取缓存命中情况。为了让VTune抓取更多信息来分析，对benchmark代码再次修改，遍历一次改成遍历100次。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext><span class=line><span class=cl>initialization-1: 337ms, page fault count: 131329
+</span></span><span class=line><span class=cl>initialization-2: 3591ms, page fault count: 265660
+</span></span><span class=line><span class=cl>iteration-1: 3ms, page fault count: 0
+</span></span><span class=line><span class=cl>iteration-2: 294ms, page fault count: 0
+</span></span></code></pre></td></tr></table></div></div><p>可以清晰地看到，在链表的初始化阶段，非连续分配的链表产生了连续分配的链表差不多两倍的 page fault，耗时接近十倍——我还得澄清一下这不是在暗示十倍的耗时都是 page fault 造成的，但 page fault 在其中也消耗了一部分资源总归是毫无疑问的。</p><p>但随后的迭代阶段里并没有新的 page fault 产生，因为 两次 512M 的分配再加上循环new，堆维护指针的开销，差不多1.5G，还没有耗尽可用内存。</p><p>排除 page fault 的影响后，现在考虑另一个影响因素：缓存。</p><h3 id=缓存行-1>缓存行</h3><p>关于缓存的分析这里使用了 Intel VTune Profiler 作为分析工具，来提取缓存命中情况。为了让VTune抓取更多信息来分析，对benchmark代码再次修改，遍历一次改成遍历100次。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
 </span><span class=lnt>7
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>100</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>time_it</span><span class=p>(</span><span class=s>&#34;iteration-2&#34;</span><span class=p>,</span> <span class=p>[</span><span class=o>&amp;</span><span class=n>list2</span><span class=p>]()</span> <span class=p>{</span>
-        <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>list2</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>next</span><span class=p>)</span> <span class=p>{</span>
-            <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>value</span> <span class=o>*=</span> <span class=mi>3</span><span class=p>;</span>
-        <span class=p>}</span>
-    <span class=p>});</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>并将连续内存分配和不连续分配分成<code>benchmark1.cpp</code>和<code>benchmark2.cpp</code>，分别用<code>-m32 -O0 -g</code> 参数编译，放进 VTune 分析内存访问性能。</p>
-<p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328.png width=507 height=332 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328_hu3571708b5c5bc5793cda86111950dfc6_32684_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328_hu3571708b5c5bc5793cda86111950dfc6_32684_1024x0_resize_box_3.png 1024w" loading=lazy alt=benchmark1 class=gallery-image data-flex-grow=152 data-flex-basis=366px></p>
-<p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825.png width=551 height=340 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825_hu652bea774cd469a5f99b0baeb69059e1_36904_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825_hu652bea774cd469a5f99b0baeb69059e1_36904_1024x0_resize_box_3.png 1024w" loading=lazy alt=benchmark2 class=gallery-image data-flex-grow=162 data-flex-basis=388px></p>
-<p>观察图中的 LLC Miss Count 可以发现，Benchmark2 的缓存未命中次数远大于 benchmark1 ，平均时延 Average Latency 高出 13 个cycles 。这如何影响性能呢？继续观察下图 Bottom-up 中的分析。</p>
-<p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599.png width=1559 height=121 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599_huaeb1369d8df5f047d5d55e74be805100_32485_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599_huaeb1369d8df5f047d5d55e74be805100_32485_1024x0_resize_box_3.png 1024w" loading=lazy alt=benchmark1 class=gallery-image data-flex-grow=1288 data-flex-basis=3092px></p>
-<p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956.png width=1562 height=91 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956_hu1b3074ff876521e620d7b28b0f9399ed_27911_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956_hu1b3074ff876521e620d7b28b0f9399ed_27911_1024x0_resize_box_3.png 1024w" loading=lazy alt=benchmark2 class=gallery-image data-flex-grow=1716 data-flex-basis=4119px></p>
-<p>能发现，在benchmark1（连续分配链表遍历测试）中，初始化耗时和遍历耗时相仿，都在300ms左右。初始化耗时可能主要来自缺页，每次遍历整个链表仅3ms左右，LLC Miss Count 为 0。这说明缓存完美地发挥了作用。</p>
-<p>在 benchmark2 （循环分配节点，不连续）中，初始化耗时1.4秒，100次遍历耗时26.461秒，而且注意，LLC Miss Count 高达 47,603,332 。将这个数字除以循环次数，大约等于每个节点访问都会产生 0.7 个 LLC Miss 。</p>
-<p>为什么会发生这种事？</p>
-<p>benchmark1 一次 new 出连续的 <code>1024 * 1024 * 64</code> 个元素，每个元素 8 个字节，连续排列，而且构造链表时是按顺序头尾相连的。所以遍历 benchmark1 的链表时，填充好的 cache line (设为 64字节)一共有8个链表元素且连续，预取机制同时拿了下一个 cache line ，因此 CPU 几乎不用傻等主存给数据，只需要不断一个 cache line 接一个 cache line 读写即可，效率极高。</p>
-<p>而 benchmark2 相反，因为链表中的每个元素都是独立分配的，依据 allocator 算法不同表现会有区别，但比较明确的是元素不大可能是在内存中连续分配。在遍历链表时，取下一个链表元素 <code>cur=cur->next </code> 后，<code>cur</code> 指向的地址大概率并不在已缓存的 cache line 中，因此每次循环里 CPU 都不得不从主存取数。可是主存取数是L1/L2 缓存取数耗时的成百上千倍，效率极低。</p>
-<h3 id=伪共享>伪共享</h3>
-<p>继续之前再说说伪共享。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=line><span class=cl><span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>100</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>time_it</span><span class=p>(</span><span class=s>&#34;iteration-2&#34;</span><span class=p>,</span> <span class=p>[</span><span class=o>&amp;</span><span class=n>list2</span><span class=p>]()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>list2</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>;</span> <span class=n>ptr</span> <span class=o>=</span> <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>next</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=n>ptr</span><span class=o>-&gt;</span><span class=n>value</span> <span class=o>*=</span> <span class=mi>3</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=p>});</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>并将连续内存分配和不连续分配分成<code>benchmark1.cpp</code>和<code>benchmark2.cpp</code>，分别用<code>-m32 -O0 -g</code> 参数编译，放进 VTune 分析内存访问性能。</p><p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328.png width=507 height=332 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328_hu3571708b5c5bc5793cda86111950dfc6_32684_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141503328_hu3571708b5c5bc5793cda86111950dfc6_32684_1024x0_resize_box_3.png 1024w" loading=lazy alt=benchmark1 class=gallery-image data-flex-grow=152 data-flex-basis=366px></p><p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825.png width=551 height=340 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825_hu652bea774cd469a5f99b0baeb69059e1_36904_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141525825_hu652bea774cd469a5f99b0baeb69059e1_36904_1024x0_resize_box_3.png 1024w" loading=lazy alt=benchmark2 class=gallery-image data-flex-grow=162 data-flex-basis=388px></p><p>观察图中的 LLC Miss Count 可以发现，Benchmark2 的缓存未命中次数远大于 benchmark1 ，平均时延 Average Latency 高出 13 个cycles 。这如何影响性能呢？继续观察下图 Bottom-up 中的分析。</p><p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599.png width=1559 height=121 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599_huaeb1369d8df5f047d5d55e74be805100_32485_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141832599_huaeb1369d8df5f047d5d55e74be805100_32485_1024x0_resize_box_3.png 1024w" loading=lazy alt=benchmark1 class=gallery-image data-flex-grow=1288 data-flex-basis=3092px></p><p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956.png width=1562 height=91 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956_hu1b3074ff876521e620d7b28b0f9399ed_27911_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215141933956_hu1b3074ff876521e620d7b28b0f9399ed_27911_1024x0_resize_box_3.png 1024w" loading=lazy alt=benchmark2 class=gallery-image data-flex-grow=1716 data-flex-basis=4119px></p><p>能发现，在benchmark1（连续分配链表遍历测试）中，初始化耗时和遍历耗时相仿，都在300ms左右。初始化耗时可能主要来自缺页，每次遍历整个链表仅3ms左右，LLC Miss Count 为 0。这说明缓存完美地发挥了作用。</p><p>在 benchmark2 （循环分配节点，不连续）中，初始化耗时1.4秒，100次遍历耗时26.461秒，而且注意，LLC Miss Count 高达 47,603,332 。将这个数字除以循环次数，大约等于每个节点访问都会产生 0.7 个 LLC Miss 。</p><p>为什么会发生这种事？</p><p>benchmark1 一次 new 出连续的 <code>1024 * 1024 * 64</code> 个元素，每个元素 8 个字节，连续排列，而且构造链表时是按顺序头尾相连的。所以遍历 benchmark1 的链表时，填充好的 cache line (设为 64字节)一共有8个链表元素且连续，预取机制同时拿了下一个 cache line ，因此 CPU 几乎不用傻等主存给数据，只需要不断一个 cache line 接一个 cache line 读写即可，效率极高。</p><p>而 benchmark2 相反，因为链表中的每个元素都是独立分配的，依据 allocator 算法不同表现会有区别，但比较明确的是元素不大可能是在内存中连续分配。在遍历链表时，取下一个链表元素 <code>cur=cur->next</code> 后，<code>cur</code> 指向的地址大概率并不在已缓存的 cache line 中，因此每次循环里 CPU 都不得不从主存取数。可是主存取数是L1/L2 缓存取数耗时的成百上千倍，效率极低。</p><h3 id=伪共享>伪共享</h3><p>继续之前再说说伪共享。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -412,89 +232,62 @@ iteration-2: 294ms, page fault count: 0
 </span><span class=lnt>39
 </span><span class=lnt>40
 </span><span class=lnt>41
-</span><span class=lnt>42
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=cp>#include</span> <span class=cpf>&lt;cstddef&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;thread&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;functional&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;chrono&gt;</span><span class=cp>
-</span><span class=cp></span>
-<span class=k>using</span> <span class=k>namespace</span> <span class=n>std</span><span class=p>;</span>
-<span class=k>using</span> <span class=k>namespace</span> <span class=n>std</span><span class=o>::</span><span class=n>chrono</span><span class=p>;</span>
-
-<span class=kt>void</span> <span class=nf>time_it</span><span class=p>(</span><span class=k>const</span> <span class=n>string</span> <span class=n>name</span><span class=p>,</span> <span class=n>function</span><span class=o>&lt;</span><span class=kt>void</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span><span class=o>&gt;</span> <span class=n>fn</span><span class=p>)</span> <span class=p>{</span>
-    <span class=k>auto</span> <span class=n>start</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
-    <span class=n>fn</span><span class=p>();</span>
-    <span class=k>auto</span> <span class=n>stop</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
-    <span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=n>name</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;: &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>duration_cast</span><span class=o>&lt;</span><span class=n>milliseconds</span><span class=o>&gt;</span><span class=p>(</span><span class=n>stop</span> <span class=o>-</span> <span class=n>start</span><span class=p>).</span><span class=n>count</span><span class=p>()</span>
-         <span class=o>&lt;&lt;</span> <span class=s>&#34;ms&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>endl</span><span class=p>;</span>
-<span class=p>}</span>
-
-<span class=kt>void</span> <span class=nf>f</span><span class=p>(</span><span class=kt>int</span> <span class=o>*</span><span class=n>data</span><span class=p>)</span> <span class=p>{</span>
-    <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>10000000</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
-        <span class=o>*</span><span class=n>data</span> <span class=o>+=</span> <span class=mi>100</span><span class=p>;</span>
-    <span class=p>}</span>
-<span class=p>}</span>
-
-<span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-    <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>100</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
-        <span class=n>time_it</span><span class=p>(</span><span class=s>&#34;iteration&#34;</span><span class=p>,</span> <span class=p>[]()</span> <span class=p>{</span>
-            <span class=kt>int</span> <span class=n>a</span> <span class=o>=</span> <span class=mi>0</span><span class=p>,</span> <span class=n>b</span> <span class=o>=</span> <span class=mi>0</span><span class=p>,</span> <span class=n>c</span> <span class=o>=</span> <span class=mi>0</span><span class=p>,</span> <span class=n>d</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
-            <span class=kr>thread</span> <span class=o>*</span><span class=n>threads</span><span class=p>[</span><span class=mi>4</span><span class=p>]</span> <span class=o>=</span> <span class=p>{</span>
-                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>a</span><span class=p>),</span>
-                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>b</span><span class=p>),</span>
-                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>c</span><span class=p>),</span>
-                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>d</span><span class=p>),</span>
-            <span class=p>};</span>
-
-            <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=nl>t</span> <span class=p>:</span> <span class=n>threads</span><span class=p>)</span> <span class=p>{</span>
-                <span class=n>t</span><span class=o>-&gt;</span><span class=n>join</span><span class=p>();</span>
-            <span class=p>}</span>
-        <span class=p>});</span>
-    <span class=p>}</span>
-    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
-<span class=p>}</span>
-
-</code></pre></td></tr></table>
-</div>
-</div><p>依然是一个很简单的 benchmark，输出如下。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;cstddef&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;thread&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;functional&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;chrono&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=k>using</span> <span class=k>namespace</span> <span class=n>std</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=k>using</span> <span class=k>namespace</span> <span class=n>std</span><span class=o>::</span><span class=n>chrono</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>time_it</span><span class=p>(</span><span class=k>const</span> <span class=n>string</span> <span class=n>name</span><span class=p>,</span> <span class=n>function</span><span class=o>&lt;</span><span class=kt>void</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span><span class=o>&gt;</span> <span class=n>fn</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>auto</span> <span class=n>start</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=n>fn</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=k>auto</span> <span class=n>stop</span> <span class=o>=</span> <span class=n>system_clock</span><span class=o>::</span><span class=n>now</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=n>name</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;: &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>duration_cast</span><span class=o>&lt;</span><span class=n>milliseconds</span><span class=o>&gt;</span><span class=p>(</span><span class=n>stop</span> <span class=o>-</span> <span class=n>start</span><span class=p>).</span><span class=n>count</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>         <span class=o>&lt;&lt;</span> <span class=s>&#34;ms&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>f</span><span class=p>(</span><span class=kt>int</span> <span class=o>*</span><span class=n>data</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>10000000</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=o>*</span><span class=n>data</span> <span class=o>+=</span> <span class=mi>100</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>100</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=n>time_it</span><span class=p>(</span><span class=s>&#34;iteration&#34;</span><span class=p>,</span> <span class=p>[]()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=kt>int</span> <span class=n>a</span> <span class=o>=</span> <span class=mi>0</span><span class=p>,</span> <span class=n>b</span> <span class=o>=</span> <span class=mi>0</span><span class=p>,</span> <span class=n>c</span> <span class=o>=</span> <span class=mi>0</span><span class=p>,</span> <span class=n>d</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>            <span class=kr>thread</span> <span class=o>*</span><span class=n>threads</span><span class=p>[</span><span class=mi>4</span><span class=p>]</span> <span class=o>=</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>a</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>b</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>c</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>d</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>            <span class=p>};</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>            <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=nl>t</span> <span class=p>:</span> <span class=n>threads</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>                <span class=n>t</span><span class=o>-&gt;</span><span class=n>join</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>            <span class=p>}</span>
+</span></span><span class=line><span class=cl>        <span class=p>});</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>依然是一个很简单的 benchmark，输出如下。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
 </span><span class=lnt>7
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>iteration: 172ms
-iteration: 176ms
-iteration: 181ms
-iteration: 177ms
-iteration: 182ms
-iteration: 179ms
-... 略
-</code></pre></td></tr></table>
-</div>
-</div><p>一个非常简单的操作，4线程无锁，无 <code>volatile</code> 递增不同的四个变量，几乎看不出有什么约束导致性能低下的问题。我们通过 Intel VTune 来看看。</p>
-<p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690.png width=1453 height=740 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690_hu046c5a587cbc915571865660d4965e46_142205_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690_hu046c5a587cbc915571865660d4965e46_142205_1024x0_resize_box_3.png 1024w" loading=lazy alt="false sharing - intel VTune" class=gallery-image data-flex-grow=196 data-flex-basis=471px></p>
-<p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953.png width=1453 height=740 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953_hu63d8a1f13a9b918520d7739e38733940_101530_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953_hu63d8a1f13a9b918520d7739e38733940_101530_1024x0_resize_box_3.png 1024w" loading=lazy alt=stall class=gallery-image data-flex-grow=196 data-flex-basis=471px></p>
-<p>可以看到，VTune 提示CPU花费了大量时间在傻等 cache line 写入主存。</p>
-<p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789.png width=1101 height=62 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789_hua004026a68d2e492c13f4a22525e40fe_14051_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789_hua004026a68d2e492c13f4a22525e40fe_14051_1024x0_resize_box_3.png 1024w" loading=lazy alt="hot spot" class=gallery-image data-flex-grow=1775 data-flex-basis=4261px></p>
-<p>函数 f 出现了海量的 loads/store 操作。</p>
-<p>在前文中我们聊了 cache line 的作用，这里也能看到 LLC Miss 为 0，那么为什么运行性能会这么差呢？</p>
-<p>这个问题还得回到 cache line 上。在多核系统中，cache line 还要求 <strong>一致性</strong> ，一旦写 cache line 中的任意字节，都会让 <strong>整个</strong> cache line 标记为失效。在基准测试代码里，四个 int 变量被连续分配在栈上，也就是说 cache line 极有可能将这四个变量中的多个保存在同一 cache line 内。任意一个线程修改了其中一个变量，都会导致 cache line 被标为失效，其他线程或核心想要访问这四个变量之一都不得不从主存重新取数。</p>
-<p>这么做的原因是为了保证数据一致性。CPU0 修改了 cache line 中的数据，还没有写回主存，其他 CPU 都不清楚 CPU0 做了什么修改，只能等待 CPU0 写回主存（或者L3），再重新从主存（或L3）取数。但我们都知道a、b、c、d并不是共享的，每个线程都只访问自己的那个变量。这种问题被称作<strong>伪共享</strong>。</p>
-<p>在 VTune 中的表现，就是上图中海量的 Loads/Stores 操作。</p>
-<p>如何解决呢？</p>
-<p>很简单，让每个线程要操作的变量填满整个 cache line，防止因为cache line 里混入和其他线程要修改的变量造成伪共享。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext><span class=line><span class=cl>iteration: 172ms
+</span></span><span class=line><span class=cl>iteration: 176ms
+</span></span><span class=line><span class=cl>iteration: 181ms
+</span></span><span class=line><span class=cl>iteration: 177ms
+</span></span><span class=line><span class=cl>iteration: 182ms
+</span></span><span class=line><span class=cl>iteration: 179ms
+</span></span><span class=line><span class=cl>... 略
+</span></span></code></pre></td></tr></table></div></div><p>一个非常简单的操作，4线程无锁，无 <code>volatile</code> 递增不同的四个变量，几乎看不出有什么约束导致性能低下的问题。我们通过 Intel VTune 来看看。</p><p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690.png width=1453 height=740 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690_hu046c5a587cbc915571865660d4965e46_142205_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163719690_hu046c5a587cbc915571865660d4965e46_142205_1024x0_resize_box_3.png 1024w" loading=lazy alt="false sharing - intel VTune" class=gallery-image data-flex-grow=196 data-flex-basis=471px></p><p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953.png width=1453 height=740 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953_hu63d8a1f13a9b918520d7739e38733940_101530_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215163847953_hu63d8a1f13a9b918520d7739e38733940_101530_1024x0_resize_box_3.png 1024w" loading=lazy alt=stall class=gallery-image data-flex-grow=196 data-flex-basis=471px></p><p>可以看到，VTune 提示CPU花费了大量时间在傻等 cache line 写入主存。</p><p><img src=/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789.png width=1101 height=62 srcset="/blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789_hua004026a68d2e492c13f4a22525e40fe_14051_480x0_resize_box_3.png 480w, /blog/p/cpu-cache-page-fault-and-false-sharing/image-20220215164012789_hua004026a68d2e492c13f4a22525e40fe_14051_1024x0_resize_box_3.png 1024w" loading=lazy alt="hot spot" class=gallery-image data-flex-grow=1775 data-flex-basis=4261px></p><p>函数 f 出现了海量的 loads/store 操作。</p><p>在前文中我们聊了 cache line 的作用，这里也能看到 LLC Miss 为 0，那么为什么运行性能会这么差呢？</p><p>这个问题还得回到 cache line 上。在多核系统中，cache line 还要求 <strong>一致性</strong> ，一旦写 cache line 中的任意字节，都会让 <strong>整个</strong> cache line 标记为失效。在基准测试代码里，四个 int 变量被连续分配在栈上，也就是说 cache line 极有可能将这四个变量中的多个保存在同一 cache line 内。任意一个线程修改了其中一个变量，都会导致 cache line 被标为失效，其他线程或核心想要访问这四个变量之一都不得不从主存重新取数。</p><p>这么做的原因是为了保证数据一致性。CPU0 修改了 cache line 中的数据，还没有写回主存，其他 CPU 都不清楚 CPU0 做了什么修改，只能等待 CPU0 写回主存（或者L3），再重新从主存（或L3）取数。但我们都知道a、b、c、d并不是共享的，每个线程都只访问自己的那个变量。这种问题被称作<strong>伪共享</strong>。</p><p>在 VTune 中的表现，就是上图中海量的 Loads/Stores 操作。</p><p>如何解决呢？</p><p>很简单，让每个线程要操作的变量填满整个 cache line，防止因为cache line 里混入和其他线程要修改的变量造成伪共享。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -524,44 +317,37 @@ iteration: 179ms
 </span><span class=lnt>28
 </span><span class=lnt>29
 </span><span class=lnt>30
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=k>typedef</span> <span class=k>struct</span> <span class=p>{</span>
-    <span class=kt>int8_t</span> <span class=n>_before</span><span class=p>[</span><span class=mi>60</span><span class=p>];</span>
-    <span class=kt>int32_t</span> <span class=n>value</span><span class=p>;</span>
-    <span class=kt>int8_t</span> <span class=n>_after</span><span class=p>[</span><span class=mi>60</span><span class=p>];</span>
-<span class=p>}</span> <span class=n>value</span><span class=p>;</span>
-
-<span class=kt>void</span> <span class=nf>f</span><span class=p>(</span><span class=n>value</span> <span class=o>*</span><span class=n>data</span><span class=p>)</span> <span class=p>{</span>
-    <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>10000000</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
-        <span class=n>data</span><span class=o>-&gt;</span><span class=n>value</span> <span class=o>+=</span> <span class=mi>100</span><span class=p>;</span>
-    <span class=p>}</span>
-<span class=p>}</span>
-
-<span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-    <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>100</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
-        <span class=n>time_it</span><span class=p>(</span><span class=s>&#34;iteration&#34;</span><span class=p>,</span> <span class=p>[]()</span> <span class=p>{</span>
-            <span class=n>value</span> <span class=n>a</span> <span class=o>=</span> <span class=p>{</span><span class=mi>0</span><span class=p>},</span> <span class=n>b</span> <span class=o>=</span> <span class=p>{</span><span class=mi>0</span><span class=p>},</span> <span class=n>c</span> <span class=o>=</span> <span class=p>{</span><span class=mi>0</span><span class=p>},</span> <span class=n>d</span> <span class=o>=</span> <span class=p>{</span><span class=mi>0</span><span class=p>};</span>
-            <span class=kr>thread</span> <span class=o>*</span><span class=n>threads</span><span class=p>[</span><span class=mi>4</span><span class=p>]</span> <span class=o>=</span> <span class=p>{</span>
-                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>a</span><span class=p>),</span>
-                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>b</span><span class=p>),</span>
-                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>c</span><span class=p>),</span>
-                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>d</span><span class=p>),</span>
-            <span class=p>};</span>
-
-            <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=nl>t</span> <span class=p>:</span> <span class=n>threads</span><span class=p>)</span> <span class=p>{</span>
-                <span class=n>t</span><span class=o>-&gt;</span><span class=n>join</span><span class=p>();</span>
-            <span class=p>}</span>
-        <span class=p>});</span>
-    <span class=p>}</span>
-    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>将原本的 int 改成前后各有 60 字节填充的结构（前60字节防止 value 混入别人的 cache line，后60字节防止value后的变量混入cache line，124字节，对齐后128字节）。这个解决方法是典型的 <strong>用空间换时间</strong> 。再次运行基准测试，可以看到运行时间缩短了数倍。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c++ data-lang=c++><span class=line><span class=cl><span class=k>typedef</span> <span class=k>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kt>int8_t</span> <span class=n>_before</span><span class=p>[</span><span class=mi>60</span><span class=p>];</span>
+</span></span><span class=line><span class=cl>    <span class=kt>int32_t</span> <span class=n>value</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kt>int8_t</span> <span class=n>_after</span><span class=p>[</span><span class=mi>60</span><span class=p>];</span>
+</span></span><span class=line><span class=cl><span class=p>}</span> <span class=n>value</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>f</span><span class=p>(</span><span class=n>value</span> <span class=o>*</span><span class=n>data</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>10000000</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=n>data</span><span class=o>-&gt;</span><span class=n>value</span> <span class=o>+=</span> <span class=mi>100</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=mi>100</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=n>time_it</span><span class=p>(</span><span class=s>&#34;iteration&#34;</span><span class=p>,</span> <span class=p>[]()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=n>value</span> <span class=n>a</span> <span class=o>=</span> <span class=p>{</span><span class=mi>0</span><span class=p>},</span> <span class=n>b</span> <span class=o>=</span> <span class=p>{</span><span class=mi>0</span><span class=p>},</span> <span class=n>c</span> <span class=o>=</span> <span class=p>{</span><span class=mi>0</span><span class=p>},</span> <span class=n>d</span> <span class=o>=</span> <span class=p>{</span><span class=mi>0</span><span class=p>};</span>
+</span></span><span class=line><span class=cl>            <span class=kr>thread</span> <span class=o>*</span><span class=n>threads</span><span class=p>[</span><span class=mi>4</span><span class=p>]</span> <span class=o>=</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>a</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>b</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>c</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>                <span class=k>new</span> <span class=kr>thread</span><span class=p>(</span><span class=n>f</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>d</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>            <span class=p>};</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>            <span class=k>for</span> <span class=p>(</span><span class=k>auto</span> <span class=nl>t</span> <span class=p>:</span> <span class=n>threads</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>                <span class=n>t</span><span class=o>-&gt;</span><span class=n>join</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>            <span class=p>}</span>
+</span></span><span class=line><span class=cl>        <span class=p>});</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>将原本的 int 改成前后各有 60 字节填充的结构（前60字节防止 value 混入别人的 cache line，后60字节防止value后的变量混入cache line，124字节，对齐后128字节）。这个解决方法是典型的 <strong>用空间换时间</strong> 。再次运行基准测试，可以看到运行时间缩短了数倍。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -572,47 +358,18 @@ iteration: 179ms
 </span><span class=lnt> 9
 </span><span class=lnt>10
 </span><span class=lnt>11
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>iteration: 15ms
-iteration: 21ms
-iteration: 20ms
-iteration: 18ms
-iteration: 20ms
-iteration: 22ms
-iteration: 20ms
-iteration: 19ms
-iteration: 20ms
-iteration: 20ms
-... 略
-</code></pre></td></tr></table>
-</div>
-</div><h3 id=cache-line-原理>cache line 原理</h3>
-<p>Intel 在 2016 年发表的一篇文章，<a class=link href=https://www.intel.com/content/www/us/en/developer/articles/technical/how-memory-is-accessed.html target=_blank rel=noopener>How Memory Is Accessed</a>这样写道。</p>
-<blockquote>
-<p>Programming modern computers rarely requires an understanding of underlying hardware and software; consequently, most programmers do not know how the memory subsystem works.</p>
-<p>However, such lack of knowledge can ultimately produce a 10x or worse slowdown in application performance – especially since the arrival of <a class=link href=http://software.intel.com/en-us/articles/what-s-new-about-modern-hardware target=_blank rel=noopener>new hardware technologies</a>.</p>
-<p>&mldr;</p>
-<p>The accesses propagating through the memory subsystem are a combination of a specific request and the needed physical addresses and, perhaps, data.</p>
-<p>Data moves around most of the memory subsystem in 64-byte quantities called <em>cache lines</em>. A <em>cache entry</em>, which is some transistors that can store a physical address and a cache line, is filled when a cache line is copied into it. Pages are evenly divided into cache lines – the first 64 bytes of a 4096-byte page is a cache line, with the 64 bytes stored together in a cache entry; the next 64 bytes is the next cache line, etc.</p>
-<p>Each cache line may:</p>
-<ul>
-<li>Not be cached</li>
-<li>Occupy an entry in one cache</li>
-<li>Be duplicated in several caches</li>
-</ul>
-<p>Cores, I/O devices, and other devices send requests to caches to either read or write a cache entry for a physical address. The lowest six bits of the physical address are not sent – they are used by the core to select the bytes within the cache line. The core sends separate requests for each cache line it needs.</p>
-<ul>
-<li><strong>Reads</strong> – If a cache has the requested physical address in a cache entry, the cache returns the data. If not, the cache requests the data from deeper in the memory subsystem and evicts some cache entry to make room. If the evicted cache entry has been modified, it must be written to the deeper memory subsystem as part of this eviction. This means a stream of reads may slow down because an earlier set of writes must be pushed deeper into the memory subsystem. A small queue of written data buffers the communication from the sender to the receiver.</li>
-<li><strong>Writes</strong> – If the cache does not have the cache line in a cache entry, the cache reads it from deeper in the memory subsystem. It evicts some other physical address from its cache entry to make room for this cache line. The read is necessary to get all the 64 bytes, because the write is probably changing only some of them. The first time a cache entry is written, the cache entries of this physical address in all other caches are invalidated. This action makes the first write on a cache entry more expensive than later writes.</li>
-</ul>
-</blockquote>
-<p>CPU访问主存时并不是直接从主存取数，而是先读入高速缓存，也就是在CPU的规格说明中提到的 L1/L2/L3 缓存。而且，CPU也不会傻乎乎地只从主存取一个字节、4个字节或8个字节，而是取更多数据放入缓存。</p>
-<p>为什么？因为 <em>局部性原理</em> 。CPU设计者假设程序访问一个地址，则很快也会访问这个地址附近的其他地址。</p>
-<p>这儿有个表格 <em>Numbers everyone should know</em>：</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext><span class=line><span class=cl>iteration: 15ms
+</span></span><span class=line><span class=cl>iteration: 21ms
+</span></span><span class=line><span class=cl>iteration: 20ms
+</span></span><span class=line><span class=cl>iteration: 18ms
+</span></span><span class=line><span class=cl>iteration: 20ms
+</span></span><span class=line><span class=cl>iteration: 22ms
+</span></span><span class=line><span class=cl>iteration: 20ms
+</span></span><span class=line><span class=cl>iteration: 19ms
+</span></span><span class=line><span class=cl>iteration: 20ms
+</span></span><span class=line><span class=cl>iteration: 20ms
+</span></span><span class=line><span class=cl>... 略
+</span></span></code></pre></td></tr></table></div></div><h3 id=cache-line-原理>cache line 原理</h3><p>Intel 在 2016 年发表的一篇文章，<a class=link href=https://www.intel.com/content/www/us/en/developer/articles/technical/how-memory-is-accessed.html target=_blank rel=noopener>How Memory Is Accessed</a>这样写道。</p><blockquote><p>Programming modern computers rarely requires an understanding of underlying hardware and software; consequently, most programmers do not know how the memory subsystem works.</p><p>However, such lack of knowledge can ultimately produce a 10x or worse slowdown in application performance – especially since the arrival of <a class=link href=http://software.intel.com/en-us/articles/what-s-new-about-modern-hardware target=_blank rel=noopener>new hardware technologies</a>.</p><p>&mldr;</p><p>The accesses propagating through the memory subsystem are a combination of a specific request and the needed physical addresses and, perhaps, data.</p><p>Data moves around most of the memory subsystem in 64-byte quantities called <em>cache lines</em>. A <em>cache entry</em>, which is some transistors that can store a physical address and a cache line, is filled when a cache line is copied into it. Pages are evenly divided into cache lines – the first 64 bytes of a 4096-byte page is a cache line, with the 64 bytes stored together in a cache entry; the next 64 bytes is the next cache line, etc.</p><p>Each cache line may:</p><ul><li>Not be cached</li><li>Occupy an entry in one cache</li><li>Be duplicated in several caches</li></ul><p>Cores, I/O devices, and other devices send requests to caches to either read or write a cache entry for a physical address. The lowest six bits of the physical address are not sent – they are used by the core to select the bytes within the cache line. The core sends separate requests for each cache line it needs.</p><ul><li><strong>Reads</strong> – If a cache has the requested physical address in a cache entry, the cache returns the data. If not, the cache requests the data from deeper in the memory subsystem and evicts some cache entry to make room. If the evicted cache entry has been modified, it must be written to the deeper memory subsystem as part of this eviction. This means a stream of reads may slow down because an earlier set of writes must be pushed deeper into the memory subsystem. A small queue of written data buffers the communication from the sender to the receiver.</li><li><strong>Writes</strong> – If the cache does not have the cache line in a cache entry, the cache reads it from deeper in the memory subsystem. It evicts some other physical address from its cache entry to make room for this cache line. The read is necessary to get all the 64 bytes, because the write is probably changing only some of them. The first time a cache entry is written, the cache entries of this physical address in all other caches are invalidated. This action makes the first write on a cache entry more expensive than later writes.</li></ul></blockquote><p>CPU访问主存时并不是直接从主存取数，而是先读入高速缓存，也就是在CPU的规格说明中提到的 L1/L2/L3 缓存。而且，CPU也不会傻乎乎地只从主存取一个字节、4个字节或8个字节，而是取更多数据放入缓存。</p><p>为什么？因为 <em>局部性原理</em> 。CPU设计者假设程序访问一个地址，则很快也会访问这个地址附近的其他地址。</p><p>这儿有个表格 <em>Numbers everyone should know</em>：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -634,193 +391,34 @@ iteration: 20ms
 </span><span class=lnt>20
 </span><span class=lnt>21
 </span><span class=lnt>22
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext>           0.5 ns - CPU L1 dCACHE reference
-           1   ns - speed-of-light (a photon) travel a 1 ft (30.5cm) distance
-           5   ns - CPU L1 iCACHE Branch mispredict
-           7   ns - CPU L2  CACHE reference
-          71   ns - CPU cross-QPI/NUMA best  case on XEON E5-46*
-         100   ns - MUTEX lock/unlock
-         100   ns - own DDR MEMORY reference
-         135   ns - CPU cross-QPI/NUMA best  case on XEON E7-*
-         202   ns - CPU cross-QPI/NUMA worst case on XEON E7-*
-         325   ns - CPU cross-QPI/NUMA worst case on XEON E5-46*
-      10,000   ns - Compress 1K bytes with Zippy PROCESS
-      20,000   ns - Send 2K bytes over 1 Gbps NETWORK
-     250,000   ns - Read 1 MB sequentially from MEMORY
-     500,000   ns - Round trip within a same DataCenter
-  10,000,000   ns - DISK seek
-  10,000,000   ns - Read 1 MB sequentially from NETWORK
-  30,000,000   ns - Read 1 MB sequentially from DISK
- 150,000,000   ns - Send a NETWORK packet CA -&gt; Netherlands
-|   |   |   |
-|   |   | ns|
-|   | us|
-| ms|
-</code></pre></td></tr></table>
-</div>
-</div><p>具体数字依赖于具体的硬件平台，这个表格可以对访问速度建立大概的映像。当 L1/L2 缓存未命中，CPU不得不继续向更远、延时更长的设备寻求数据，每个 LLC Miss 都意味着 CPU 不得不花上成百上千倍的时间等待填充 cache line。而 LLC Miss 出现的频率越高，则意味着 CPU 执行的效率越低——绝大部分时间都在等待主存的数据。</p>
-<p>更糟糕的是，有时候 CPU 真的就是傻等(stall)，不专门分析甚至都不知道程序根本没跑出应有的速度。</p>
-<blockquote>
-<p>Modern cores use both <a class=link href=https://en.wikipedia.org/wiki/Out-of-order_execution target=_blank rel=noopener>out-of-order execution</a> and <a class=link href=https://en.wikipedia.org/wiki/Hyper-threading target=_blank rel=noopener>hyperthreading</a> to find and to do something useful while other instructions wait for data to be fetched.</p>
-<p>If nothing useful can be done, the core stalls. Unfortunately, the OS is almost unaware of the stall: the application appears to be running, and it is hard to tell if the application is slower than it should be. You need tools to examine <a class=link href=https://en.wikipedia.org/wiki/Hardware_performance_counter target=_blank rel=noopener>hardware performance counters</a> to see stall details.</p>
-</blockquote>
-<p>回顾基准测试代码，仅仅是连续分配内存就可以获得百倍的性能改善，超值。</p>
-<p>引用前文来给 cache line 小节结尾：</p>
-<blockquote>
-<p>However, such lack of knowledge can ultimately produce a 10x or worse slowdown in application performance – especially since the arrival of <a class=link href=http://software.intel.com/en-us/articles/what-s-new-about-modern-hardware target=_blank rel=noopener>new hardware technologies</a>.</p>
-</blockquote>
-<h2 id=总结>总结</h2>
-<p>什么是 cache line？</p>
-<blockquote>
-<p>Data moves around most of the memory subsystem in 64-byte quantities called <em>cache lines</em>.</p>
-</blockquote>
-<p>cache line 如何影响性能？</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/c++/>c++</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>分支预测对执行效率和安全的影响</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/how-to-compile-lief-on-windows/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>编译LIEF的各种姿势</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>在C++中嵌入Python解释器</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/gamehollywood-%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>GameHollywood 面试笔记</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>可重入和异步安全</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext><span class=line><span class=cl>           0.5 ns - CPU L1 dCACHE reference
+</span></span><span class=line><span class=cl>           1   ns - speed-of-light (a photon) travel a 1 ft (30.5cm) distance
+</span></span><span class=line><span class=cl>           5   ns - CPU L1 iCACHE Branch mispredict
+</span></span><span class=line><span class=cl>           7   ns - CPU L2  CACHE reference
+</span></span><span class=line><span class=cl>          71   ns - CPU cross-QPI/NUMA best  case on XEON E5-46*
+</span></span><span class=line><span class=cl>         100   ns - MUTEX lock/unlock
+</span></span><span class=line><span class=cl>         100   ns - own DDR MEMORY reference
+</span></span><span class=line><span class=cl>         135   ns - CPU cross-QPI/NUMA best  case on XEON E7-*
+</span></span><span class=line><span class=cl>         202   ns - CPU cross-QPI/NUMA worst case on XEON E7-*
+</span></span><span class=line><span class=cl>         325   ns - CPU cross-QPI/NUMA worst case on XEON E5-46*
+</span></span><span class=line><span class=cl>      10,000   ns - Compress 1K bytes with Zippy PROCESS
+</span></span><span class=line><span class=cl>      20,000   ns - Send 2K bytes over 1 Gbps NETWORK
+</span></span><span class=line><span class=cl>     250,000   ns - Read 1 MB sequentially from MEMORY
+</span></span><span class=line><span class=cl>     500,000   ns - Round trip within a same DataCenter
+</span></span><span class=line><span class=cl>  10,000,000   ns - DISK seek
+</span></span><span class=line><span class=cl>  10,000,000   ns - Read 1 MB sequentially from NETWORK
+</span></span><span class=line><span class=cl>  30,000,000   ns - Read 1 MB sequentially from DISK
+</span></span><span class=line><span class=cl> 150,000,000   ns - Send a NETWORK packet CA -&gt; Netherlands
+</span></span><span class=line><span class=cl>|   |   |   |
+</span></span><span class=line><span class=cl>|   |   | ns|
+</span></span><span class=line><span class=cl>|   | us|
+</span></span><span class=line><span class=cl>| ms|
+</span></span></code></pre></td></tr></table></div></div><p>具体数字依赖于具体的硬件平台，这个表格可以对访问速度建立大概的映像。当 L1/L2 缓存未命中，CPU不得不继续向更远、延时更长的设备寻求数据，每个 LLC Miss 都意味着 CPU 不得不花上成百上千倍的时间等待填充 cache line。而 LLC Miss 出现的频率越高，则意味着 CPU 执行的效率越低——绝大部分时间都在等待主存的数据。</p><p>更糟糕的是，有时候 CPU 真的就是傻等(stall)，不专门分析甚至都不知道程序根本没跑出应有的速度。</p><blockquote><p>Modern cores use both <a class=link href=https://en.wikipedia.org/wiki/Out-of-order_execution target=_blank rel=noopener>out-of-order execution</a> and <a class=link href=https://en.wikipedia.org/wiki/Hyper-threading target=_blank rel=noopener>hyperthreading</a> to find and to do something useful while other instructions wait for data to be fetched.</p><p>If nothing useful can be done, the core stalls. Unfortunately, the OS is almost unaware of the stall: the application appears to be running, and it is hard to tell if the application is slower than it should be. You need tools to examine <a class=link href=https://en.wikipedia.org/wiki/Hardware_performance_counter target=_blank rel=noopener>hardware performance counters</a> to see stall details.</p></blockquote><p>回顾基准测试代码，仅仅是连续分配内存就可以获得百倍的性能改善，超值。</p><p>引用前文来给 cache line 小节结尾：</p><blockquote><p>However, such lack of knowledge can ultimately produce a 10x or worse slowdown in application performance – especially since the arrival of <a class=link href=http://software.intel.com/en-us/articles/what-s-new-about-modern-hardware target=_blank rel=noopener>new hardware technologies</a>.</p></blockquote><h2 id=总结>总结</h2><p>什么是 cache line？</p><blockquote><p>Data moves around most of the memory subsystem in 64-byte quantities called <em>cache lines</em>.</p></blockquote><p>cache line 如何影响性能？</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/c++/>c++</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>分支预测对执行效率和安全的影响</h2></div></a></article><article><a href=/blog/p/how-to-compile-lief-on-windows/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>编译LIEF的各种姿势</h2></div></a></article><article><a href=/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>在C++中嵌入Python解释器</h2></div></a></article><article><a href=/blog/p/gamehollywood-%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>GameHollywood 面试笔记</h2></div></a></article><article><a href=/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>可重入和异步安全</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#缓存行>缓存行</a>
-<ol>
-<li><a href=#介绍>介绍</a></li>
-<li><a href=#简单的基准测试>简单的基准测试</a></li>
-<li><a href=#缺页异常>缺页异常</a></li>
-<li><a href=#缓存行-1>缓存行</a></li>
-<li><a href=#伪共享>伪共享</a></li>
-<li><a href=#cache-line-原理>cache line 原理</a></li>
-</ol>
-</li>
-<li><a href=#总结>总结</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#前言>前言</a></li><li><a href=#缓存行>缓存行</a><ol><li><a href=#介绍>介绍</a></li><li><a href=#简单的基准测试>简单的基准测试</a></li><li><a href=#缺页异常>缺页异常</a></li><li><a href=#缓存行-1>缓存行</a></li><li><a href=#伪共享>伪共享</a></li><li><a href=#cache-line-原理>cache line 原理</a></li></ol></li><li><a href=#总结>总结</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

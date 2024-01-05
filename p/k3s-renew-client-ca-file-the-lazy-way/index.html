@@ -1,285 +1,30 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 今天上内网服务器看了眼，准备调试下新代码，结果发现报错 You must logged in to the server (unauthorized) 。翻了半天的 KUBECONFIG 配置，发现啥也没错。换成 /etc/rancher/k3s/k3s.yaml 也不行。于是查了下 journalctl -r -u k3s"><title>k3s更新客户端证书的偷懒方法</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/k3s-renew-client-ca-file-the-lazy-way/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 今天上内网服务器看了眼，准备调试下新代码，结果发现报错 You must logged in to the server (unauthorized) 。翻了半天的 KUBECONFIG 配置，发现啥也没错。换成 /etc/rancher/k3s/k3s.yaml 也不行。于是查了下 journalctl -r -u k3s"><title>k3s更新客户端证书的偷懒方法</title><link rel=canonical href=https://nnnewb.github.io/blog/p/k3s-renew-client-ca-file-the-lazy-way/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="k3s更新客户端证书的偷懒方法">
-<meta property="og:description" content="前言 今天上内网服务器看了眼，准备调试下新代码，结果发现报错 You must logged in to the server (unauthorized) 。翻了半天的 KUBECONFIG 配置，发现啥也没错。换成 /etc/rancher/k3s/k3s.yaml 也不行。于是查了下 journalctl -r -u k3s">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/k3s-renew-client-ca-file-the-lazy-way/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="kubernetes"><meta property="article:published_time" content="2021-10-11T13:58:00+08:00"><meta property="article:modified_time" content="2021-10-11T13:58:00+08:00">
-<meta name=twitter:title content="k3s更新客户端证书的偷懒方法">
-<meta name=twitter:description content="前言 今天上内网服务器看了眼，准备调试下新代码，结果发现报错 You must logged in to the server (unauthorized) 。翻了半天的 KUBECONFIG 配置，发现啥也没错。换成 /etc/rancher/k3s/k3s.yaml 也不行。于是查了下 journalctl -r -u k3s">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/kubernetes/>
-kubernetes
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/k3s-renew-client-ca-file-the-lazy-way/>k3s更新客户端证书的偷懒方法</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2021-10-11T13:58:00+08:00>2021年 10月 11日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 2 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=前言>前言</h2>
-<p>今天上内网服务器看了眼，准备调试下新代码，结果发现报错 <code>You must logged in to the server (unauthorized)</code> 。翻了半天的 <em>KUBECONFIG</em> 配置，发现啥也没错。换成 <code>/etc/rancher/k3s/k3s.yaml</code> 也不行。于是查了下 <code>journalctl -r -u k3s</code> ，发现日志 <code>x509: certificate has expired or not yet valid: current time ...</code> ，这就明确了是证书过期了。</p>
-<p>于是又找了一圈如何给k3s更新证书，搜 <code>how to renew client-ca-file</code> 查出来的方法不是 <code>kubeadm</code> 就是改时间、换证书，总之&mldr;麻烦，而且搜出来的文章可操作性都有点差，真要实践出真知也不能放公司的机器上，搞出点问题还得劝自己心平气和磨上一整天去解决。</p>
-<p>于是终于找到个看起来能行的办法：重启。</p>
-<h2 id=操作>操作</h2>
-<p>这个办法可操作性很强——反正情况不会变得更差了。因为办公室的服务器并不能保证24小时不断电，有时候白天上班机器是关机的，重启k3s无论如何不会导致问题变得更差——就算放着不管，过两天说不定也会断电重启下。</p>
-<p>确认没人用服务之后直接上手。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>sudo systemctl restart k3s
-</code></pre></td></tr></table>
-</div>
-</div><p>等待重启完成，测试下新的 <code>k3s.yaml</code> 能不能正常用。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="k3s更新客户端证书的偷懒方法"><meta property="og:description" content="前言 今天上内网服务器看了眼，准备调试下新代码，结果发现报错 You must logged in to the server (unauthorized) 。翻了半天的 KUBECONFIG 配置，发现啥也没错。换成 /etc/rancher/k3s/k3s.yaml 也不行。于是查了下 journalctl -r -u k3s"><meta property="og:url" content="https://nnnewb.github.io/blog/p/k3s-renew-client-ca-file-the-lazy-way/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="kubernetes"><meta property="article:published_time" content="2021-10-11T13:58:00+08:00"><meta property="article:modified_time" content="2021-10-11T13:58:00+08:00"><meta name=twitter:title content="k3s更新客户端证书的偷懒方法"><meta name=twitter:description content="前言 今天上内网服务器看了眼，准备调试下新代码，结果发现报错 You must logged in to the server (unauthorized) 。翻了半天的 KUBECONFIG 配置，发现啥也没错。换成 /etc/rancher/k3s/k3s.yaml 也不行。于是查了下 journalctl -r -u k3s"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/kubernetes/>kubernetes</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/k3s-renew-client-ca-file-the-lazy-way/>k3s更新客户端证书的偷懒方法</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2021-10-11T13:58:00+08:00>2021年 10月 11日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 2 分钟</time></div></footer></div></header><section class=article-content><h2 id=前言>前言</h2><p>今天上内网服务器看了眼，准备调试下新代码，结果发现报错 <code>You must logged in to the server (unauthorized)</code> 。翻了半天的 <em>KUBECONFIG</em> 配置，发现啥也没错。换成 <code>/etc/rancher/k3s/k3s.yaml</code> 也不行。于是查了下 <code>journalctl -r -u k3s</code> ，发现日志 <code>x509: certificate has expired or not yet valid: current time ...</code> ，这就明确了是证书过期了。</p><p>于是又找了一圈如何给k3s更新证书，搜 <code>how to renew client-ca-file</code> 查出来的方法不是 <code>kubeadm</code> 就是改时间、换证书，总之&mldr;麻烦，而且搜出来的文章可操作性都有点差，真要实践出真知也不能放公司的机器上，搞出点问题还得劝自己心平气和磨上一整天去解决。</p><p>于是终于找到个看起来能行的办法：重启。</p><h2 id=操作>操作</h2><p>这个办法可操作性很强——反正情况不会变得更差了。因为办公室的服务器并不能保证24小时不断电，有时候白天上班机器是关机的，重启k3s无论如何不会导致问题变得更差——就算放着不管，过两天说不定也会断电重启下。</p><p>确认没人用服务之后直接上手。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=line><span class=cl>sudo systemctl restart k3s
+</span></span></code></pre></td></tr></table></div></div><p>等待重启完成，测试下新的 <code>k3s.yaml</code> 能不能正常用。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=nb>export</span> <span class=nv>KUBECONFIG</span><span class=o>=</span>/etc/rancher/k3s/k3s.yaml
-kubectl cluster-info
-</code></pre></td></tr></table>
-</div>
-</div><div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=line><span class=cl><span class=nb>export</span> <span class=nv>KUBECONFIG</span><span class=o>=</span>/etc/rancher/k3s/k3s.yaml
+</span></span><span class=line><span class=cl>kubectl cluster-info
+</span></span></code></pre></td></tr></table></div></div><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>Kubernetes control plane is running at https://192.168.2.175:6443
-CoreDNS is running at https://192.168.2.175:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
-Metrics-server is running at https://192.168.2.175:6443/api/v1/namespaces/kube-system/services/https:metrics-server:/proxy
-
-To further debug and diagnose cluster problems, use &#39;kubectl cluster-info dump&#39;.
-</code></pre></td></tr></table>
-</div>
-</div><p>其他 <code>get nodes</code> 之类的命令也顺利完成，剩下就是把新的客户端证书合并到个人的配置里了（对，并不是直接用 <code>/etc/rancher/k3s/k3s.yaml</code>，我知道有人会这么用）。办法也简单，<code>vim /etc/rancher/k3s/k3s.yaml</code>，把里面的 <code>users</code> 键下，<code>default</code> 用户的信息复制出来，粘贴到个人的 <code>~/.kube/config</code> 相应位置就好。以前复制过的话，就覆盖掉。</p>
-<h2 id=总结>总结</h2>
-<p>没啥好总结的，重启大法解决一切问题。不过手动轮换证书的办法也得记录一下，这里留相关的摘要链接。</p>
-<ul>
-<li><a class=link href=https://kubernetes.io/zh/docs/tasks/administer-cluster/kubeadm/kubeadm-certs/ target=_blank rel=noopener>kubernetes.io/使用 kubeadm 进行证书管理</a></li>
-<li><a class=link href="https://www.ibm.com/docs/en/fci/1.1.0?topic=kubernetes-renewing-cluster-certificates" target=_blank rel=noopener>ibm.com/renewing kubernetes cluster certificates</a></li>
-<li><a class=link href=https://forums.rancher.com/t/how-to-renew-cert-manually/20022 target=_blank rel=noopener>forum.rancher.com/how to renew cert manually?</a></li>
-</ul>
-<p>比较好奇的有多个master节点的集群，能通过逐个重启master节点来实现自动更新证书吗？</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/kubernetes/>kubernetes</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/why-my-kubectl-not-responding/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>排查一个kubectl无反应的问题</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/simple-eck-cluster-deployment/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>简单的ECK部署</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/kubernetes-manually-install-by-kubeadm/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>kubeadm安装实验集群记录</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/csr-%E6%96%B9%E5%BC%8F%E5%88%9B%E5%BB%BA-kubernetes-%E7%94%A8%E6%88%B7%E5%87%BA%E4%BA%86%E7%82%B9%E5%B7%AE%E9%94%99/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>csr 方式创建 kubernetes 用户出了点差错</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Kubernetes control plane is running at https://192.168.2.175:6443
+</span></span><span class=line><span class=cl>CoreDNS is running at https://192.168.2.175:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+</span></span><span class=line><span class=cl>Metrics-server is running at https://192.168.2.175:6443/api/v1/namespaces/kube-system/services/https:metrics-server:/proxy
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>To further debug and diagnose cluster problems, use &#39;kubectl cluster-info dump&#39;.
+</span></span></code></pre></td></tr></table></div></div><p>其他 <code>get nodes</code> 之类的命令也顺利完成，剩下就是把新的客户端证书合并到个人的配置里了（对，并不是直接用 <code>/etc/rancher/k3s/k3s.yaml</code>，我知道有人会这么用）。办法也简单，<code>vim /etc/rancher/k3s/k3s.yaml</code>，把里面的 <code>users</code> 键下，<code>default</code> 用户的信息复制出来，粘贴到个人的 <code>~/.kube/config</code> 相应位置就好。以前复制过的话，就覆盖掉。</p><h2 id=总结>总结</h2><p>没啥好总结的，重启大法解决一切问题。不过手动轮换证书的办法也得记录一下，这里留相关的摘要链接。</p><ul><li><a class=link href=https://kubernetes.io/zh/docs/tasks/administer-cluster/kubeadm/kubeadm-certs/ target=_blank rel=noopener>kubernetes.io/使用 kubeadm 进行证书管理</a></li><li><a class=link href="https://www.ibm.com/docs/en/fci/1.1.0?topic=kubernetes-renewing-cluster-certificates" target=_blank rel=noopener>ibm.com/renewing kubernetes cluster certificates</a></li><li><a class=link href=https://forums.rancher.com/t/how-to-renew-cert-manually/20022 target=_blank rel=noopener>forum.rancher.com/how to renew cert manually?</a></li></ul><p>比较好奇的有多个master节点的集群，能通过逐个重启master节点来实现自动更新证书吗？</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/kubernetes/>kubernetes</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/why-my-kubectl-not-responding/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>排查一个kubectl无反应的问题</h2></div></a></article><article><a href=/blog/p/simple-eck-cluster-deployment/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>简单的ECK部署</h2></div></a></article><article><a href=/blog/p/kubernetes-manually-install-by-kubeadm/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>kubeadm安装实验集群记录</h2></div></a></article><article><a href=/blog/p/csr-%E6%96%B9%E5%BC%8F%E5%88%9B%E5%BB%BA-kubernetes-%E7%94%A8%E6%88%B7%E5%87%BA%E4%BA%86%E7%82%B9%E5%B7%AE%E9%94%99/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>csr 方式创建 kubernetes 用户出了点差错</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#操作>操作</a></li>
-<li><a href=#总结>总结</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#前言>前言</a></li><li><a href=#操作>操作</a></li><li><a href=#总结>总结</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

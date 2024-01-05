@@ -1,237 +1,47 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 反调试技术，往大了说是用尽一切手段防止运行时对程序的非法篡改和窥视，往小了说就是防调试器。反正反调试这件事和各种技术都能搭点边，什么HO"><title>加壳原理06：反调试技术入门</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-06/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 反调试技术，往大了说是用尽一切手段防止运行时对程序的非法篡改和窥视，往小了说就是防调试器。反正反调试这件事和各种技术都能搭点边，什么HO"><title>加壳原理06：反调试技术入门</title><link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-06/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="加壳原理06：反调试技术入门">
-<meta property="og:description" content="前言 反调试技术，往大了说是用尽一切手段防止运行时对程序的非法篡改和窥视，往小了说就是防调试器。反正反调试这件事和各种技术都能搭点边，什么HO">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-06/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="c++"><meta property="article:tag" content="windows"><meta property="article:tag" content="汇编"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-10-27T19:50:00+08:00"><meta property="article:modified_time" content="2021-10-27T19:50:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-06/cover.jpg">
-<meta name=twitter:title content="加壳原理06：反调试技术入门">
-<meta name=twitter:description content="前言 反调试技术，往大了说是用尽一切手段防止运行时对程序的非法篡改和窥视，往小了说就是防调试器。反正反调试这件事和各种技术都能搭点边，什么HO"><meta name=twitter:card content="summary_large_image">
-<meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-06/cover.jpg">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class="has-image main-article">
-<header class=article-header>
-<div class=article-image>
-<a href=/blog/p/learning-packer-06/>
-<img src=/blog/p/learning-packer-06/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/blog/p/learning-packer-06/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /blog/p/learning-packer-06/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门">
-</a>
-</div>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/%E9%80%86%E5%90%91/>
-逆向
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/learning-packer-06/>加壳原理06：反调试技术入门</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2021-10-27T19:50:00+08:00>2021年 10月 27日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 14 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=前言>前言</h2>
-<p>反调试技术，往大了说是用尽一切手段防止运行时对程序的非法篡改和窥视，往小了说就是防调试器。反正反调试这件事和各种技术都能搭点边，什么HOOK啦DLL注入啦。真要给涉及到的各方面都说得头头是道，那我这个菜鸡就不叫菜鸡了。</p>
-<p>反正涉及的各种技术细节吧，将来都会慢慢学到的。也不急于一时。本篇关注的重点还是在导，引入，了解个大概。看看有什么反调试思路，对付这些反调试技术又有什么 bypass 的手段。</p>
-<p>说这么多，其实还是找了篇写得不错的外文文章，抄了然后调试了下案例。</p>
-<h2 id=0x01-反调试思路>0x01 反调试思路</h2>
-<p>首先概述一下本篇主要的反调试思路。</p>
-<h3 id=11-系统api或数据结构>1.1 系统API或数据结构</h3>
-<p>操作系统提供了一些调试标志位，调试器启动的进程会有标识。调试器也可能会为了提供更好的调试体验，修改一些参数，让我们有迹可循。</p>
-<ol>
-<li><code>PEB->BeingDebugged</code>和<code>IsDebuggerPresent</code></li>
-<li><code>PEB->NtGlobalFlag</code></li>
-<li><code>PEB->HEAP->Flags</code>和<code>PEB->HEAP->ForceFlags</code></li>
-<li><code>CheckRemoteDebuggerPresent</code></li>
-<li><code>NtQueryInformationProcess</code>
-<ol>
-<li><code>ProcessDebugPort</code></li>
-<li><code>ProcessDebugObjectHandle</code></li>
-<li><code>ProcessDebugFlags</code></li>
-<li><code>ProcessBasicInformation</code></li>
-</ol>
-</li>
-<li><code>NtSetInformationThread</code>和<code>NtCreateThreadEx</code>
-<ol>
-<li>利用 <code>HideFromDebugger</code> 标志位来对调试器隐藏自身。</li>
-</ol>
-</li>
-</ol>
-<h3 id=12-sehveh>1.2 SEH、VEH</h3>
-<p>总的来说，利用 SEH 和 VEH 机制，尝试抛出一些会被调试器处理的中断或异常，同时自己挂一个处理函数，如果异常被调试器捕获了，那自己挂的异常处理函数就不会被调用，借此判断是否有调试器正在调试程序。</p>
-<ol>
-<li><code>TF</code>标志位和<code>INT 1</code>中断</li>
-<li><code>INT 3</code> 中断和 SEH 处理函数，<code>__try __except</code> 或 MinGW 的 <code>__try1 __except1</code>，顺便一提我的SEH实验没成功。但是 VEH 基本没问题。</li>
-<li><code>DBG_PRINTEXCEPTION_WIDE_C</code>和<code>DBG_PRINTEXCEPTION_W</code>，Windows 10 <code>OutputDebugString</code> 利用了这个 Exception 来抛出调试字符串。</li>
-<li><code>EXCEPTION_INVALID_HANDLE</code></li>
-</ol>
-<h3 id=13-调试寄存器>1.3 调试寄存器</h3>
-<p><code>GetThreadContext</code> 获取当前上下文，判断 <code>Dr0</code>-<code>Dr3</code>寄存器的值。</p>
-<h3 id=14-完整性校验>1.4 完整性校验</h3>
-<p>原理是调试器通过临时修改断点处指令为中断来取得程序控制权，可以用CRC校验，或者更简单点，直接逐字节求和，判断代码是否被篡改。</p>
-<h2 id=0x02-系统api方式>0x02 系统API方式</h2>
-<h3 id=21-isdebuggerpresent>2.1 IsDebuggerPresent</h3>
-<p>首先出场的就是 <code>IsDebuggerPresent</code> 这个 API 了，文档<a class=link href=https://docs.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-isdebuggerpresent target=_blank rel=noopener>可以在这里</a>找到。简要概述一下这个接口，微软的描述是此函数允许应用程序确定自己是否正在被调试，并依此改变行为。例如通过<code>OutputDebugString</code>函数提供更多调试信息。</p>
-<p>微软的本意应该是一个调试开关式的东西，正经写过工作代码应该知道代码里加个调试开关方便在出问题的时候拿详细日志是很有用很方便的，同时也能在不需要调试的时候也不会让程序不会损失太多性能。比起编译期的调试开关<code>_DEBUG</code>宏之类的会更灵活一些。</p>
-<p>扯远了。总之，这个函数没参数，返回<code>BOOL</code>，案例很好写。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="加壳原理06：反调试技术入门"><meta property="og:description" content="前言 反调试技术，往大了说是用尽一切手段防止运行时对程序的非法篡改和窥视，往小了说就是防调试器。反正反调试这件事和各种技术都能搭点边，什么HO"><meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-06/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="c++"><meta property="article:tag" content="windows"><meta property="article:tag" content="汇编"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-10-27T19:50:00+08:00"><meta property="article:modified_time" content="2021-10-27T19:50:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-06/cover.jpg"><meta name=twitter:title content="加壳原理06：反调试技术入门"><meta name=twitter:description content="前言 反调试技术，往大了说是用尽一切手段防止运行时对程序的非法篡改和窥视，往小了说就是防调试器。反正反调试这件事和各种技术都能搭点边，什么HO"><meta name=twitter:card content="summary_large_image"><meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-06/cover.jpg"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class="has-image main-article"><header class=article-header><div class=article-image><a href=/blog/p/learning-packer-06/><img src=/blog/p/learning-packer-06/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/blog/p/learning-packer-06/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /blog/p/learning-packer-06/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门"></a></div><div class=article-details><header class=article-category><a href=/blog/categories/%E9%80%86%E5%90%91/>逆向</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/learning-packer-06/>加壳原理06：反调试技术入门</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2021-10-27T19:50:00+08:00>2021年 10月 27日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 14 分钟</time></div></footer></div></header><section class=article-content><h2 id=前言>前言</h2><p>反调试技术，往大了说是用尽一切手段防止运行时对程序的非法篡改和窥视，往小了说就是防调试器。反正反调试这件事和各种技术都能搭点边，什么HOOK啦DLL注入啦。真要给涉及到的各方面都说得头头是道，那我这个菜鸡就不叫菜鸡了。</p><p>反正涉及的各种技术细节吧，将来都会慢慢学到的。也不急于一时。本篇关注的重点还是在导，引入，了解个大概。看看有什么反调试思路，对付这些反调试技术又有什么 bypass 的手段。</p><p>说这么多，其实还是找了篇写得不错的外文文章，抄了然后调试了下案例。</p><h2 id=0x01-反调试思路>0x01 反调试思路</h2><p>首先概述一下本篇主要的反调试思路。</p><h3 id=11-系统api或数据结构>1.1 系统API或数据结构</h3><p>操作系统提供了一些调试标志位，调试器启动的进程会有标识。调试器也可能会为了提供更好的调试体验，修改一些参数，让我们有迹可循。</p><ol><li><code>PEB->BeingDebugged</code>和<code>IsDebuggerPresent</code></li><li><code>PEB->NtGlobalFlag</code></li><li><code>PEB->HEAP->Flags</code>和<code>PEB->HEAP->ForceFlags</code></li><li><code>CheckRemoteDebuggerPresent</code></li><li><code>NtQueryInformationProcess</code><ol><li><code>ProcessDebugPort</code></li><li><code>ProcessDebugObjectHandle</code></li><li><code>ProcessDebugFlags</code></li><li><code>ProcessBasicInformation</code></li></ol></li><li><code>NtSetInformationThread</code>和<code>NtCreateThreadEx</code><ol><li>利用 <code>HideFromDebugger</code> 标志位来对调试器隐藏自身。</li></ol></li></ol><h3 id=12-sehveh>1.2 SEH、VEH</h3><p>总的来说，利用 SEH 和 VEH 机制，尝试抛出一些会被调试器处理的中断或异常，同时自己挂一个处理函数，如果异常被调试器捕获了，那自己挂的异常处理函数就不会被调用，借此判断是否有调试器正在调试程序。</p><ol><li><code>TF</code>标志位和<code>INT 1</code>中断</li><li><code>INT 3</code> 中断和 SEH 处理函数，<code>__try __except</code> 或 MinGW 的 <code>__try1 __except1</code>，顺便一提我的SEH实验没成功。但是 VEH 基本没问题。</li><li><code>DBG_PRINTEXCEPTION_WIDE_C</code>和<code>DBG_PRINTEXCEPTION_W</code>，Windows 10 <code>OutputDebugString</code> 利用了这个 Exception 来抛出调试字符串。</li><li><code>EXCEPTION_INVALID_HANDLE</code></li></ol><h3 id=13-调试寄存器>1.3 调试寄存器</h3><p><code>GetThreadContext</code> 获取当前上下文，判断 <code>Dr0</code>-<code>Dr3</code>寄存器的值。</p><h3 id=14-完整性校验>1.4 完整性校验</h3><p>原理是调试器通过临时修改断点处指令为中断来取得程序控制权，可以用CRC校验，或者更简单点，直接逐字节求和，判断代码是否被篡改。</p><h2 id=0x02-系统api方式>0x02 系统API方式</h2><h3 id=21-isdebuggerpresent>2.1 IsDebuggerPresent</h3><p>首先出场的就是 <code>IsDebuggerPresent</code> 这个 API 了，文档<a class=link href=https://docs.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-isdebuggerpresent target=_blank rel=noopener>可以在这里</a>找到。简要概述一下这个接口，微软的描述是此函数允许应用程序确定自己是否正在被调试，并依此改变行为。例如通过<code>OutputDebugString</code>函数提供更多调试信息。</p><p>微软的本意应该是一个调试开关式的东西，正经写过工作代码应该知道代码里加个调试开关方便在出问题的时候拿详细日志是很有用很方便的，同时也能在不需要调试的时候也不会让程序不会损失太多性能。比起编译期的调试开关<code>_DEBUG</code>宏之类的会更灵活一些。</p><p>扯远了。总之，这个函数没参数，返回<code>BOOL</code>，案例很好写。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
 </span><span class=lnt>7
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;debugapi.h&gt;</span><span class=cp>
-</span><span class=cp></span>
-<span class=kt>void</span> <span class=nf>anti_debug_by_isDebuggerPresent</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>IsDebuggerPresent</span><span class=p>()</span> <span class=o>==</span> <span class=n>TRUE</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;IsDebuggerPresent&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>就是这样。</p>
-<p><code>IsDebuggerPresent</code> 这个 API 的实现方式是从 PEB <em>Process Environment Block</em> 读取 <code>BeingDebugged</code> 字段。随便什么调试器跳转过去就能看到这样的实现代码。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;debugapi.h&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>anti_debug_by_isDebuggerPresent</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=nf>IsDebuggerPresent</span><span class=p>()</span> <span class=o>==</span> <span class=n>TRUE</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;IsDebuggerPresent&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>就是这样。</p><p><code>IsDebuggerPresent</code> 这个 API 的实现方式是从 PEB <em>Process Environment Block</em> 读取 <code>BeingDebugged</code> 字段。随便什么调试器跳转过去就能看到这样的实现代码。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>mov</span> <span class=no>eax</span><span class=p>,</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>fs</span><span class=p>:[</span><span class=mi>0x30</span><span class=p>]</span>
-<span class=nf>movzx</span> <span class=no>eax</span><span class=p>,</span> <span class=no>byte</span> <span class=no>ptr</span> <span class=no>ds</span><span class=p>:[</span><span class=no>eax</span><span class=err>+</span><span class=mi>0x2</span><span class=p>]</span>
-<span class=nf>ret</span> 
-</code></pre></td></tr></table>
-</div>
-</div><p><code>fs:[0]</code>是 TEB <em>Thread Environment Block</em> 结构的地址，其中<code>fs:[0x30]</code> 这个偏移是 PEB 指针，第一行的意思是将 PEB 指针赋值给 eax 寄存器。</p>
-<p>第二行就是从 PEB 结构的 0x2 偏移处，也就是 <code>BeingDebugged</code> 字段，取 1 字节，赋值到 eax 。</p>
-<p>第三行就是返回了，没有参数和局部变量所以也没平栈，无论 <code>__cdecl</code> 还是 <code>__stdcall</code> 都是在 <code>eax</code> 寄存器保存返回值。</p>
-<p>从<a class=link href=https://en.wikipedia.org/wiki/Win32_Thread_Information_Block target=_blank rel=noopener>wiki</a> 和 <a class=link href="http://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FNT%20Objects%2FThread%2FTEB.html" target=_blank rel=noopener>NTAPI UNDOCUMENTED FUNCTIONS</a> 查询到的文档都能看到 PEB 结构的内存布局。</p>
-<p>想要 bypass 这种检查就非常容易，修改 PEB 结构中的 <code>BeingDebugged</code> 字段值为 0 就完事了。</p>
-<h3 id=22-ntglobalflag>2.2 NtGlobalFlag</h3>
-<p><code>NtGlobalFlag</code> 也是一个 PEB 的字段，但是在微软官方的 PEB 结构文档和定义里没有给出这个字段（在 Reserved 里）。查阅上面提到的文档或者用 WinDbg 的 <code>dt</code> 命令都可以查到。</p>
-<p>当这个字段包含特定标志位（<code>0x20 | 0x40</code>，分别是 <strong>FLG_HEAP_ENABLE_TAIL_CHECK</strong> 和 <strong>FLG_HEAP_ENABLE_FREE_CHECK</strong>）的时候提示有调试器存在（<a class=link href=https://www.geoffchappell.com/studies/windows/win32/ntdll/api/rtl/regutil/getntglobalflags.htm target=_blank rel=noopener>Geoff Chappell, Software Analyst，RtlGetNtGlobalFlags()</a>，没微软的文档）。</p>
-<p>这里给出 WinDbg 查到的字段偏移。微软商店里的 WinDbg Preview 也是一样的。关于 <code>dt</code> 命令可以用 <code>.hh dt</code> 来查阅命令的文档，<code>?</code> 来查阅可用命令，或者直接点上面的帮助。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=nf>mov</span> <span class=no>eax</span><span class=p>,</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>fs</span><span class=p>:[</span><span class=mi>0x30</span><span class=p>]</span>
+</span></span><span class=line><span class=cl><span class=nf>movzx</span> <span class=no>eax</span><span class=p>,</span> <span class=no>byte</span> <span class=no>ptr</span> <span class=no>ds</span><span class=p>:[</span><span class=no>eax</span><span class=err>+</span><span class=mi>0x2</span><span class=p>]</span>
+</span></span><span class=line><span class=cl><span class=nf>ret</span> 
+</span></span></code></pre></td></tr></table></div></div><p><code>fs:[0]</code>是 TEB <em>Thread Environment Block</em> 结构的地址，其中<code>fs:[0x30]</code> 这个偏移是 PEB 指针，第一行的意思是将 PEB 指针赋值给 eax 寄存器。</p><p>第二行就是从 PEB 结构的 0x2 偏移处，也就是 <code>BeingDebugged</code> 字段，取 1 字节，赋值到 eax 。</p><p>第三行就是返回了，没有参数和局部变量所以也没平栈，无论 <code>__cdecl</code> 还是 <code>__stdcall</code> 都是在 <code>eax</code> 寄存器保存返回值。</p><p>从<a class=link href=https://en.wikipedia.org/wiki/Win32_Thread_Information_Block target=_blank rel=noopener>wiki</a> 和 <a class=link href="http://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FNT%20Objects%2FThread%2FTEB.html" target=_blank rel=noopener>NTAPI UNDOCUMENTED FUNCTIONS</a> 查询到的文档都能看到 PEB 结构的内存布局。</p><p>想要 bypass 这种检查就非常容易，修改 PEB 结构中的 <code>BeingDebugged</code> 字段值为 0 就完事了。</p><h3 id=22-ntglobalflag>2.2 NtGlobalFlag</h3><p><code>NtGlobalFlag</code> 也是一个 PEB 的字段，但是在微软官方的 PEB 结构文档和定义里没有给出这个字段（在 Reserved 里）。查阅上面提到的文档或者用 WinDbg 的 <code>dt</code> 命令都可以查到。</p><p>当这个字段包含特定标志位（<code>0x20 | 0x40</code>，分别是 <strong>FLG_HEAP_ENABLE_TAIL_CHECK</strong> 和 <strong>FLG_HEAP_ENABLE_FREE_CHECK</strong>）的时候提示有调试器存在（<a class=link href=https://www.geoffchappell.com/studies/windows/win32/ntdll/api/rtl/regutil/getntglobalflags.htm target=_blank rel=noopener>Geoff Chappell, Software Analyst，RtlGetNtGlobalFlags()</a>，没微软的文档）。</p><p>这里给出 WinDbg 查到的字段偏移。微软商店里的 WinDbg Preview 也是一样的。关于 <code>dt</code> 命令可以用 <code>.hh dt</code> 来查阅命令的文档，<code>?</code> 来查阅可用命令，或者直接点上面的帮助。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plain data-lang=plain>0:000&gt; dt _peb NtGlobalFlag @$peb
-ntdll!_PEB
-   +0x068 NtGlobalFlag : 0x70
-</code></pre></td></tr></table>
-</div>
-</div><p>可以看到偏移是 <code>0x68</code>，WinDbg 中标志位的值是 <code>x70</code>，符合上面所说的 <code>0x20|0x40</code>。接下来尝试实现一下。首先因为我用的 MinGW 所以需要写两句汇编去取PEB指针。（用的 nasm，gcc 的内联汇编语法太怪了）</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plain data-lang=plain><span class=line><span class=cl>0:000&gt; dt _peb NtGlobalFlag @$peb
+</span></span><span class=line><span class=cl>ntdll!_PEB
+</span></span><span class=line><span class=cl>   +0x068 NtGlobalFlag : 0x70
+</span></span></code></pre></td></tr></table></div></div><p>可以看到偏移是 <code>0x68</code>，WinDbg 中标志位的值是 <code>x70</code>，符合上面所说的 <code>0x20|0x40</code>。接下来尝试实现一下。首先因为我用的 MinGW 所以需要写两句汇编去取PEB指针。（用的 nasm，gcc 的内联汇编语法太怪了）</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>section</span> <span class=no>.text</span>
-    <span class=nf>global</span> <span class=no>_GetPEB</span>
-
-<span class=nl>_GetPEB:</span>
-    <span class=nf>mov</span> <span class=no>eax</span><span class=p>,[</span><span class=no>fs</span><span class=p>:</span><span class=mi>30</span><span class=no>h</span><span class=p>]</span>
-    <span class=nf>retn</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>再具体实现。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=nf>section</span> <span class=no>.text</span>
+</span></span><span class=line><span class=cl>    <span class=nf>global</span> <span class=no>_GetPEB</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=nl>_GetPEB:</span>
+</span></span><span class=line><span class=cl>    <span class=nf>mov</span> <span class=no>eax</span><span class=p>,[</span><span class=no>fs</span><span class=p>:</span><span class=mi>30</span><span class=no>h</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>    <span class=nf>retn</span>
+</span></span></code></pre></td></tr></table></div></div><p>再具体实现。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -245,68 +55,39 @@ ntdll!_PEB
 </span><span class=lnt>12
 </span><span class=lnt>13
 </span><span class=lnt>14
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>void</span> <span class=nf>anti_debug_by_RtlGetNtGlobalFlags</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=c1>// 两种方式，直接读内存或者用undocumented接口
-</span><span class=c1></span>  <span class=n>PPEB</span> <span class=n>peb</span> <span class=o>=</span> <span class=n>GetPEB</span><span class=p>();</span>
-  <span class=k>if</span> <span class=p>(</span><span class=o>*</span><span class=p>(</span><span class=n>PULONG</span><span class=p>)((</span><span class=n>PBYTE</span><span class=p>)</span><span class=n>peb</span> <span class=o>+</span> <span class=mh>0x68</span><span class=p>)</span> <span class=o>&amp;</span> <span class=p>(</span><span class=mh>0x20</span> <span class=o>|</span> <span class=mh>0x40</span><span class=p>))</span> <span class=p>{</span>
-    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;PEB-&gt;NtGlobalFlag&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-  <span class=p>}</span>
-  <span class=c1>// 或者...
-</span><span class=c1></span>  <span class=n>HMODULE</span> <span class=n>ntdll</span> <span class=o>=</span> <span class=n>LoadLibraryA</span><span class=p>(</span><span class=s>&#34;ntdll.dll&#34;</span><span class=p>);</span>
-  <span class=n>FARPROC</span> <span class=n>proc</span> <span class=o>=</span> <span class=n>GetProcAddress</span><span class=p>(</span><span class=n>ntdll</span><span class=p>,</span> <span class=s>&#34;RtlGetNtGlobalFlags&#34;</span><span class=p>);</span>
-  <span class=k>typedef</span> <span class=n>ULONG</span> <span class=p>(</span><span class=o>*</span><span class=n>RtlGetNtGlobalFlags_t</span><span class=p>)(</span><span class=kt>void</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(((</span><span class=n>RtlGetNtGlobalFlags_t</span><span class=p>)</span><span class=n>proc</span><span class=p>)()</span> <span class=o>&amp;</span> <span class=p>(</span><span class=mh>0x20</span> <span class=o>|</span> <span class=mh>0x40</span><span class=p>))</span> <span class=p>{</span>
-    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;RtlGetNtGlobalFlags&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>差别不大，可以根据需要选择其一。编译后不使用调试器打开则不会触发反调试代码。</p>
-<p>bypass 这个检查也很容易，因为标志位都在被调试进程的地址空间里，直接改掉就行了。</p>
-<h3 id=23-heap-flags>2.3 HEAP->Flags</h3>
-<p>PEB 结构中还有个指向当前堆信息结构的指针，<code>ProcessHeap</code>。可以用 WinDbg 的 <code>dt</code> 命令查看。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=kt>void</span> <span class=nf>anti_debug_by_RtlGetNtGlobalFlags</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// 两种方式，直接读内存或者用undocumented接口
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>PPEB</span> <span class=n>peb</span> <span class=o>=</span> <span class=nf>GetPEB</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=o>*</span><span class=p>(</span><span class=n>PULONG</span><span class=p>)((</span><span class=n>PBYTE</span><span class=p>)</span><span class=n>peb</span> <span class=o>+</span> <span class=mh>0x68</span><span class=p>)</span> <span class=o>&amp;</span> <span class=p>(</span><span class=mh>0x20</span> <span class=o>|</span> <span class=mh>0x40</span><span class=p>))</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;PEB-&gt;NtGlobalFlag&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// 或者...
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>HMODULE</span> <span class=n>ntdll</span> <span class=o>=</span> <span class=nf>LoadLibraryA</span><span class=p>(</span><span class=s>&#34;ntdll.dll&#34;</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=n>FARPROC</span> <span class=n>proc</span> <span class=o>=</span> <span class=nf>GetProcAddress</span><span class=p>(</span><span class=n>ntdll</span><span class=p>,</span> <span class=s>&#34;RtlGetNtGlobalFlags&#34;</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>typedef</span> <span class=nf>ULONG</span> <span class=p>(</span><span class=o>*</span><span class=n>RtlGetNtGlobalFlags_t</span><span class=p>)(</span><span class=kt>void</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(((</span><span class=n>RtlGetNtGlobalFlags_t</span><span class=p>)</span><span class=n>proc</span><span class=p>)()</span> <span class=o>&amp;</span> <span class=p>(</span><span class=mh>0x20</span> <span class=o>|</span> <span class=mh>0x40</span><span class=p>))</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;RtlGetNtGlobalFlags&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>差别不大，可以根据需要选择其一。编译后不使用调试器打开则不会触发反调试代码。</p><p>bypass 这个检查也很容易，因为标志位都在被调试进程的地址空间里，直接改掉就行了。</p><h3 id=23-heap-flags>2.3 HEAP->Flags</h3><p>PEB 结构中还有个指向当前堆信息结构的指针，<code>ProcessHeap</code>。可以用 WinDbg 的 <code>dt</code> 命令查看。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plain data-lang=plain>0:000&gt; dt _peb processheap @$peb
-ntdll!_PEB
-   +0x018 ProcessHeap : 0x012d0000 Void
-</code></pre></td></tr></table>
-</div>
-</div><p>而这个 heap 结构的也同样可以用 <code>dt</code> 命令查看。我们关注的是 heap 结构中的 <code>Flags</code> 和 <code>ForceFlags</code> 字段。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plain data-lang=plain><span class=line><span class=cl>0:000&gt; dt _peb processheap @$peb
+</span></span><span class=line><span class=cl>ntdll!_PEB
+</span></span><span class=line><span class=cl>   +0x018 ProcessHeap : 0x012d0000 Void
+</span></span></code></pre></td></tr></table></div></div><p>而这个 heap 结构的也同样可以用 <code>dt</code> 命令查看。我们关注的是 heap 结构中的 <code>Flags</code> 和 <code>ForceFlags</code> 字段。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-plain data-lang=plain>0:000&gt; dt _heap flags 0x012d0000
-ntdll!_HEAP
-   +0x040 Flags : 0x40000062
-0:000&gt; dt _heap forceflags 0x012d0000
-ntdll!_HEAP
-   +0x044 ForceFlags : 0x40000060
-</code></pre></td></tr></table>
-</div>
-</div><p>当 Flags 没有 <code>HEAP_GROWABLE</code> 标志位，或 <code>ForceFlags</code> 不为零的时候，则可能存在调试器。同样的， 没有官方的文档，只能说逆向出这些东西的大佬真是太强啦。关于 Flags 谷歌了一下，发现在 <a class=link href=https://ctf-wiki.org/reverse/windows/anti-debug/heap-flags/#flags target=_blank rel=noopener>CTF Wiki</a> 有比较详细的说明。我搬一部分过来。</p>
-<blockquote>
-<p>在所有版本的 Windows 中, <code>Flags</code>字段的值正常情况都设为<code>HEAP_GROWABLE(2)</code>, 而<code>ForceFlags</code>字段正常情况都设为<code>0</code>. 然而对于一个 32 位进程 (64 位程序不会有此困扰), 这两个默认值, 都取决于它的宿主进程(host process) 的 <a class=link href=https://msdn.microsoft.com/en-us/library/ms933120.aspx target=_blank rel=noopener><code>subsystem</code></a>版本 (这里不是指所说的比如 win10 的 linux 子系统). 只有当<code>subsystem</code>在<code>3.51</code>及更高的版本, 字段的默认值才如前所述. 如果是在<code>3.10-3.50</code>版本之间, 则两个字段的<code>HEAP_CREATE_ALIGN_16 (0x10000)</code>都会被设置. 如果版本低于<code>3.10</code>, 那么这个程序文件就根本不会被运行.</p>
-<p>如果某操作将<code>Flags</code>和<code>ForgeFlags</code>字段的值分别设为<code>2</code>和<code>0</code>, 但是却未对<code>subsystem</code>版本进行检查, 那么就可以表明该动作是为了隐藏调试器而进行的.</p>
-</blockquote>
-<p>接下来给出案例代码：</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plain data-lang=plain><span class=line><span class=cl>0:000&gt; dt _heap flags 0x012d0000
+</span></span><span class=line><span class=cl>ntdll!_HEAP
+</span></span><span class=line><span class=cl>   +0x040 Flags : 0x40000062
+</span></span><span class=line><span class=cl>0:000&gt; dt _heap forceflags 0x012d0000
+</span></span><span class=line><span class=cl>ntdll!_HEAP
+</span></span><span class=line><span class=cl>   +0x044 ForceFlags : 0x40000060
+</span></span></code></pre></td></tr></table></div></div><p>当 Flags 没有 <code>HEAP_GROWABLE</code> 标志位，或 <code>ForceFlags</code> 不为零的时候，则可能存在调试器。同样的， 没有官方的文档，只能说逆向出这些东西的大佬真是太强啦。关于 Flags 谷歌了一下，发现在 <a class=link href=https://ctf-wiki.org/reverse/windows/anti-debug/heap-flags/#flags target=_blank rel=noopener>CTF Wiki</a> 有比较详细的说明。我搬一部分过来。</p><blockquote><p>在所有版本的 Windows 中, <code>Flags</code>字段的值正常情况都设为<code>HEAP_GROWABLE(2)</code>, 而<code>ForceFlags</code>字段正常情况都设为<code>0</code>. 然而对于一个 32 位进程 (64 位程序不会有此困扰), 这两个默认值, 都取决于它的宿主进程(host process) 的 <a class=link href=https://msdn.microsoft.com/en-us/library/ms933120.aspx target=_blank rel=noopener><code>subsystem</code></a>版本 (这里不是指所说的比如 win10 的 linux 子系统). 只有当<code>subsystem</code>在<code>3.51</code>及更高的版本, 字段的默认值才如前所述. 如果是在<code>3.10-3.50</code>版本之间, 则两个字段的<code>HEAP_CREATE_ALIGN_16 (0x10000)</code>都会被设置. 如果版本低于<code>3.10</code>, 那么这个程序文件就根本不会被运行.</p><p>如果某操作将<code>Flags</code>和<code>ForgeFlags</code>字段的值分别设为<code>2</code>和<code>0</code>, 但是却未对<code>subsystem</code>版本进行检查, 那么就可以表明该动作是为了隐藏调试器而进行的.</p></blockquote><p>接下来给出案例代码：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -316,29 +97,17 @@ ntdll!_HEAP
 </span><span class=lnt> 8
 </span><span class=lnt> 9
 </span><span class=lnt>10
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>void</span> <span class=nf>anti_debug_by_PEB_HeapFlags</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>PPEB</span> <span class=n>peb</span> <span class=o>=</span> <span class=n>GetPEB</span><span class=p>();</span>
-  <span class=n>PVOID</span> <span class=n>heap</span> <span class=o>=</span> <span class=o>*</span><span class=p>(</span><span class=n>PDWORD</span><span class=p>)((</span><span class=n>PBYTE</span><span class=p>)</span><span class=n>peb</span> <span class=o>+</span> <span class=mh>0x18</span><span class=p>);</span>
-  <span class=n>PDWORD</span> <span class=n>heapFlags</span> <span class=o>=</span> <span class=p>(</span><span class=n>PDWORD</span><span class=p>)((</span><span class=n>PBYTE</span><span class=p>)</span><span class=n>heap</span> <span class=o>+</span> <span class=mh>0x40</span><span class=p>);</span>
-  <span class=n>PDWORD</span> <span class=n>forceFlags</span> <span class=o>=</span> <span class=p>(</span><span class=n>PDWORD</span><span class=p>)((</span><span class=n>PBYTE</span><span class=p>)</span><span class=n>heap</span> <span class=o>+</span> <span class=mh>0x44</span><span class=p>);</span>
-
-  <span class=k>if</span> <span class=p>(</span><span class=o>*</span><span class=n>heapFlags</span> <span class=o>&amp;</span> <span class=o>~</span><span class=n>HEAP_GROWABLE</span> <span class=o>||</span> <span class=o>*</span><span class=n>forceFlags</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;PEB-&gt;_HEAP-&gt;HeapFlags,ForceFlags&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>代码本身很简单，不多解释。在调试器启动时会触发反调试代码，正常运行则不会。这个检查比较粗陋，可以根据上面 CTF Wiki 摘录内容的说法，根据 PE 头中的 subsystem 来二次判断，来发现尝试 bypass 反调试代码的行为。</p>
-<p>至于如何 bypass 这个反调试方案，按上面给出的原理来反向应用就好了。</p>
-<h3 id=24-checkremotedebuggerpresent>2.4 CheckRemoteDebuggerPresent</h3>
-<p><code>CheckRemoteDebuggerPresent</code> 的<a class=link href=https://docs.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-checkremotedebuggerpresent target=_blank rel=noopener>微软文档</a>中这么描述：确定指定进程是否正在被调试。接受两个参数，一个是进程的 HANDLE，一个是 PBOOL。</p>
-<p>应用方式可以有很多，可以在进程内自己检查自己有没有被调试；或者开新进程去监视原进程是否正在被调试；甚至注入正常进程，隐藏好自己，再去监视原进程是否被调试；甚至干脆潜伏下来开个后门，亲自人肉监视屏幕上有没有调试器&mldr;&mldr;越说越离谱了。</p>
-<p>总之先给了案例。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=kt>void</span> <span class=nf>anti_debug_by_PEB_HeapFlags</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>PPEB</span> <span class=n>peb</span> <span class=o>=</span> <span class=nf>GetPEB</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=n>PVOID</span> <span class=n>heap</span> <span class=o>=</span> <span class=o>*</span><span class=p>(</span><span class=n>PDWORD</span><span class=p>)((</span><span class=n>PBYTE</span><span class=p>)</span><span class=n>peb</span> <span class=o>+</span> <span class=mh>0x18</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=n>PDWORD</span> <span class=n>heapFlags</span> <span class=o>=</span> <span class=p>(</span><span class=n>PDWORD</span><span class=p>)((</span><span class=n>PBYTE</span><span class=p>)</span><span class=n>heap</span> <span class=o>+</span> <span class=mh>0x40</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=n>PDWORD</span> <span class=n>forceFlags</span> <span class=o>=</span> <span class=p>(</span><span class=n>PDWORD</span><span class=p>)((</span><span class=n>PBYTE</span><span class=p>)</span><span class=n>heap</span> <span class=o>+</span> <span class=mh>0x44</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=o>*</span><span class=n>heapFlags</span> <span class=o>&amp;</span> <span class=o>~</span><span class=n>HEAP_GROWABLE</span> <span class=o>||</span> <span class=o>*</span><span class=n>forceFlags</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;PEB-&gt;_HEAP-&gt;HeapFlags,ForceFlags&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>代码本身很简单，不多解释。在调试器启动时会触发反调试代码，正常运行则不会。这个检查比较粗陋，可以根据上面 CTF Wiki 摘录内容的说法，根据 PE 头中的 subsystem 来二次判断，来发现尝试 bypass 反调试代码的行为。</p><p>至于如何 bypass 这个反调试方案，按上面给出的原理来反向应用就好了。</p><h3 id=24-checkremotedebuggerpresent>2.4 CheckRemoteDebuggerPresent</h3><p><code>CheckRemoteDebuggerPresent</code> 的<a class=link href=https://docs.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-checkremotedebuggerpresent target=_blank rel=noopener>微软文档</a>中这么描述：确定指定进程是否正在被调试。接受两个参数，一个是进程的 HANDLE，一个是 PBOOL。</p><p>应用方式可以有很多，可以在进程内自己检查自己有没有被调试；或者开新进程去监视原进程是否正在被调试；甚至注入正常进程，隐藏好自己，再去监视原进程是否被调试；甚至干脆潜伏下来开个后门，亲自人肉监视屏幕上有没有调试器&mldr;&mldr;越说越离谱了。</p><p>总之先给了案例。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
@@ -346,32 +115,15 @@ ntdll!_HEAP
 </span><span class=lnt>6
 </span><span class=lnt>7
 </span><span class=lnt>8
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>void</span> <span class=nf>anti_debug_by_CheckRemoteDebuggerPresent</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>BOOL</span> <span class=n>isRemoteDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>CheckRemoteDebuggerPresent</span><span class=p>(</span><span class=n>GetCurrentProcess</span><span class=p>(),</span> <span class=o>&amp;</span><span class=n>isRemoteDebuggerPresent</span><span class=p>))</span> <span class=p>{</span>
-    <span class=k>if</span> <span class=p>(</span><span class=n>isRemoteDebuggerPresent</span> <span class=o>==</span> <span class=n>TRUE</span><span class=p>)</span> <span class=p>{</span>
-      <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;CheckRemoteDebuggerPresent&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-    <span class=p>}</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>代码很简单不多解释，不过从这里可以引出新的内容：<code>CheckRemoteDebuggerPresent</code> 的实现方式是调用 <code>NtQueryInformationProcess</code> ，一个没有文档的内核接口。</p>
-<h3 id=25-ntqueryinformationprocess>2.5 NtQueryInformationProcess</h3>
-<p><code>NtQueryInformationProcess</code> 同样没文档，这里给出比较清晰的 <a class=link href=https://ctf-wiki.org/reverse/windows/anti-debug/ntqueryinformationprocess/ target=_blank rel=noopener>CTF Wiki</a> 的说明链接。<code>NtQueryInformationProcess</code> 是一个查询信息的接口，输入参数包括查询的信息类型、进程HANDLE、结果指针等。用法同样是简单的。</p>
-<p>值得关注的查询信息类型包括：</p>
-<ul>
-<li><code>ProcessDebugPort</code></li>
-<li><code>ProcessBasicInformation</code></li>
-<li><code>ProcessDebugObjectHandle</code></li>
-<li><code>ProcessDebugFlags</code></li>
-</ul>
-<p>对于 <code>ProcessDebugPort</code>，查询结果是一个 DWORD，当存在调试器时查询结果会是 <code>0xffffffff</code>。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=kt>void</span> <span class=nf>anti_debug_by_CheckRemoteDebuggerPresent</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>BOOL</span> <span class=n>isRemoteDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=nf>CheckRemoteDebuggerPresent</span><span class=p>(</span><span class=nf>GetCurrentProcess</span><span class=p>(),</span> <span class=o>&amp;</span><span class=n>isRemoteDebuggerPresent</span><span class=p>))</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>isRemoteDebuggerPresent</span> <span class=o>==</span> <span class=n>TRUE</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;CheckRemoteDebuggerPresent&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>代码很简单不多解释，不过从这里可以引出新的内容：<code>CheckRemoteDebuggerPresent</code> 的实现方式是调用 <code>NtQueryInformationProcess</code> ，一个没有文档的内核接口。</p><h3 id=25-ntqueryinformationprocess>2.5 NtQueryInformationProcess</h3><p><code>NtQueryInformationProcess</code> 同样没文档，这里给出比较清晰的 <a class=link href=https://ctf-wiki.org/reverse/windows/anti-debug/ntqueryinformationprocess/ target=_blank rel=noopener>CTF Wiki</a> 的说明链接。<code>NtQueryInformationProcess</code> 是一个查询信息的接口，输入参数包括查询的信息类型、进程HANDLE、结果指针等。用法同样是简单的。</p><p>值得关注的查询信息类型包括：</p><ul><li><code>ProcessDebugPort</code></li><li><code>ProcessBasicInformation</code></li><li><code>ProcessDebugObjectHandle</code></li><li><code>ProcessDebugFlags</code></li></ul><p>对于 <code>ProcessDebugPort</code>，查询结果是一个 DWORD，当存在调试器时查询结果会是 <code>0xffffffff</code>。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -389,32 +141,25 @@ ntdll!_HEAP
 </span><span class=lnt>16
 </span><span class=lnt>17
 </span><span class=lnt>18
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>void</span> <span class=nf>anti_debug_by_NtQueryInformationProcess</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>HMODULE</span> <span class=n>ntdll</span> <span class=o>=</span> <span class=n>LoadLibrary</span><span class=p>(</span><span class=n>TEXT</span><span class=p>(</span><span class=s>&#34;ntdll.dll&#34;</span><span class=p>));</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>ntdll</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>abort</span><span class=p>();</span>
-  <span class=p>}</span>
-
-  <span class=n>FARPROC</span> <span class=n>ntQueryInfoProc</span> <span class=o>=</span> <span class=n>GetProcAddress</span><span class=p>(</span><span class=n>ntdll</span><span class=p>,</span> <span class=s>&#34;NtQueryInformationProcess&#34;</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>ntQueryInfoProc</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>abort</span><span class=p>();</span>
-  <span class=p>}</span>
-
-  <span class=n>DWORD</span> <span class=n>isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
-  <span class=n>NTSTATUS</span> <span class=n>status</span> <span class=o>=</span> <span class=n>ntQueryInfoProc</span><span class=p>(</span><span class=n>GetCurrentProcess</span><span class=p>(),</span> <span class=n>ProcessDebugPort</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>isDebuggerPresent</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>DWORD</span><span class=p>),</span> <span class=nb>NULL</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>status</span> <span class=o>==</span> <span class=mi>0</span> <span class=o>&amp;&amp;</span> <span class=n>isDebuggerPresent</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;NtQueryInformationProcess&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-    <span class=k>return</span><span class=p>;</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>对于 <code>ProcessBasicInformation</code>，查询结果是 <code>PROCESS_BASIC_INFORMATION</code> 结构，可以根据这个结构来进一步判断父进程是否是已知的调试器。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=kt>void</span> <span class=nf>anti_debug_by_NtQueryInformationProcess</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>HMODULE</span> <span class=n>ntdll</span> <span class=o>=</span> <span class=nf>LoadLibrary</span><span class=p>(</span><span class=nf>TEXT</span><span class=p>(</span><span class=s>&#34;ntdll.dll&#34;</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>ntdll</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>abort</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=n>FARPROC</span> <span class=n>ntQueryInfoProc</span> <span class=o>=</span> <span class=nf>GetProcAddress</span><span class=p>(</span><span class=n>ntdll</span><span class=p>,</span> <span class=s>&#34;NtQueryInformationProcess&#34;</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>ntQueryInfoProc</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>abort</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=n>DWORD</span> <span class=n>isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>NTSTATUS</span> <span class=n>status</span> <span class=o>=</span> <span class=nf>ntQueryInfoProc</span><span class=p>(</span><span class=nf>GetCurrentProcess</span><span class=p>(),</span> <span class=n>ProcessDebugPort</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>isDebuggerPresent</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>DWORD</span><span class=p>),</span> <span class=nb>NULL</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>status</span> <span class=o>==</span> <span class=mi>0</span> <span class=o>&amp;&amp;</span> <span class=n>isDebuggerPresent</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;NtQueryInformationProcess&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>对于 <code>ProcessBasicInformation</code>，查询结果是 <code>PROCESS_BASIC_INFORMATION</code> 结构，可以根据这个结构来进一步判断父进程是否是已知的调试器。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -457,71 +202,54 @@ ntdll!_HEAP
 </span><span class=lnt>41
 </span><span class=lnt>42
 </span><span class=lnt>43
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#ifdef UNICODE
-</span><span class=cp>#  define MY_STRCMP wcscmp
-</span><span class=cp>#else
-</span><span class=cp>#  define MY_STRCMP strcmp
-</span><span class=cp>#endif
-</span><span class=cp></span>
-<span class=kt>void</span> <span class=nf>anti_debug_by_NtQueryInformationProcess_BasicInformation</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>HMODULE</span> <span class=n>ntdll</span> <span class=o>=</span> <span class=n>LoadLibrary</span><span class=p>(</span><span class=n>TEXT</span><span class=p>(</span><span class=s>&#34;ntdll.dll&#34;</span><span class=p>));</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>ntdll</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>abort</span><span class=p>();</span>
-  <span class=p>}</span>
-
-  <span class=n>FARPROC</span> <span class=n>ntQueryInfoProc</span> <span class=o>=</span> <span class=n>GetProcAddress</span><span class=p>(</span><span class=n>ntdll</span><span class=p>,</span> <span class=s>&#34;NtQueryInformationProcess&#34;</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>ntQueryInfoProc</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>abort</span><span class=p>();</span>
-  <span class=p>}</span>
-
-  <span class=n>PROCESS_BASIC_INFORMATION</span> <span class=n>info</span><span class=p>;</span>
-  <span class=n>NTSTATUS</span> <span class=n>status</span> <span class=o>=</span> <span class=n>ntQueryInfoProc</span><span class=p>(</span><span class=n>GetCurrentProcess</span><span class=p>(),</span> <span class=n>ProcessBasicInformation</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>info</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>info</span><span class=p>),</span> <span class=nb>NULL</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>status</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>HANDLE</span> <span class=n>hProcSnap</span> <span class=o>=</span> <span class=n>CreateToolhelp32Snapshot</span><span class=p>(</span><span class=n>TH32CS_SNAPPROCESS</span><span class=p>,</span> <span class=mi>0</span><span class=p>);</span>
-    <span class=k>if</span> <span class=p>(</span><span class=n>hProcSnap</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-      <span class=n>abort</span><span class=p>();</span>
-    <span class=p>}</span>
-
-    <span class=n>PROCESSENTRY32</span> <span class=n>pe32</span><span class=p>;</span>
-    <span class=n>pe32</span><span class=p>.</span><span class=n>dwSize</span> <span class=o>=</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>PROCESSENTRY32</span><span class=p>);</span>
-    <span class=k>if</span> <span class=p>(</span><span class=o>!</span><span class=n>Process32First</span><span class=p>(</span><span class=n>hProcSnap</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>pe32</span><span class=p>))</span> <span class=p>{</span>
-      <span class=n>abort</span><span class=p>();</span>
-    <span class=p>}</span>
-
-    <span class=k>do</span> <span class=p>{</span>
-      <span class=k>if</span> <span class=p>(</span><span class=n>pe32</span><span class=p>.</span><span class=n>th32ProcessID</span> <span class=o>==</span> <span class=n>info</span><span class=p>.</span><span class=n>InheritedFromUniqueProcessId</span><span class=p>)</span> <span class=p>{</span>
-        <span class=k>if</span> <span class=p>(</span><span class=n>MY_STRCMP</span><span class=p>(</span><span class=n>TEXT</span><span class=p>(</span><span class=s>&#34;devenv.exe&#34;</span><span class=p>),</span> <span class=n>pe32</span><span class=p>.</span><span class=n>szExeFile</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span> <span class=o>||</span> <span class=n>MY_STRCMP</span><span class=p>(</span><span class=n>TEXT</span><span class=p>(</span><span class=s>&#34;x32dbg.exe&#34;</span><span class=p>),</span> <span class=n>pe32</span><span class=p>.</span><span class=n>szExeFile</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span> <span class=o>||</span>
-            <span class=n>MY_STRCMP</span><span class=p>(</span><span class=n>TEXT</span><span class=p>(</span><span class=s>&#34;x64dbg.exe&#34;</span><span class=p>),</span> <span class=n>pe32</span><span class=p>.</span><span class=n>szExeFile</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span> <span class=o>||</span> <span class=n>MY_STRCMP</span><span class=p>(</span><span class=n>TEXT</span><span class=p>(</span><span class=s>&#34;ollydbg.exe&#34;</span><span class=p>),</span> <span class=n>pe32</span><span class=p>.</span><span class=n>szExeFile</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
-          <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;BasicInformation&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-          <span class=n>CloseHandle</span><span class=p>(</span><span class=n>hProcSnap</span><span class=p>);</span>
-          <span class=k>return</span><span class=p>;</span>
-        <span class=p>}</span>
-      <span class=p>}</span>
-    <span class=p>}</span> <span class=k>while</span> <span class=p>(</span><span class=n>Process32Next</span><span class=p>(</span><span class=n>hProcSnap</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>pe32</span><span class=p>));</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p><code>ProcessObjectDebugHandle</code> 和 <code>ProcessDebugFlags</code> 就不一一给案例了。检查方式也很简单，就是判断非零则存在调试器。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=cp>#ifdef UNICODE
+</span></span></span><span class=line><span class=cl><span class=cp>#  define MY_STRCMP wcscmp
+</span></span></span><span class=line><span class=cl><span class=cp>#else
+</span></span></span><span class=line><span class=cl><span class=cp>#  define MY_STRCMP strcmp
+</span></span></span><span class=line><span class=cl><span class=cp>#endif
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>anti_debug_by_NtQueryInformationProcess_BasicInformation</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>HMODULE</span> <span class=n>ntdll</span> <span class=o>=</span> <span class=nf>LoadLibrary</span><span class=p>(</span><span class=nf>TEXT</span><span class=p>(</span><span class=s>&#34;ntdll.dll&#34;</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>ntdll</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>abort</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=n>FARPROC</span> <span class=n>ntQueryInfoProc</span> <span class=o>=</span> <span class=nf>GetProcAddress</span><span class=p>(</span><span class=n>ntdll</span><span class=p>,</span> <span class=s>&#34;NtQueryInformationProcess&#34;</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>ntQueryInfoProc</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>abort</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=n>PROCESS_BASIC_INFORMATION</span> <span class=n>info</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>NTSTATUS</span> <span class=n>status</span> <span class=o>=</span> <span class=nf>ntQueryInfoProc</span><span class=p>(</span><span class=nf>GetCurrentProcess</span><span class=p>(),</span> <span class=n>ProcessBasicInformation</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>info</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>info</span><span class=p>),</span> <span class=nb>NULL</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>status</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>HANDLE</span> <span class=n>hProcSnap</span> <span class=o>=</span> <span class=nf>CreateToolhelp32Snapshot</span><span class=p>(</span><span class=n>TH32CS_SNAPPROCESS</span><span class=p>,</span> <span class=mi>0</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>hProcSnap</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=nf>abort</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=n>PROCESSENTRY32</span> <span class=n>pe32</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=n>pe32</span><span class=p>.</span><span class=n>dwSize</span> <span class=o>=</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>PROCESSENTRY32</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=o>!</span><span class=nf>Process32First</span><span class=p>(</span><span class=n>hProcSnap</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>pe32</span><span class=p>))</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=nf>abort</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=k>do</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=k>if</span> <span class=p>(</span><span class=n>pe32</span><span class=p>.</span><span class=n>th32ProcessID</span> <span class=o>==</span> <span class=n>info</span><span class=p>.</span><span class=n>InheritedFromUniqueProcessId</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=k>if</span> <span class=p>(</span><span class=nf>MY_STRCMP</span><span class=p>(</span><span class=nf>TEXT</span><span class=p>(</span><span class=s>&#34;devenv.exe&#34;</span><span class=p>),</span> <span class=n>pe32</span><span class=p>.</span><span class=n>szExeFile</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span> <span class=o>||</span> <span class=nf>MY_STRCMP</span><span class=p>(</span><span class=nf>TEXT</span><span class=p>(</span><span class=s>&#34;x32dbg.exe&#34;</span><span class=p>),</span> <span class=n>pe32</span><span class=p>.</span><span class=n>szExeFile</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span> <span class=o>||</span>
+</span></span><span class=line><span class=cl>            <span class=nf>MY_STRCMP</span><span class=p>(</span><span class=nf>TEXT</span><span class=p>(</span><span class=s>&#34;x64dbg.exe&#34;</span><span class=p>),</span> <span class=n>pe32</span><span class=p>.</span><span class=n>szExeFile</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span> <span class=o>||</span> <span class=nf>MY_STRCMP</span><span class=p>(</span><span class=nf>TEXT</span><span class=p>(</span><span class=s>&#34;ollydbg.exe&#34;</span><span class=p>),</span> <span class=n>pe32</span><span class=p>.</span><span class=n>szExeFile</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>          <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;BasicInformation&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>          <span class=nf>CloseHandle</span><span class=p>(</span><span class=n>hProcSnap</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>          <span class=k>return</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span>
+</span></span><span class=line><span class=cl>      <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span> <span class=k>while</span> <span class=p>(</span><span class=nf>Process32Next</span><span class=p>(</span><span class=n>hProcSnap</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>pe32</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p><code>ProcessObjectDebugHandle</code> 和 <code>ProcessDebugFlags</code> 就不一一给案例了。检查方式也很简单，就是判断非零则存在调试器。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=n>ntQueryInfoProc</span><span class=p>(</span><span class=n>GetCurrentProcess</span><span class=p>(),</span> <span class=n>ProcessObjectDebugHandle</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>handle</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>HANDLE</span><span class=p>),</span> <span class=nb>NULL</span><span class=p>);</span>
-<span class=n>ntQueryInfoProc</span><span class=p>(</span><span class=n>GetCurrentProcess</span><span class=p>(),</span> <span class=n>ProcessDebugFlags</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>flags</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>ULONG</span><span class=p>),</span> <span class=nb>NULL</span><span class=p>);</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>因为 <code>NtQueryInformationProcess</code> 是从内核查询消息，所以 bypass 会比较难——就是说需要 HOOK 。但我还不会 HOOK ，所以略过。</p>
-<h3 id=26-ntsetinformationthread>2.6 NtSetInformationThread</h3>
-<p>又是一个没有文档的API。<code>NtSetInformationThread</code> 等同于 <code>ZwSetInformationThread</code>，通过设置 <code>ThreadHideFromDebugger</code> 标志位可以禁止线程产生调试事件。如果正处于调试状态执行了这个 API 则会导致程序立即退出。</p>
-<p>案例如下。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=nf>ntQueryInfoProc</span><span class=p>(</span><span class=nf>GetCurrentProcess</span><span class=p>(),</span> <span class=n>ProcessObjectDebugHandle</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>handle</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>HANDLE</span><span class=p>),</span> <span class=nb>NULL</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=nf>ntQueryInfoProc</span><span class=p>(</span><span class=nf>GetCurrentProcess</span><span class=p>(),</span> <span class=n>ProcessDebugFlags</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>flags</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>ULONG</span><span class=p>),</span> <span class=nb>NULL</span><span class=p>);</span>
+</span></span></code></pre></td></tr></table></div></div><p>因为 <code>NtQueryInformationProcess</code> 是从内核查询消息，所以 bypass 会比较难——就是说需要 HOOK 。但我还不会 HOOK ，所以略过。</p><h3 id=26-ntsetinformationthread>2.6 NtSetInformationThread</h3><p>又是一个没有文档的API。<code>NtSetInformationThread</code> 等同于 <code>ZwSetInformationThread</code>，通过设置 <code>ThreadHideFromDebugger</code> 标志位可以禁止线程产生调试事件。如果正处于调试状态执行了这个 API 则会导致程序立即退出。</p><p>案例如下。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -537,32 +265,23 @@ ntdll!_HEAP
 </span><span class=lnt>14
 </span><span class=lnt>15
 </span><span class=lnt>16
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=k>typedef</span> <span class=nf>NTSTATUS</span><span class=p>(</span><span class=n>NTAPI</span> <span class=o>*</span><span class=n>pfnNtSetInformationThread</span><span class=p>)(</span><span class=n>_In_</span> <span class=n>HANDLE</span> <span class=n>ThreadHandle</span><span class=p>,</span> <span class=n>_In_</span> <span class=n>ULONG</span> <span class=n>ThreadInformationClass</span><span class=p>,</span>
-                                                   <span class=n>_In_</span> <span class=n>PVOID</span> <span class=n>ThreadInformation</span><span class=p>,</span> <span class=n>_In_</span> <span class=n>ULONG</span> <span class=n>ThreadInformationLength</span><span class=p>);</span>
-<span class=kt>void</span> <span class=nf>anti_debug_by_HideFromDebugger</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>HMODULE</span> <span class=n>ntdll</span> <span class=o>=</span> <span class=n>LoadLibrary</span><span class=p>(</span><span class=n>TEXT</span><span class=p>(</span><span class=s>&#34;ntdll.dll&#34;</span><span class=p>));</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>ntdll</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>abort</span><span class=p>();</span>
-  <span class=p>}</span>
-
-  <span class=n>pfnNtSetInformationThread</span> <span class=n>ntSetInfoThread</span> <span class=o>=</span> <span class=p>(</span><span class=n>pfnNtSetInformationThread</span><span class=p>)</span><span class=n>GetProcAddress</span><span class=p>(</span><span class=n>ntdll</span><span class=p>,</span> <span class=s>&#34;NtSetInformationThread&#34;</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>ntSetInfoThread</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>abort</span><span class=p>();</span>
-  <span class=p>}</span>
-
-  <span class=n>ntSetInfoThread</span><span class=p>(</span><span class=n>GetCurrentThread</span><span class=p>(),</span> <span class=n>ThreadHideFromDebugger</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>,</span> <span class=mi>0</span><span class=p>);</span>
-  <span class=c1>// ... NtCreateThreadEx THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER
-</span><span class=c1></span><span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>同样因为这一方式是走内核接口，可以通过 HOOK 技术把相应的标志位拦截掉就行。</p>
-<h3 id=27-setgetlasterror>2.7 Set/GetLastError</h3>
-<p>对<code>SetLastError</code>和<code>GetLastError</code>的利用方式是结合 <code>OutputDebugString</code> 失败时会修改 <code>GetLastError()</code> 的错误码的行为，判断是否有调试器存在。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=k>typedef</span> <span class=nf>NTSTATUS</span><span class=p>(</span><span class=n>NTAPI</span> <span class=o>*</span><span class=n>pfnNtSetInformationThread</span><span class=p>)(</span><span class=n>_In_</span> <span class=n>HANDLE</span> <span class=n>ThreadHandle</span><span class=p>,</span> <span class=n>_In_</span> <span class=n>ULONG</span> <span class=n>ThreadInformationClass</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>                                                   <span class=n>_In_</span> <span class=n>PVOID</span> <span class=n>ThreadInformation</span><span class=p>,</span> <span class=n>_In_</span> <span class=n>ULONG</span> <span class=n>ThreadInformationLength</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>anti_debug_by_HideFromDebugger</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>HMODULE</span> <span class=n>ntdll</span> <span class=o>=</span> <span class=nf>LoadLibrary</span><span class=p>(</span><span class=nf>TEXT</span><span class=p>(</span><span class=s>&#34;ntdll.dll&#34;</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>ntdll</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>abort</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=n>pfnNtSetInformationThread</span> <span class=n>ntSetInfoThread</span> <span class=o>=</span> <span class=p>(</span><span class=n>pfnNtSetInformationThread</span><span class=p>)</span><span class=nf>GetProcAddress</span><span class=p>(</span><span class=n>ntdll</span><span class=p>,</span> <span class=s>&#34;NtSetInformationThread&#34;</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>ntSetInfoThread</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>abort</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=nf>ntSetInfoThread</span><span class=p>(</span><span class=nf>GetCurrentThread</span><span class=p>(),</span> <span class=n>ThreadHideFromDebugger</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>,</span> <span class=mi>0</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// ... NtCreateThreadEx THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>同样因为这一方式是走内核接口，可以通过 HOOK 技术把相应的标志位拦截掉就行。</p><h3 id=27-setgetlasterror>2.7 Set/GetLastError</h3><p>对<code>SetLastError</code>和<code>GetLastError</code>的利用方式是结合 <code>OutputDebugString</code> 失败时会修改 <code>GetLastError()</code> 的错误码的行为，判断是否有调试器存在。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
@@ -570,29 +289,15 @@ ntdll!_HEAP
 </span><span class=lnt>6
 </span><span class=lnt>7
 </span><span class=lnt>8
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=c1>// TODO: somehow not work on windows 10, need more test.
-</span><span class=c1></span><span class=kt>void</span> <span class=nf>anti_debug_by_SetLastError</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>SetLastError</span><span class=p>(</span><span class=mh>0x1234</span><span class=p>);</span>
-  <span class=n>OutputDebugString</span><span class=p>(</span><span class=n>TEXT</span><span class=p>(</span><span class=s>&#34;Hello Debugger!&#34;</span><span class=p>));</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>GetLastError</span><span class=p>()</span> <span class=o>==</span> <span class=mh>0x1234</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;Set/Get LastError&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>比较奇怪的是在我这无论在不在调试环境跑都会触发反调试，环境 Windows 10 + MinGW 。</p>
-<h2 id=0x03-异常处理方式>0x03 异常处理方式</h2>
-<p>异常处理方式的反调试，是通过触发会被调试器处理的中断或者异常，如果调试器拦截并处理了中断或异常，就会导致程序里注册的异常处理函数未被执行，进而发现正在被调试。</p>
-<p>这个思路也可以用来构造特殊的控制流，比如把关键逻辑放在中断处理函数里，然后抛出 INT 1 中断（单步执行），如果被调试器命中，则我们构造的控制流就会被破坏，程序就会跑飞。</p>
-<h3 id=31-int-1>3.1 INT 1</h3>
-<p>INT 1 中断的含义是 SINGLE STEP，在调试器上的表现就是会让调试器断在中断的位置（反正在x32dbg上的表现是这样）。INT 1中断后，如果没有调试器，那么控制权会转交给调试器，SEH 不会执行，反之则 SEH 执行，用户程序保留控制权。</p>
-<p>实际上发现 x32dbg 即使断到了也会把控制权转给 SEH，所以对关于 SEH 反调试是否可行、如何实现持疑问。但是经过一番搜索和研究发现 VEH 机制可以实现上述逻辑。案例代码如下。</p>
-<p>用来抛出 INT 1 中断的汇编代码</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=c1>// TODO: somehow not work on windows 10, need more test.
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kt>void</span> <span class=nf>anti_debug_by_SetLastError</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=nf>SetLastError</span><span class=p>(</span><span class=mh>0x1234</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=nf>OutputDebugString</span><span class=p>(</span><span class=nf>TEXT</span><span class=p>(</span><span class=s>&#34;Hello Debugger!&#34;</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=nf>GetLastError</span><span class=p>()</span> <span class=o>==</span> <span class=mh>0x1234</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;Set/Get LastError&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>比较奇怪的是在我这无论在不在调试环境跑都会触发反调试，环境 Windows 10 + MinGW 。</p><h2 id=0x03-异常处理方式>0x03 异常处理方式</h2><p>异常处理方式的反调试，是通过触发会被调试器处理的中断或者异常，如果调试器拦截并处理了中断或异常，就会导致程序里注册的异常处理函数未被执行，进而发现正在被调试。</p><p>这个思路也可以用来构造特殊的控制流，比如把关键逻辑放在中断处理函数里，然后抛出 INT 1 中断（单步执行），如果被调试器命中，则我们构造的控制流就会被破坏，程序就会跑飞。</p><h3 id=31-int-1>3.1 INT 1</h3><p>INT 1 中断的含义是 SINGLE STEP，在调试器上的表现就是会让调试器断在中断的位置（反正在x32dbg上的表现是这样）。INT 1中断后，如果没有调试器，那么控制权会转交给调试器，SEH 不会执行，反之则 SEH 执行，用户程序保留控制权。</p><p>实际上发现 x32dbg 即使断到了也会把控制权转给 SEH，所以对关于 SEH 反调试是否可行、如何实现持疑问。但是经过一番搜索和研究发现 VEH 机制可以实现上述逻辑。案例代码如下。</p><p>用来抛出 INT 1 中断的汇编代码</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
@@ -600,22 +305,15 @@ ntdll!_HEAP
 </span><span class=lnt>6
 </span><span class=lnt>7
 </span><span class=lnt>8
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>section</span> <span class=no>.text</span>
-	<span class=nf>global</span> <span class=no>_RaiseInt1</span>
-
-<span class=nl>_RaiseInt1:</span>
-    <span class=nf>pushfd</span>
-    <span class=nf>or</span> <span class=p>[</span><span class=no>esp</span><span class=p>],</span><span class=no>dword</span> <span class=mi>0x100</span>
-    <span class=nf>popfd</span>
-    <span class=nf>retn</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>检测调试器的函数如下</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=nf>section</span> <span class=no>.text</span>
+</span></span><span class=line><span class=cl>	<span class=nf>global</span> <span class=no>_RaiseInt1</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=nl>_RaiseInt1:</span>
+</span></span><span class=line><span class=cl>    <span class=nf>pushfd</span>
+</span></span><span class=line><span class=cl>    <span class=nf>or</span> <span class=p>[</span><span class=no>esp</span><span class=p>],</span><span class=no>dword</span> <span class=mi>0x100</span>
+</span></span><span class=line><span class=cl>    <span class=nf>popfd</span>
+</span></span><span class=line><span class=cl>    <span class=nf>retn</span>
+</span></span></code></pre></td></tr></table></div></div><p>检测调试器的函数如下</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -639,67 +337,43 @@ ntdll!_HEAP
 </span><span class=lnt>22
 </span><span class=lnt>23
 </span><span class=lnt>24
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=n>BOOL</span> <span class=k>volatile</span> <span class=n>VEH_INT1_isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
-
-<span class=n>LONG</span> <span class=n>CALLBACK</span> <span class=nf>VEH_INT1_UnhandledExceptionFilter</span><span class=p>(</span><span class=n>_In_</span> <span class=n>EXCEPTION_POINTERS</span> <span class=o>*</span><span class=n>lpEP</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>switch</span> <span class=p>(</span><span class=n>lpEP</span><span class=o>-&gt;</span><span class=n>ExceptionRecord</span><span class=o>-&gt;</span><span class=n>ExceptionCode</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>case</span> <span class=nl>EXCEPTION_SINGLE_STEP</span><span class=p>:</span>
-    <span class=c1>// handle single step exception if not handled by debugger
-</span><span class=c1></span>    <span class=n>VEH_INT1_isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
-    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_EXECUTION</span><span class=p>;</span>
-  <span class=k>default</span><span class=o>:</span>
-    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_SEARCH</span><span class=p>;</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-
-<span class=kt>void</span> <span class=nf>anti_debug_by_VEH_INT1</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>VEH_INT1_isDebuggerPresent</span> <span class=o>=</span> <span class=n>TRUE</span><span class=p>;</span>
-  <span class=c1>// https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-setunhandledexceptionfilter
-</span><span class=c1></span>  <span class=n>SetUnhandledExceptionFilter</span><span class=p>(</span><span class=n>VEH_INT1_UnhandledExceptionFilter</span><span class=p>);</span>
-  <span class=c1>// https://docs.microsoft.com/zh-cn/windows/win32/api/errhandlingapi/nf-errhandlingapi-addvectoredexceptionhandler?redirectedfrom=MSDN
-</span><span class=c1></span>  <span class=c1>// https://docs.microsoft.com/en-us/windows/win32/api/winnt/nc-winnt-pvectored_exception_handler
-</span><span class=c1></span>  <span class=n>RaiseInt1</span><span class=p>();</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>VEH_INT1_isDebuggerPresent</span> <span class=o>==</span> <span class=n>TRUE</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;VEH INT1&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>利用 <code>SetUnhandledExceptionFilter</code> 实现，文档链接在注释里给出了。也可以再罗嗦一点，结合 <code>AddVectoredExceptionHandler</code> 实现。但逻辑还是那样。</p>
-<p>INT 1中断方式检测调试器后，可以恢复到正常控制流执行。但是 INT 3 会有所区别，INT 3 中断时 EIP 会停留在中断指令处，中断处理中需要修改 EIP 的值恢复控制流。</p>
-<p>关于 SEH 中断反调试我留个链接：<a class=link href=https://bbs.pediy.com/thread-267324.htm target=_blank rel=noopener>看雪论坛：基于SEH的静态反调试实例分析</a>，有空再分析看看。</p>
-<h3 id=32-int-3>3.2 INT 3</h3>
-<p>INT 3 中断就是 <code>0xcc</code> 一字节中断指令，顺便一提啊，因为VC会用 0xcc 填充未初始化的栈，用C写过代码多少都见过的 <em>烫烫烫</em> 错误就是来自于此。</p>
-<p>参考 <a class=link href=https://ctf-wiki.org/reverse/windows/anti-debug/int-3/ target=_blank rel=noopener>CTF Wiki - Interrupt 3</a>。</p>
-<blockquote>
-<p>当<code>EXCEPTION_BREAKPOINT(0x80000003)</code>异常触发时, Windows 会认定这是由单字节的 &ldquo;<code>CC</code>&rdquo; 操作码 (也即<code>Int 3</code>指令) 造成的. Windows 递减异常地址以指向所认定的 &ldquo;<code>CC</code>&rdquo; 操作码, 随后传递该异常给异常处理句柄. 但是 EIP 寄存器的值并不会发生变化.</p>
-<p>因此, 如果使用了 <code>CD 03</code>（这是 <code>Int 03</code> 的机器码表示），那么当异常处理句柄接受控制时, 异常地址是指向 <code>03</code> 的位置.</p>
-</blockquote>
-<p>这里有一个调试中发现的怪异问题：调试器内运行时会平栈错误，esp 会越过原本的返回地址，导致执行到 ret 时返回地址是0，产生异常。目前不确定是不是因为上面说的EIP没有+1导致的问题。</p>
-<p>案例代码如下。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=n>BOOL</span> <span class=k>volatile</span> <span class=n>VEH_INT1_isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>LONG</span> <span class=n>CALLBACK</span> <span class=nf>VEH_INT1_UnhandledExceptionFilter</span><span class=p>(</span><span class=n>_In_</span> <span class=n>EXCEPTION_POINTERS</span> <span class=o>*</span><span class=n>lpEP</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>switch</span> <span class=p>(</span><span class=n>lpEP</span><span class=o>-&gt;</span><span class=n>ExceptionRecord</span><span class=o>-&gt;</span><span class=n>ExceptionCode</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>case</span> <span class=nl>EXCEPTION_SINGLE_STEP</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// handle single step exception if not handled by debugger
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=n>VEH_INT1_isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_EXECUTION</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>default</span><span class=o>:</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_SEARCH</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>anti_debug_by_VEH_INT1</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>VEH_INT1_isDebuggerPresent</span> <span class=o>=</span> <span class=n>TRUE</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-setunhandledexceptionfilter
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=nf>SetUnhandledExceptionFilter</span><span class=p>(</span><span class=n>VEH_INT1_UnhandledExceptionFilter</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// https://docs.microsoft.com/zh-cn/windows/win32/api/errhandlingapi/nf-errhandlingapi-addvectoredexceptionhandler?redirectedfrom=MSDN
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=c1>// https://docs.microsoft.com/en-us/windows/win32/api/winnt/nc-winnt-pvectored_exception_handler
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=nf>RaiseInt1</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>VEH_INT1_isDebuggerPresent</span> <span class=o>==</span> <span class=n>TRUE</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;VEH INT1&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>利用 <code>SetUnhandledExceptionFilter</code> 实现，文档链接在注释里给出了。也可以再罗嗦一点，结合 <code>AddVectoredExceptionHandler</code> 实现。但逻辑还是那样。</p><p>INT 1中断方式检测调试器后，可以恢复到正常控制流执行。但是 INT 3 会有所区别，INT 3 中断时 EIP 会停留在中断指令处，中断处理中需要修改 EIP 的值恢复控制流。</p><p>关于 SEH 中断反调试我留个链接：<a class=link href=https://bbs.pediy.com/thread-267324.htm target=_blank rel=noopener>看雪论坛：基于SEH的静态反调试实例分析</a>，有空再分析看看。</p><h3 id=32-int-3>3.2 INT 3</h3><p>INT 3 中断就是 <code>0xcc</code> 一字节中断指令，顺便一提啊，因为VC会用 0xcc 填充未初始化的栈，用C写过代码多少都见过的 <em>烫烫烫</em> 错误就是来自于此。</p><p>参考 <a class=link href=https://ctf-wiki.org/reverse/windows/anti-debug/int-3/ target=_blank rel=noopener>CTF Wiki - Interrupt 3</a>。</p><blockquote><p>当<code>EXCEPTION_BREAKPOINT(0x80000003)</code>异常触发时, Windows 会认定这是由单字节的 &ldquo;<code>CC</code>&rdquo; 操作码 (也即<code>Int 3</code>指令) 造成的. Windows 递减异常地址以指向所认定的 &ldquo;<code>CC</code>&rdquo; 操作码, 随后传递该异常给异常处理句柄. 但是 EIP 寄存器的值并不会发生变化.</p><p>因此, 如果使用了 <code>CD 03</code>（这是 <code>Int 03</code> 的机器码表示），那么当异常处理句柄接受控制时, 异常地址是指向 <code>03</code> 的位置.</p></blockquote><p>这里有一个调试中发现的怪异问题：调试器内运行时会平栈错误，esp 会越过原本的返回地址，导致执行到 ret 时返回地址是0，产生异常。目前不确定是不是因为上面说的EIP没有+1导致的问题。</p><p>案例代码如下。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>section</span> <span class=no>.text</span>
-	<span class=nf>global</span> <span class=no>_RaiseInt3</span>
-
-<span class=nl>_RaiseInt3:</span>
-	<span class=nf>int</span> <span class=mi>3</span>
-	<span class=nf>retn</span>
-</code></pre></td></tr></table>
-</div>
-</div><div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=nf>section</span> <span class=no>.text</span>
+</span></span><span class=line><span class=cl>	<span class=nf>global</span> <span class=no>_RaiseInt3</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=nl>_RaiseInt3:</span>
+</span></span><span class=line><span class=cl>	<span class=nf>int</span> <span class=mi>3</span>
+</span></span><span class=line><span class=cl>	<span class=nf>retn</span>
+</span></span></code></pre></td></tr></table></div></div><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -721,36 +395,29 @@ ntdll!_HEAP
 </span><span class=lnt>20
 </span><span class=lnt>21
 </span><span class=lnt>22
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=n>BOOL</span> <span class=k>volatile</span> <span class=n>VEH_INT3_isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
-
-<span class=n>LONG</span> <span class=n>CALLBACK</span> <span class=nf>VEH_INT3_UnhandledExceptionFilter</span><span class=p>(</span><span class=n>_In_</span> <span class=n>EXCEPTION_POINTERS</span> <span class=o>*</span><span class=n>lpEP</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>switch</span> <span class=p>(</span><span class=n>lpEP</span><span class=o>-&gt;</span><span class=n>ExceptionRecord</span><span class=o>-&gt;</span><span class=n>ExceptionCode</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>case</span> <span class=nl>EXCEPTION_BREAKPOINT</span><span class=p>:</span>
-    <span class=c1>// handle single step exception if not handled by debugger
-</span><span class=c1></span>    <span class=n>VEH_INT3_isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
-    <span class=n>lpEP</span><span class=o>-&gt;</span><span class=n>ContextRecord</span><span class=o>-&gt;</span><span class=n>Eip</span> <span class=o>+=</span> <span class=mi>1</span><span class=p>;</span>
-    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_EXECUTION</span><span class=p>;</span>
-  <span class=k>default</span><span class=o>:</span>
-    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_SEARCH</span><span class=p>;</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-
-<span class=kt>void</span> <span class=nf>anti_debug_by_VEH_INT3</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>VEH_INT3_isDebuggerPresent</span> <span class=o>=</span> <span class=n>TRUE</span><span class=p>;</span>
-  <span class=n>SetUnhandledExceptionFilter</span><span class=p>(</span><span class=n>VEH_INT3_UnhandledExceptionFilter</span><span class=p>);</span>
-  <span class=n>RaiseInt3</span><span class=p>();</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>VEH_INT3_isDebuggerPresent</span> <span class=o>==</span> <span class=n>TRUE</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;SEH INT3&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>可以看到和 INT1 的案例别无二致。这里再附带上汇编结果，大佬也可以看看上面说的平栈问题是怎么回事。编译好的案例会附在最末。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=n>BOOL</span> <span class=k>volatile</span> <span class=n>VEH_INT3_isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>LONG</span> <span class=n>CALLBACK</span> <span class=nf>VEH_INT3_UnhandledExceptionFilter</span><span class=p>(</span><span class=n>_In_</span> <span class=n>EXCEPTION_POINTERS</span> <span class=o>*</span><span class=n>lpEP</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>switch</span> <span class=p>(</span><span class=n>lpEP</span><span class=o>-&gt;</span><span class=n>ExceptionRecord</span><span class=o>-&gt;</span><span class=n>ExceptionCode</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>case</span> <span class=nl>EXCEPTION_BREAKPOINT</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// handle single step exception if not handled by debugger
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=n>VEH_INT3_isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=n>lpEP</span><span class=o>-&gt;</span><span class=n>ContextRecord</span><span class=o>-&gt;</span><span class=n>Eip</span> <span class=o>+=</span> <span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_EXECUTION</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>default</span><span class=o>:</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_SEARCH</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>anti_debug_by_VEH_INT3</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>VEH_INT3_isDebuggerPresent</span> <span class=o>=</span> <span class=n>TRUE</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=nf>SetUnhandledExceptionFilter</span><span class=p>(</span><span class=n>VEH_INT3_UnhandledExceptionFilter</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=nf>RaiseInt3</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>VEH_INT3_isDebuggerPresent</span> <span class=o>==</span> <span class=n>TRUE</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;SEH INT3&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>可以看到和 INT1 的案例别无二致。这里再附带上汇编结果，大佬也可以看看上面说的平栈问题是怎么回事。编译好的案例会附在最末。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -769,34 +436,26 @@ ntdll!_HEAP
 </span><span class=lnt>17
 </span><span class=lnt>18
 </span><span class=lnt>19
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>sub</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>0x1C</span>
-<span class=nf>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ds</span><span class=p>:[</span><span class=mi>0x5B4000</span><span class=p>],</span> <span class=mi>0x1</span>
-<span class=nf>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ss</span><span class=p>:[</span><span class=no>esp</span><span class=p>],</span> <span class=err>&lt;</span><span class=no>packed.sub_5B1390</span><span class=err>&gt;</span>
-<span class=nf>call</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ds</span><span class=p>:[</span><span class=err>&lt;&amp;</span><span class=no>_SetUnhandledExceptionFilterStub@4</span><span class=err>&gt;</span><span class=p>]</span>
-<span class=nf>sub</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>0x4</span>
-<span class=nf>call</span> <span class=no>packed.5B1AA1</span> <span class=c>; int3, retn
-</span><span class=c></span><span class=no>mov</span> <span class=no>eax</span><span class=p>,</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ds</span><span class=p>:[</span><span class=mi>0x5B4000</span><span class=p>]</span>
-<span class=nf>cmp</span> <span class=no>eax</span><span class=p>,</span> <span class=mi>0x1</span>
-<span class=nf>je</span> <span class=no>packed.5B1650</span>
-<span class=nf>add</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>0x1C</span>
-<span class=nf>ret</span> 
-<span class=no>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ss</span><span class=p>:[</span><span class=no>esp</span><span class=err>+</span><span class=mi>0xC</span><span class=p>],</span> <span class=mi>0x0</span>
-<span class=nf>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ss</span><span class=p>:[</span><span class=no>esp</span><span class=err>+</span><span class=mi>0x8</span><span class=p>],</span> <span class=no>packed.5B20A1</span>
-<span class=nf>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ss</span><span class=p>:[</span><span class=no>esp</span><span class=err>+</span><span class=mi>0x4</span><span class=p>],</span> <span class=no>packed.5B202A</span>
-<span class=nf>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ss</span><span class=p>:[</span><span class=no>esp</span><span class=p>],</span> <span class=mi>0x0</span>
-<span class=nf>call</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ds</span><span class=p>:[</span><span class=err>&lt;&amp;</span><span class=no>MessageBoxA</span><span class=err>&gt;</span><span class=p>]</span>
-<span class=nf>sub</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>0x10</span>
-<span class=nf>add</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>0x1C</span>
-<span class=nf>ret</span> 
-</code></pre></td></tr></table>
-</div>
-</div><h3 id=33-debugoutputstring>3.3 DebugOutputString</h3>
-<p>利用方式和前面一样。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=nf>sub</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>0x1C</span>
+</span></span><span class=line><span class=cl><span class=nf>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ds</span><span class=p>:[</span><span class=mi>0x5B4000</span><span class=p>],</span> <span class=mi>0x1</span>
+</span></span><span class=line><span class=cl><span class=nf>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ss</span><span class=p>:[</span><span class=no>esp</span><span class=p>],</span> <span class=err>&lt;</span><span class=no>packed.sub_5B1390</span><span class=err>&gt;</span>
+</span></span><span class=line><span class=cl><span class=nf>call</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ds</span><span class=p>:[</span><span class=err>&lt;&amp;</span><span class=no>_SetUnhandledExceptionFilterStub@4</span><span class=err>&gt;</span><span class=p>]</span>
+</span></span><span class=line><span class=cl><span class=nf>sub</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>0x4</span>
+</span></span><span class=line><span class=cl><span class=nf>call</span> <span class=no>packed.5B1AA1</span> <span class=c1>; int3, retn
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=nf>mov</span> <span class=no>eax</span><span class=p>,</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ds</span><span class=p>:[</span><span class=mi>0x5B4000</span><span class=p>]</span>
+</span></span><span class=line><span class=cl><span class=nf>cmp</span> <span class=no>eax</span><span class=p>,</span> <span class=mi>0x1</span>
+</span></span><span class=line><span class=cl><span class=nf>je</span> <span class=no>packed.5B1650</span>
+</span></span><span class=line><span class=cl><span class=nf>add</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>0x1C</span>
+</span></span><span class=line><span class=cl><span class=nf>ret</span> 
+</span></span><span class=line><span class=cl><span class=no>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ss</span><span class=p>:[</span><span class=no>esp</span><span class=err>+</span><span class=mi>0xC</span><span class=p>],</span> <span class=mi>0x0</span>
+</span></span><span class=line><span class=cl><span class=nf>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ss</span><span class=p>:[</span><span class=no>esp</span><span class=err>+</span><span class=mi>0x8</span><span class=p>],</span> <span class=no>packed.5B20A1</span>
+</span></span><span class=line><span class=cl><span class=nf>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ss</span><span class=p>:[</span><span class=no>esp</span><span class=err>+</span><span class=mi>0x4</span><span class=p>],</span> <span class=no>packed.5B202A</span>
+</span></span><span class=line><span class=cl><span class=nf>mov</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ss</span><span class=p>:[</span><span class=no>esp</span><span class=p>],</span> <span class=mi>0x0</span>
+</span></span><span class=line><span class=cl><span class=nf>call</span> <span class=no>dword</span> <span class=no>ptr</span> <span class=no>ds</span><span class=p>:[</span><span class=err>&lt;&amp;</span><span class=no>MessageBoxA</span><span class=err>&gt;</span><span class=p>]</span>
+</span></span><span class=line><span class=cl><span class=nf>sub</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>0x10</span>
+</span></span><span class=line><span class=cl><span class=nf>add</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>0x1C</span>
+</span></span><span class=line><span class=cl><span class=nf>ret</span> 
+</span></span></code></pre></td></tr></table></div></div><h3 id=33-debugoutputstring>3.3 DebugOutputString</h3><p>利用方式和前面一样。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -823,47 +482,34 @@ ntdll!_HEAP
 </span><span class=lnt>25
 </span><span class=lnt>26
 </span><span class=lnt>27
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=c1>// TODO: NOT WORK
-</span><span class=c1></span>
-<span class=n>BOOL</span> <span class=n>VEH_OutputDebugStringException_isDebugPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
-
-<span class=n>LONG</span> <span class=n>CALLBACK</span> <span class=nf>VEH_OutputDebugStringException_UnhandledExceptionFilter</span><span class=p>(</span><span class=n>_In_</span> <span class=n>EXCEPTION_POINTERS</span> <span class=o>*</span><span class=n>lpEP</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>switch</span> <span class=p>(</span><span class=n>lpEP</span><span class=o>-&gt;</span><span class=n>ExceptionRecord</span><span class=o>-&gt;</span><span class=n>ExceptionCode</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>case</span> <span class=nl>EXCEPTION_BREAKPOINT</span><span class=p>:</span>
-    <span class=c1>// handle single step exception if not handled by debugger
-</span><span class=c1></span>    <span class=n>VEH_INT3_isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
-    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_EXECUTION</span><span class=p>;</span>
-  <span class=k>default</span><span class=o>:</span>
-    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_SEARCH</span><span class=p>;</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-
-<span class=kt>void</span> <span class=nf>anti_debug_by_VEH_OutputDebugException</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>ULONG_PTR</span> <span class=n>args</span><span class=p>[</span><span class=mi>4</span><span class=p>]</span> <span class=o>=</span> <span class=p>{</span><span class=mi>0</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>0</span><span class=p>};</span>
-  <span class=n>args</span><span class=p>[</span><span class=mi>0</span><span class=p>]</span> <span class=o>=</span> <span class=p>(</span><span class=n>ULONG_PTR</span><span class=p>)</span><span class=n>wcslen</span><span class=p>(</span><span class=sa>L</span><span class=s>&#34;debug&#34;</span><span class=p>)</span> <span class=o>+</span> <span class=mi>1</span><span class=p>;</span>
-  <span class=n>args</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span> <span class=o>=</span> <span class=p>(</span><span class=n>ULONG_PTR</span><span class=p>)</span><span class=sa>L</span><span class=s>&#34;debug&#34;</span><span class=p>;</span>
-  <span class=n>AddVectoredExceptionHandler</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=n>VEH_OutputDebugStringException_UnhandledExceptionFilter</span><span class=p>);</span>
-  <span class=n>VEH_OutputDebugStringException_isDebugPresent</span> <span class=o>=</span> <span class=n>TRUE</span><span class=p>;</span>
-  <span class=n>RaiseException</span><span class=p>(</span><span class=n>DBG_PRINTEXCEPTION_WIDE_C</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>4</span><span class=p>,</span> <span class=n>args</span><span class=p>);</span>
-  <span class=n>RemoveVectoredExceptionHandler</span><span class=p>(</span><span class=n>VEH_OutputDebugStringException_UnhandledExceptionFilter</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>VEH_OutputDebugStringException_isDebugPresent</span> <span class=o>==</span> <span class=n>TRUE</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;OutputDebugString&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>实测发现 x32dbg 并不会处理 <code>DBG_PRINTEXCEPTION_WIDE_C</code> ，所以这个反调试对 x32dbg 没用。</p>
-<h3 id=34-invalid_handle>3.4 INVALID_HANDLE</h3>
-<p>根据微软的文档 <a class=link href=https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle target=_blank rel=noopener>CloseHandle function (handleapi.h)</a> 说明：</p>
-<blockquote>
-<p>If the application is running under a debugger, the function will throw an exception if it receives either a handle value that is not valid or a pseudo-handle value. This can happen if you close a handle twice, or if you call <strong>CloseHandle</strong> on a handle returned by the <a class=link href=https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-findfirstfilea target=_blank rel=noopener>FindFirstFile</a> function instead of calling the <a class=link href=https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-findclose target=_blank rel=noopener>FindClose</a> function.</p>
-</blockquote>
-<p>可以得知，在调试器启动时，<code>CloseHandle</code> 关闭无效的 <code>HANDLE</code> 时会出现 <code>EXCEPTION_INVALID_HANDLE</code> 异常。所以只要故意关闭一个无效的 <code>HANDLE</code>，抓住这个异常，就能确定调试器存在。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=c1>// TODO: NOT WORK
+</span></span></span><span class=line><span class=cl><span class=c1></span>
+</span></span><span class=line><span class=cl><span class=n>BOOL</span> <span class=n>VEH_OutputDebugStringException_isDebugPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>LONG</span> <span class=n>CALLBACK</span> <span class=nf>VEH_OutputDebugStringException_UnhandledExceptionFilter</span><span class=p>(</span><span class=n>_In_</span> <span class=n>EXCEPTION_POINTERS</span> <span class=o>*</span><span class=n>lpEP</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>switch</span> <span class=p>(</span><span class=n>lpEP</span><span class=o>-&gt;</span><span class=n>ExceptionRecord</span><span class=o>-&gt;</span><span class=n>ExceptionCode</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>case</span> <span class=nl>EXCEPTION_BREAKPOINT</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// handle single step exception if not handled by debugger
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=n>VEH_INT3_isDebuggerPresent</span> <span class=o>=</span> <span class=n>FALSE</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_EXECUTION</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>default</span><span class=o>:</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_SEARCH</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>anti_debug_by_VEH_OutputDebugException</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>ULONG_PTR</span> <span class=n>args</span><span class=p>[</span><span class=mi>4</span><span class=p>]</span> <span class=o>=</span> <span class=p>{</span><span class=mi>0</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>0</span><span class=p>};</span>
+</span></span><span class=line><span class=cl>  <span class=n>args</span><span class=p>[</span><span class=mi>0</span><span class=p>]</span> <span class=o>=</span> <span class=p>(</span><span class=n>ULONG_PTR</span><span class=p>)</span><span class=nf>wcslen</span><span class=p>(</span><span class=sa>L</span><span class=s>&#34;debug&#34;</span><span class=p>)</span> <span class=o>+</span> <span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>args</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span> <span class=o>=</span> <span class=p>(</span><span class=n>ULONG_PTR</span><span class=p>)</span><span class=sa>L</span><span class=s>&#34;debug&#34;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=nf>AddVectoredExceptionHandler</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=n>VEH_OutputDebugStringException_UnhandledExceptionFilter</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=n>VEH_OutputDebugStringException_isDebugPresent</span> <span class=o>=</span> <span class=n>TRUE</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=nf>RaiseException</span><span class=p>(</span><span class=n>DBG_PRINTEXCEPTION_WIDE_C</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>4</span><span class=p>,</span> <span class=n>args</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=nf>RemoveVectoredExceptionHandler</span><span class=p>(</span><span class=n>VEH_OutputDebugStringException_UnhandledExceptionFilter</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>VEH_OutputDebugStringException_isDebugPresent</span> <span class=o>==</span> <span class=n>TRUE</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;OutputDebugString&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>实测发现 x32dbg 并不会处理 <code>DBG_PRINTEXCEPTION_WIDE_C</code> ，所以这个反调试对 x32dbg 没用。</p><h3 id=34-invalid_handle>3.4 INVALID_HANDLE</h3><p>根据微软的文档 <a class=link href=https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle target=_blank rel=noopener>CloseHandle function (handleapi.h)</a> 说明：</p><blockquote><p>If the application is running under a debugger, the function will throw an exception if it receives either a handle value that is not valid or a pseudo-handle value. This can happen if you close a handle twice, or if you call <strong>CloseHandle</strong> on a handle returned by the <a class=link href=https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-findfirstfilea target=_blank rel=noopener>FindFirstFile</a> function instead of calling the <a class=link href=https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-findclose target=_blank rel=noopener>FindClose</a> function.</p></blockquote><p>可以得知，在调试器启动时，<code>CloseHandle</code> 关闭无效的 <code>HANDLE</code> 时会出现 <code>EXCEPTION_INVALID_HANDLE</code> 异常。所以只要故意关闭一个无效的 <code>HANDLE</code>，抓住这个异常，就能确定调试器存在。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -879,35 +525,23 @@ ntdll!_HEAP
 </span><span class=lnt>14
 </span><span class=lnt>15
 </span><span class=lnt>16
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=n>LONG</span> <span class=n>CALLBACK</span> <span class=nf>VEH_INVALID_HANDLE_UnhandledExceptionFilter</span><span class=p>(</span><span class=n>_In_</span> <span class=n>EXCEPTION_POINTERS</span> <span class=o>*</span><span class=n>lpEP</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>switch</span> <span class=p>(</span><span class=n>lpEP</span><span class=o>-&gt;</span><span class=n>ExceptionRecord</span><span class=o>-&gt;</span><span class=n>ExceptionCode</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>case</span> <span class=nl>EXCEPTION_INVALID_HANDLE</span><span class=p>:</span>
-    <span class=c1>// if debug present
-</span><span class=c1></span>    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;INVALID HANDLE&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_EXECUTION</span><span class=p>;</span>
-  <span class=k>default</span><span class=o>:</span>
-    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_SEARCH</span><span class=p>;</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-
-<span class=kt>void</span> <span class=nf>anti_debug_by_VEH_INVALID_HANDLE</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>AddVectoredExceptionHandler</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=n>VEH_INVALID_HANDLE_UnhandledExceptionFilter</span><span class=p>);</span>
-  <span class=n>CloseHandle</span><span class=p>((</span><span class=n>HANDLE</span><span class=p>)</span><span class=mh>0xBAAD</span><span class=p>);</span>
-  <span class=n>RemoveVectoredExceptionHandler</span><span class=p>(</span><span class=n>VEH_INVALID_HANDLE_UnhandledExceptionFilter</span><span class=p>);</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>和之前的检查不同，INVALID_HANDLE 是 <strong>出现这个异常才存在调试器</strong>，之前的异常处理方式都是没出现异常才存在调试器。</p>
-<h2 id=0x04-硬件断点>0x04 硬件断点</h2>
-<p><a class=link href=https://en.wikipedia.org/wiki/X86_debug_register target=_blank rel=noopener>x86 体系上存在一套调试寄存器</a>，就是 <code>dr0</code>-<code>dr7</code>这8个寄存器。其中<code>dr0</code>-<code>dr3</code>保存的硬件断点的线性地址，断点条件保存在<code>dr7</code>寄存器。<code>dr6</code>寄存器保存的是调试状态，指示触发了哪个断点条件。</p>
-<p>所以发现硬件断点的存在，就可以百分百确定正在被调试。</p>
-<h3 id=41-硬件断点>4.1 硬件断点</h3>
-<p>直接给案例代码。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=n>LONG</span> <span class=n>CALLBACK</span> <span class=nf>VEH_INVALID_HANDLE_UnhandledExceptionFilter</span><span class=p>(</span><span class=n>_In_</span> <span class=n>EXCEPTION_POINTERS</span> <span class=o>*</span><span class=n>lpEP</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>switch</span> <span class=p>(</span><span class=n>lpEP</span><span class=o>-&gt;</span><span class=n>ExceptionRecord</span><span class=o>-&gt;</span><span class=n>ExceptionCode</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>case</span> <span class=nl>EXCEPTION_INVALID_HANDLE</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// if debug present
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;INVALID HANDLE&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_EXECUTION</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>default</span><span class=o>:</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>EXCEPTION_CONTINUE_SEARCH</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>anti_debug_by_VEH_INVALID_HANDLE</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=nf>AddVectoredExceptionHandler</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=n>VEH_INVALID_HANDLE_UnhandledExceptionFilter</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=nf>CloseHandle</span><span class=p>((</span><span class=n>HANDLE</span><span class=p>)</span><span class=mh>0xBAAD</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=nf>RemoveVectoredExceptionHandler</span><span class=p>(</span><span class=n>VEH_INVALID_HANDLE_UnhandledExceptionFilter</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>和之前的检查不同，INVALID_HANDLE 是 <strong>出现这个异常才存在调试器</strong>，之前的异常处理方式都是没出现异常才存在调试器。</p><h2 id=0x04-硬件断点>0x04 硬件断点</h2><p><a class=link href=https://en.wikipedia.org/wiki/X86_debug_register target=_blank rel=noopener>x86 体系上存在一套调试寄存器</a>，就是 <code>dr0</code>-<code>dr7</code>这8个寄存器。其中<code>dr0</code>-<code>dr3</code>保存的硬件断点的线性地址，断点条件保存在<code>dr7</code>寄存器。<code>dr6</code>寄存器保存的是调试状态，指示触发了哪个断点条件。</p><p>所以发现硬件断点的存在，就可以百分百确定正在被调试。</p><h3 id=41-硬件断点>4.1 硬件断点</h3><p>直接给案例代码。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -917,28 +551,17 @@ ntdll!_HEAP
 </span><span class=lnt> 8
 </span><span class=lnt> 9
 </span><span class=lnt>10
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=c1>// detect hardware breakpoint
-</span><span class=c1></span><span class=kt>void</span> <span class=nf>anti_debug_by_DebugRegister</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>CONTEXT</span> <span class=n>ctx</span><span class=p>;</span>
-  <span class=n>ctx</span><span class=p>.</span><span class=n>ContextFlags</span> <span class=o>=</span> <span class=n>CONTEXT_DEBUG_REGISTERS</span><span class=p>;</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>GetThreadContext</span><span class=p>(</span><span class=n>GetCurrentThread</span><span class=p>(),</span> <span class=o>&amp;</span><span class=n>ctx</span><span class=p>))</span> <span class=p>{</span>
-    <span class=k>if</span> <span class=p>(</span><span class=n>ctx</span><span class=p>.</span><span class=n>Dr0</span> <span class=o>!=</span> <span class=mi>0</span> <span class=o>||</span> <span class=n>ctx</span><span class=p>.</span><span class=n>Dr1</span> <span class=o>!=</span> <span class=mi>0</span> <span class=o>||</span> <span class=n>ctx</span><span class=p>.</span><span class=n>Dr2</span> <span class=o>!=</span> <span class=mi>0</span> <span class=o>||</span> <span class=n>ctx</span><span class=p>.</span><span class=n>Dr3</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
-      <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;Dr0-Dr3&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-    <span class=p>}</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>通过<code>GetThreadContext</code>这个接口获得当前寄存器状态，当然也可以通过内联汇编来实现。当发现四个断点寄存器非零就可以确定正在被调试了。</p>
-<h2 id=0x05-完整性校验>0x05 完整性校验</h2>
-<p>完整性校验反调试的原理是检测 <code>0xCC</code> 软件断点，当我们一般说的在程序里<em>下断点</em>的时候下的是软件断点，实现的原理是调试器在这个内存位置上临时放一个<code>0xcc</code>占位，当EIP走到这里时会触发一个INT 3中断，调试器趁机取得控制权。同时因为 INT 3 断点不会把 EIP + 1，所以调试器只需要把改成 <code>0xcc</code> 的地方改回去，就可以让程序继续跑而无需去碰寄存器。</p>
-<h3 id=51-softwarebreakpoint>5.1 SoftwareBreakpoint</h3>
-<p>下面的案例给了一个简单的软件断点检测，只能检测到下在函数开头的软件断点。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=c1>// detect hardware breakpoint
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kt>void</span> <span class=nf>anti_debug_by_DebugRegister</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>CONTEXT</span> <span class=n>ctx</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>ctx</span><span class=p>.</span><span class=n>ContextFlags</span> <span class=o>=</span> <span class=n>CONTEXT_DEBUG_REGISTERS</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=nf>GetThreadContext</span><span class=p>(</span><span class=nf>GetCurrentThread</span><span class=p>(),</span> <span class=o>&amp;</span><span class=n>ctx</span><span class=p>))</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>ctx</span><span class=p>.</span><span class=n>Dr0</span> <span class=o>!=</span> <span class=mi>0</span> <span class=o>||</span> <span class=n>ctx</span><span class=p>.</span><span class=n>Dr1</span> <span class=o>!=</span> <span class=mi>0</span> <span class=o>||</span> <span class=n>ctx</span><span class=p>.</span><span class=n>Dr2</span> <span class=o>!=</span> <span class=mi>0</span> <span class=o>||</span> <span class=n>ctx</span><span class=p>.</span><span class=n>Dr3</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;Dr0-Dr3&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>通过<code>GetThreadContext</code>这个接口获得当前寄存器状态，当然也可以通过内联汇编来实现。当发现四个断点寄存器非零就可以确定正在被调试了。</p><h2 id=0x05-完整性校验>0x05 完整性校验</h2><p>完整性校验反调试的原理是检测 <code>0xCC</code> 软件断点，当我们一般说的在程序里<em>下断点</em>的时候下的是软件断点，实现的原理是调试器在这个内存位置上临时放一个<code>0xcc</code>占位，当EIP走到这里时会触发一个INT 3中断，调试器趁机取得控制权。同时因为 INT 3 断点不会把 EIP + 1，所以调试器只需要把改成 <code>0xcc</code> 的地方改回去，就可以让程序继续跑而无需去碰寄存器。</p><h3 id=51-softwarebreakpoint>5.1 SoftwareBreakpoint</h3><p>下面的案例给了一个简单的软件断点检测，只能检测到下在函数开头的软件断点。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -948,236 +571,27 @@ ntdll!_HEAP
 </span><span class=lnt> 8
 </span><span class=lnt> 9
 </span><span class=lnt>10
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=c1>// detect 0xcc interrupt code
-</span><span class=c1></span><span class=kt>void</span> <span class=nf>anti_debug_by_SoftwareBreakPoint</span><span class=p>(</span><span class=n>PBYTE</span> <span class=n>addr</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>if</span> <span class=p>(</span><span class=o>*</span><span class=n>addr</span> <span class=o>==</span> <span class=mh>0xcc</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;SoftwareBreakpoint&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-
-<span class=c1>// 在主函数里：
-</span><span class=c1>// anti_debug_by_SoftwareBreakPoint((PBYTE)&amp;load_PE)
-</span><span class=c1>// 就能检测到在 load_PE 函数开头处下的断点
-</span></code></pre></td></tr></table>
-</div>
-</div><p>如果能以一定的方式确定一个函数的代码段大小，也可以做到对整个函数的完整性检测（通过计算 CRC 或者其他哈希算法，甚至就直接累加都行）。</p>
-<p>确定函数代码段大小的方式我只想到一个利用栈上的返回地址=，=在函数开头和结尾部分调用一次获取栈上返回地址的函数就能拿到一个范围了，但感觉并不可靠，主要是编译器优化可能重排代码，而且不走到结尾部分也没法开始计算哈希=，=这都给人调试完了。</p>
-<h2 id=结论>结论</h2>
-<p>所有案例代码都在这里：[github.com/nnnewb/learning-packer](<a class=link href=https://github.com/nnnewb/learning-packer/tree/main/packer6 target=_blank rel=noopener>learning-packer/packer6 at main · nnnewb/learning-packer (github.com)</a>)</p>
-<p>总结就是反调试主要靠 <em>判断调试器特征</em> 来发现正在被调试。而这个判断方法就很多，从硬件到操作系统层面，再到软件层面，都有洞可以钻。</p>
-<p>总结这篇里实践的反调试（或者说检测调试器）方式有这些：</p>
-<ul>
-<li>PEB和相关结构的各种标志位</li>
-<li>内核接口，<code>NtQueryInformationProcess</code>、<code>NtSetInformationThread</code>等等</li>
-<li>异常处理机制，<code>SEH</code>，<code>VEH</code>，触发会被调试器处理的异常（或者只在有调试器时才会触发的异常）来发现调试器</li>
-<li>调试寄存器和硬件断点</li>
-<li>代码完整性校验发现软件断点</li>
-</ul>
-<p>以上就是本篇实验过的所有反调试思路了。原本应该有个通过 TLS 回调隐藏自身的案例，但是 MinGW 加不了 TLS 回调（可能还是我菜），谷歌搜到的做法都是要对编译好的二进制文件打补丁，太麻烦就没搞。</p>
-<p>另外还有个利用执行时间做反调试，因为不知道现在都是怎么利用，然后是这个反调试原理感觉也是很简单=，=就是利用方法可能千奇百怪，单单写两次 time 调用感觉没啥意义就没写（偷懒了）。</p>
-<p>总之就是隐藏好反调试的代码，然后发现调试器就悄悄施展迷惑手段或者干脆大搞破坏。</p>
-<h2 id=参考资料>参考资料</h2>
-<ul>
-<li><a class=link href=https://www.apriorit.com/dev-blog/367-anti-reverse-engineering-protection-techniques-to-use-before-releasing-software target=_blank rel=noopener>Anti Debugging Protection Techniques With Examples</a></li>
-<li><a class=link href=https://www.geoffchappell.com/ target=_blank rel=noopener>Geoff Chappell, Software Analyst</a></li>
-<li><a class=link href=https://ctf-wiki.org/ target=_blank rel=noopener>CTF Wiki</a></li>
-<li><a class=link href=https://book.douban.com/subject/25868289/ target=_blank rel=noopener>《恶意代码分析实战》</a></li>
-</ul>
-<p>内容主要来自第一个链接，根据我的环境做了一些修改（比如有些SEH的我实测 x32dbg 不行就换成了VEH），结合参考了 CTF wiki 和 《恶意代码分析实战》这书。API 全是微软的文档和没有文档化的接口我不一个一个摆链接了。</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=c1>// detect 0xcc interrupt code
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kt>void</span> <span class=nf>anti_debug_by_SoftwareBreakPoint</span><span class=p>(</span><span class=n>PBYTE</span> <span class=n>addr</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=o>*</span><span class=n>addr</span> <span class=o>==</span> <span class=mh>0xcc</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;debugger detected&#34;</span><span class=p>,</span> <span class=s>&#34;SoftwareBreakpoint&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// 在主函数里：
+</span></span></span><span class=line><span class=cl><span class=c1>// anti_debug_by_SoftwareBreakPoint((PBYTE)&amp;load_PE)
+</span></span></span><span class=line><span class=cl><span class=c1>// 就能检测到在 load_PE 函数开头处下的断点
+</span></span></span></code></pre></td></tr></table></div></div><p>如果能以一定的方式确定一个函数的代码段大小，也可以做到对整个函数的完整性检测（通过计算 CRC 或者其他哈希算法，甚至就直接累加都行）。</p><p>确定函数代码段大小的方式我只想到一个利用栈上的返回地址=，=在函数开头和结尾部分调用一次获取栈上返回地址的函数就能拿到一个范围了，但感觉并不可靠，主要是编译器优化可能重排代码，而且不走到结尾部分也没法开始计算哈希=，=这都给人调试完了。</p><h2 id=结论>结论</h2><p>所有案例代码都在这里：[github.com/nnnewb/learning-packer](<a class=link href=https://github.com/nnnewb/learning-packer/tree/main/packer6 target=_blank rel=noopener>learning-packer/packer6 at main · nnnewb/learning-packer (github.com)</a>)</p><p>总结就是反调试主要靠 <em>判断调试器特征</em> 来发现正在被调试。而这个判断方法就很多，从硬件到操作系统层面，再到软件层面，都有洞可以钻。</p><p>总结这篇里实践的反调试（或者说检测调试器）方式有这些：</p><ul><li>PEB和相关结构的各种标志位</li><li>内核接口，<code>NtQueryInformationProcess</code>、<code>NtSetInformationThread</code>等等</li><li>异常处理机制，<code>SEH</code>，<code>VEH</code>，触发会被调试器处理的异常（或者只在有调试器时才会触发的异常）来发现调试器</li><li>调试寄存器和硬件断点</li><li>代码完整性校验发现软件断点</li></ul><p>以上就是本篇实验过的所有反调试思路了。原本应该有个通过 TLS 回调隐藏自身的案例，但是 MinGW 加不了 TLS 回调（可能还是我菜），谷歌搜到的做法都是要对编译好的二进制文件打补丁，太麻烦就没搞。</p><p>另外还有个利用执行时间做反调试，因为不知道现在都是怎么利用，然后是这个反调试原理感觉也是很简单=，=就是利用方法可能千奇百怪，单单写两次 time 调用感觉没啥意义就没写（偷懒了）。</p><p>总之就是隐藏好反调试的代码，然后发现调试器就悄悄施展迷惑手段或者干脆大搞破坏。</p><h2 id=参考资料>参考资料</h2><ul><li><a class=link href=https://www.apriorit.com/dev-blog/367-anti-reverse-engineering-protection-techniques-to-use-before-releasing-software target=_blank rel=noopener>Anti Debugging Protection Techniques With Examples</a></li><li><a class=link href=https://www.geoffchappell.com/ target=_blank rel=noopener>Geoff Chappell, Software Analyst</a></li><li><a class=link href=https://ctf-wiki.org/ target=_blank rel=noopener>CTF Wiki</a></li><li><a class=link href=https://book.douban.com/subject/25868289/ target=_blank rel=noopener>《恶意代码分析实战》</a></li></ul><p>内容主要来自第一个链接，根据我的环境做了一些修改（比如有些SEH的我实测 x32dbg 不行就换成了VEH），结合参考了 CTF wiki 和 《恶意代码分析实战》这书。API 全是微软的文档和没有文档化的接口我不一个一个摆链接了。</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
 <a href=/blog/tags/c++/>c++</a>
 <a href=/blog/tags/windows/>windows</a>
 <a href=/blog/tags/%E6%B1%87%E7%BC%96/>汇编</a>
 <a href=/blog/tags/security/>security</a>
-<a href=/blog/tags/binary-analysis/>binary-analysis</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article class=has-image>
-<a href=/blog/p/learning-packer-08/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理08：混淆技术入门</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-07/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理07 - 花指令入门</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理04 - zlib压缩壳案例</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-03-support-no-relocations/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-03-support-no-relocations/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序" data-key=learning-packer-03-support-no-relocations data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理03 - 支持没有重定位的程序</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-05/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-05/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理05：利用图片隐藏" data-key=learning-packer-05 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理05：利用图片隐藏</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+<a href=/blog/tags/binary-analysis/>binary-analysis</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article class=has-image><a href=/blog/p/learning-packer-08/><div class=article-image><img src=/blog/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理08：混淆技术入门</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-07/><div class=article-image><img src=/blog/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理07 - 花指令入门</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/><div class=article-image><img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理04 - zlib压缩壳案例</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-03-support-no-relocations/><div class=article-image><img src=/blog/p/learning-packer-03-support-no-relocations/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序" data-key=learning-packer-03-support-no-relocations data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理03 - 支持没有重定位的程序</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-05/><div class=article-image><img src=/blog/p/learning-packer-05/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理05：利用图片隐藏" data-key=learning-packer-05 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理05：利用图片隐藏</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#0x01-反调试思路>0x01 反调试思路</a>
-<ol>
-<li><a href=#11-系统api或数据结构>1.1 系统API或数据结构</a></li>
-<li><a href=#12-sehveh>1.2 SEH、VEH</a></li>
-<li><a href=#13-调试寄存器>1.3 调试寄存器</a></li>
-<li><a href=#14-完整性校验>1.4 完整性校验</a></li>
-</ol>
-</li>
-<li><a href=#0x02-系统api方式>0x02 系统API方式</a>
-<ol>
-<li><a href=#21-isdebuggerpresent>2.1 IsDebuggerPresent</a></li>
-<li><a href=#22-ntglobalflag>2.2 NtGlobalFlag</a></li>
-<li><a href=#23-heap-flags>2.3 HEAP->Flags</a></li>
-<li><a href=#24-checkremotedebuggerpresent>2.4 CheckRemoteDebuggerPresent</a></li>
-<li><a href=#25-ntqueryinformationprocess>2.5 NtQueryInformationProcess</a></li>
-<li><a href=#26-ntsetinformationthread>2.6 NtSetInformationThread</a></li>
-<li><a href=#27-setgetlasterror>2.7 Set/GetLastError</a></li>
-</ol>
-</li>
-<li><a href=#0x03-异常处理方式>0x03 异常处理方式</a>
-<ol>
-<li><a href=#31-int-1>3.1 INT 1</a></li>
-<li><a href=#32-int-3>3.2 INT 3</a></li>
-<li><a href=#33-debugoutputstring>3.3 DebugOutputString</a></li>
-<li><a href=#34-invalid_handle>3.4 INVALID_HANDLE</a></li>
-</ol>
-</li>
-<li><a href=#0x04-硬件断点>0x04 硬件断点</a>
-<ol>
-<li><a href=#41-硬件断点>4.1 硬件断点</a></li>
-</ol>
-</li>
-<li><a href=#0x05-完整性校验>0x05 完整性校验</a>
-<ol>
-<li><a href=#51-softwarebreakpoint>5.1 SoftwareBreakpoint</a></li>
-</ol>
-</li>
-<li><a href=#结论>结论</a></li>
-<li><a href=#参考资料>参考资料</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#前言>前言</a></li><li><a href=#0x01-反调试思路>0x01 反调试思路</a><ol><li><a href=#11-系统api或数据结构>1.1 系统API或数据结构</a></li><li><a href=#12-sehveh>1.2 SEH、VEH</a></li><li><a href=#13-调试寄存器>1.3 调试寄存器</a></li><li><a href=#14-完整性校验>1.4 完整性校验</a></li></ol></li><li><a href=#0x02-系统api方式>0x02 系统API方式</a><ol><li><a href=#21-isdebuggerpresent>2.1 IsDebuggerPresent</a></li><li><a href=#22-ntglobalflag>2.2 NtGlobalFlag</a></li><li><a href=#23-heap-flags>2.3 HEAP->Flags</a></li><li><a href=#24-checkremotedebuggerpresent>2.4 CheckRemoteDebuggerPresent</a></li><li><a href=#25-ntqueryinformationprocess>2.5 NtQueryInformationProcess</a></li><li><a href=#26-ntsetinformationthread>2.6 NtSetInformationThread</a></li><li><a href=#27-setgetlasterror>2.7 Set/GetLastError</a></li></ol></li><li><a href=#0x03-异常处理方式>0x03 异常处理方式</a><ol><li><a href=#31-int-1>3.1 INT 1</a></li><li><a href=#32-int-3>3.2 INT 3</a></li><li><a href=#33-debugoutputstring>3.3 DebugOutputString</a></li><li><a href=#34-invalid_handle>3.4 INVALID_HANDLE</a></li></ol></li><li><a href=#0x04-硬件断点>0x04 硬件断点</a><ol><li><a href=#41-硬件断点>4.1 硬件断点</a></li></ol></li><li><a href=#0x05-完整性校验>0x05 完整性校验</a><ol><li><a href=#51-softwarebreakpoint>5.1 SoftwareBreakpoint</a></li></ol></li><li><a href=#结论>结论</a></li><li><a href=#参考资料>参考资料</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

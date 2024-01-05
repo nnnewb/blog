@@ -1,127 +1,9 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="懒得分段了，就当做是讲个故事吧。 背景大概是这样。 内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remo"><title>排查一个kubectl无反应的问题</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="懒得分段了，就当做是讲个故事吧。 背景大概是这样。 内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remo"><title>排查一个kubectl无反应的问题</title><link rel=canonical href=https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="排查一个kubectl无反应的问题">
-<meta property="og:description" content="懒得分段了，就当做是讲个故事吧。 背景大概是这样。 内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remo">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="linux运维"><meta property="article:tag" content="kubernetes"><meta property="article:published_time" content="2021-12-27T15:21:00+08:00"><meta property="article:modified_time" content="2021-12-27T15:21:00+08:00">
-<meta name=twitter:title content="排查一个kubectl无反应的问题">
-<meta name=twitter:description content="懒得分段了，就当做是讲个故事吧。 背景大概是这样。 内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remo">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/kubernetes/>
-kubernetes
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/why-my-kubectl-not-responding/>排查一个kubectl无反应的问题</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2021-12-27T15:21:00+08:00>2021年 12月 27日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 5 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<p>懒得分段了，就当做是讲个故事吧。</p>
-<p>背景大概是这样。</p>
-<p>内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。</p>
-<p>今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。</p>
-<p>所以，当当当~当~，整一个持续部署呗，反正是个纯前端项目，不用部署配套的后端代码，写个dockerfile再写个helm chart就差不多了，ci调了调构建镜像就完事，不过因为ci部署需要访问集群，所以又改了下<code>.kube/config</code>，删了之前尝试<code>csr</code>方式添加用户的时候加多的 user 和 context ，复制了一份挂载到 runner 容器里。</p>
-<p>然后&mldr;&mldr;问题就来了。</p>
-<p>同事忽然告诉我办公室的服务挂了，于是下意识地打出<code>kgp</code>，卡住。</p>
-<p>等了一会儿，还是卡住。</p>
-<p>又等了一会儿，坐不住了。试了下<code>kubectl cluster-info</code>，继续卡住。</p>
-<p>开始慌了，想起今天的机器有点卡，先看看 <code>free -h</code> 有没有内存泄漏之类的问题导致阻塞，结果发现并没有，于是继续看 <code>htop</code>，cpu使用率也比较正常。再看<code>df -h | grep -vE 'shm|overlay'</code>，发现硬盘使用率96%（估计硬盘主控想死的心都有了，揪着4%的可用空间想把PE数平均到各个区块恐怕不容易）。</p>
-<p>找到问题后松了口气，十有八九是又出现 evicted 了。二话不说直接 <code>docker system df</code>，看到30多G的 build cache 顿时惊了，肯定不是go的构建缓存（手动挂载优化了），那就是 node_modules 又立奇功了。node_modules=黑洞果然不是吹的。</p>
-<p>清理完使用率恢复到63%，但依然有种不安感萦绕于心，于是再次尝试<code>kgp</code>，卡住。</p>
-<p>等了一会儿，喝口水，继续卡着。</p>
-<p>又等了一会儿，淦。</p>
-<p>想了想，<code>journalctl -r -u k3s</code>看看日志，并没有什么发现，倒是注意到很多<code>linkerd</code>之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="排查一个kubectl无反应的问题"><meta property="og:description" content="懒得分段了，就当做是讲个故事吧。 背景大概是这样。 内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remo"><meta property="og:url" content="https://nnnewb.github.io/blog/p/why-my-kubectl-not-responding/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="linux运维"><meta property="article:tag" content="kubernetes"><meta property="article:published_time" content="2021-12-27T15:21:00+08:00"><meta property="article:modified_time" content="2021-12-27T15:21:00+08:00"><meta name=twitter:title content="排查一个kubectl无反应的问题"><meta name=twitter:description content="懒得分段了，就当做是讲个故事吧。 背景大概是这样。 内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remo"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/kubernetes/>kubernetes</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/why-my-kubectl-not-responding/>排查一个kubectl无反应的问题</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2021-12-27T15:21:00+08:00>2021年 12月 27日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 5 分钟</time></div></footer></div></header><section class=article-content><p>懒得分段了，就当做是讲个故事吧。</p><p>背景大概是这样。</p><p>内网公共开发机上配置了 k3s 集群，同时后端开发工作也在这台开发机上进行（通过vscode remote-ssh）。因为公司太抠门，开发机只有117G硬盘容量，除去必要的开发工具、系统环境之类的东西，实际可用一直没超过50%，机器上又跑了很多东西，像是 gitlab-runner、docker的registry、MySQL、elasticsearch、开发集群服务等等，差不多每一两个星期都会出现 disk-pressure 的 taint，导致 pod 被 evicted。实话说能跑就很满足了，毕竟公司抠门到开发部门的上行带宽都贼小，如果把镜像推送到公网的registry去部署的话体验更差。</p><p>今天（周一）来公司之后调了下gitlab-ci，给一个前端项目做持续部署。因为前端对kubernetes这套不熟悉，也没有相关的服务器权限，总之就是很难让他们自己来。但是产品部门又喜欢提那种“按钮移到右上角”、“加个图片”之类的需求（对，我司还没有需求管理系统，开发就是个撸码的无情工具人），前端老是过来找我去部署下环境，就搞得摸鱼都摸不痛快。</p><p>所以，当当当~当~，整一个持续部署呗，反正是个纯前端项目，不用部署配套的后端代码，写个dockerfile再写个helm chart就差不多了，ci调了调构建镜像就完事，不过因为ci部署需要访问集群，所以又改了下<code>.kube/config</code>，删了之前尝试<code>csr</code>方式添加用户的时候加多的 user 和 context ，复制了一份挂载到 runner 容器里。</p><p>然后&mldr;&mldr;问题就来了。</p><p>同事忽然告诉我办公室的服务挂了，于是下意识地打出<code>kgp</code>，卡住。</p><p>等了一会儿，还是卡住。</p><p>又等了一会儿，坐不住了。试了下<code>kubectl cluster-info</code>，继续卡住。</p><p>开始慌了，想起今天的机器有点卡，先看看 <code>free -h</code> 有没有内存泄漏之类的问题导致阻塞，结果发现并没有，于是继续看 <code>htop</code>，cpu使用率也比较正常。再看<code>df -h | grep -vE 'shm|overlay'</code>，发现硬盘使用率96%（估计硬盘主控想死的心都有了，揪着4%的可用空间想把PE数平均到各个区块恐怕不容易）。</p><p>找到问题后松了口气，十有八九是又出现 evicted 了。二话不说直接 <code>docker system df</code>，看到30多G的 build cache 顿时惊了，肯定不是go的构建缓存（手动挂载优化了），那就是 node_modules 又立奇功了。node_modules=黑洞果然不是吹的。</p><p>清理完使用率恢复到63%，但依然有种不安感萦绕于心，于是再次尝试<code>kgp</code>，卡住。</p><p>等了一会儿，喝口水，继续卡着。</p><p>又等了一会儿，淦。</p><p>想了想，<code>journalctl -r -u k3s</code>看看日志，并没有什么发现，倒是注意到很多<code>linkerd</code>之类的我们部门经理搞事的时候遗留下来的玩意儿在报错，service mesh 我不熟，但寻思应该不会影响 kubectl 吧，k3s 本体的 api-server 应该不归 linkerd 管。更何况 linkerd 本身就没配好。再翻了翻看到下面的内容。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
@@ -129,162 +11,23 @@ kubernetes
 </span><span class=lnt>6
 </span><span class=lnt>7
 </span><span class=lnt>8
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>    6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.685149     794 container_gc.go:85] attempting to delete unused containers
-    7 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.687723     794 image_gc_manager.go:321] attempting to delete unused images
-    8 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.782390     794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
-    9 12月 25 21:16:17 office k3s[794]: W1225 13:16:17.939242     794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
-   10 12月 25 21:16:17 office k3s[794]: I1225 13:16:17.939267     794 container_gc.go:85] attempting to delete unused containers
-   11 12月 25 21:16:17 office k3s[794]: I1225 13:16:17.941771     794 image_gc_manager.go:321] attempting to delete unused images
-   12 12月 25 21:16:18 office k3s[794]: I1225 13:16:18.033724     794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
-   13 12月 25 21:16:28 office k3s[794]: W1225 13:16:28.214032     794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
-</code></pre></td></tr></table>
-</div>
-</div><p>这个是老问题了，一直没去研究怎么解决。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>  154 12月 25 21:21:55 office k3s[794]: I1225 13:21:55.021937     794 image_gc_manager.go:304] [imageGCManager]: Disk usage on image filesystem is at 95% which is over the high threshold (85%). Trying to free 182  155 12月 25 21:21:55 office k3s[794]: E1225 13:21:55.025140     794 kubelet.go:1292] Image garbage collection failed multiple times in a row: failed to garbage collect required amount of images. Wanted to free
-</code></pre></td></tr></table>
-</div>
-</div><p>这次搜了下，应该是 <code>docker system prune</code> 造成 <code>kubelet</code> 找不到可回收的镜像才报错（猜测），不过依然不能解释为啥 <code>kubectl</code> 没反应。于是继续翻了会儿日志，搜索错误，但始终没有什么结果。</p>
-<p>但是同事还要干活，没辙了，先重启下服务器吧。群里说了一声要重启了，等了一会儿跑<code>sudo reboot</code>，重启完连接，继续<code>kgp</code>，卡住。</p>
-<p>嗯&mldr;&mldr;</p>
-<p>早有预料。</p>
-<p><code>journalctl -r -u k3s --boot</code> 看看重启后的日志，发现还是老一套的问题，<code>docker</code> 手动处理镜像和容器造成的和 kubernetes 的管理机制的冲突，各种找不到镜像或者容器的警告，还有一些错误和trace，但没有一个能解释为什么<code>kubectl</code>没有反应。。。</p>
-<p>直到在<code>kubectl</code>的终端里按下了ctrl+c，在顺手<code>clear</code>之前看到了一行请输入用户名（eng）&mldr;</p>
-<p>警觉。</p>
-<p>忽然想起来，因为 <code>kubectl</code> 这破玩意儿是没有颜色输出的，用习惯了各种彩色输出的命令行工具，<code>kubectl</code>就格外不顺眼。所以在发现<code>kubecolors</code>后，我就直接把<code>kubectl</code>配置成了<code>kubecolor</code>的别名。</p>
-<p>所以&mldr;&mldr;难道是<code>kubecolor</code>的问题？</p>
-<p><code>whereis kubectl</code>找到<code>kubectl</code>的绝对路径之后，尝试手动运行<code>/usr/local/bin/kubectl cluster-info</code>，再次出现了那个输入用户名的提示，顿时开始怀疑起<code>.kube/config</code>配置有问题，正好在出现问题之前改过了<code>.kube/config</code>，这里出问题的嫌疑就很吉尔大。</p>
-<p>于是打开<code>.kube/config</code>，检查了一下集群的用户配置，发现果然，是我手欠把办公室集群的用户给删了。草。</p>
-<p>急忙从<code>/etc/rancher/k3s/k3s.yaml</code>复制下用户证书配置，贴进去，再运行<code>kgp</code>果然屁事没有了。</p>
-<p>所以总结如下。</p>
-<ol>
-<li>别被表面的问题迷惑。</li>
-<li>自己犯傻的几率大于基础设施/常用工具犯傻的几率。</li>
-<li>遇到问题解决步骤很重要，准确的方向可以省很多时间。
-<ol>
-<li>先确定故障表现和复现条件</li>
-<li>确定故障点（出现在网络、网关还是应用、数据库），弄清楚是不是新问题</li>
-<li>再排查相关配置是否正确，回忆是否有做过相关修改变更</li>
-<li>再排查故障点日志，必要的时候参考下代码，毕竟有的时候日志没写清楚错误的上下文</li>
-</ol>
-</li>
-</ol>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/linux%E8%BF%90%E7%BB%B4/>linux运维</a>
-<a href=/blog/tags/kubernetes/>kubernetes</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/simple-eck-cluster-deployment/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>简单的ECK部署</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/kubernetes-manually-install-by-kubeadm/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>kubeadm安装实验集群记录</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/k3s-renew-client-ca-file-the-lazy-way/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>k3s更新客户端证书的偷懒方法</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/csr-%E6%96%B9%E5%BC%8F%E5%88%9B%E5%BB%BA-kubernetes-%E7%94%A8%E6%88%B7%E5%87%BA%E4%BA%86%E7%82%B9%E5%B7%AE%E9%94%99/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>csr 方式创建 kubernetes 用户出了点差错</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>    6 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.685149     794 container_gc.go:85] attempting to delete unused containers
+</span></span><span class=line><span class=cl>    7 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.687723     794 image_gc_manager.go:321] attempting to delete unused images
+</span></span><span class=line><span class=cl>    8 12月 25 21:16:07 office k3s[794]: I1225 13:16:07.782390     794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
+</span></span><span class=line><span class=cl>    9 12月 25 21:16:17 office k3s[794]: W1225 13:16:17.939242     794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
+</span></span><span class=line><span class=cl>   10 12月 25 21:16:17 office k3s[794]: I1225 13:16:17.939267     794 container_gc.go:85] attempting to delete unused containers
+</span></span><span class=line><span class=cl>   11 12月 25 21:16:17 office k3s[794]: I1225 13:16:17.941771     794 image_gc_manager.go:321] attempting to delete unused images
+</span></span><span class=line><span class=cl>   12 12月 25 21:16:18 office k3s[794]: I1225 13:16:18.033724     794 eviction_manager.go:351] eviction manager: able to reduce ephemeral-storage pressure without evicting pods.
+</span></span><span class=line><span class=cl>   13 12月 25 21:16:28 office k3s[794]: W1225 13:16:28.214032     794 eviction_manager.go:344] eviction manager: attempting to reclaim ephemeral-storage
+</span></span></code></pre></td></tr></table></div></div><p>这个是老问题了，一直没去研究怎么解决。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>  154 12月 25 21:21:55 office k3s[794]: I1225 13:21:55.021937     794 image_gc_manager.go:304] [imageGCManager]: Disk usage on image filesystem is at 95% which is over the high threshold (85%). Trying to free 182  155 12月 25 21:21:55 office k3s[794]: E1225 13:21:55.025140     794 kubelet.go:1292] Image garbage collection failed multiple times in a row: failed to garbage collect required amount of images. Wanted to free
+</span></span></code></pre></td></tr></table></div></div><p>这次搜了下，应该是 <code>docker system prune</code> 造成 <code>kubelet</code> 找不到可回收的镜像才报错（猜测），不过依然不能解释为啥 <code>kubectl</code> 没反应。于是继续翻了会儿日志，搜索错误，但始终没有什么结果。</p><p>但是同事还要干活，没辙了，先重启下服务器吧。群里说了一声要重启了，等了一会儿跑<code>sudo reboot</code>，重启完连接，继续<code>kgp</code>，卡住。</p><p>嗯&mldr;&mldr;</p><p>早有预料。</p><p><code>journalctl -r -u k3s --boot</code> 看看重启后的日志，发现还是老一套的问题，<code>docker</code> 手动处理镜像和容器造成的和 kubernetes 的管理机制的冲突，各种找不到镜像或者容器的警告，还有一些错误和trace，但没有一个能解释为什么<code>kubectl</code>没有反应。。。</p><p>直到在<code>kubectl</code>的终端里按下了ctrl+c，在顺手<code>clear</code>之前看到了一行请输入用户名（eng）&mldr;</p><p>警觉。</p><p>忽然想起来，因为 <code>kubectl</code> 这破玩意儿是没有颜色输出的，用习惯了各种彩色输出的命令行工具，<code>kubectl</code>就格外不顺眼。所以在发现<code>kubecolors</code>后，我就直接把<code>kubectl</code>配置成了<code>kubecolor</code>的别名。</p><p>所以&mldr;&mldr;难道是<code>kubecolor</code>的问题？</p><p><code>whereis kubectl</code>找到<code>kubectl</code>的绝对路径之后，尝试手动运行<code>/usr/local/bin/kubectl cluster-info</code>，再次出现了那个输入用户名的提示，顿时开始怀疑起<code>.kube/config</code>配置有问题，正好在出现问题之前改过了<code>.kube/config</code>，这里出问题的嫌疑就很吉尔大。</p><p>于是打开<code>.kube/config</code>，检查了一下集群的用户配置，发现果然，是我手欠把办公室集群的用户给删了。草。</p><p>急忙从<code>/etc/rancher/k3s/k3s.yaml</code>复制下用户证书配置，贴进去，再运行<code>kgp</code>果然屁事没有了。</p><p>所以总结如下。</p><ol><li>别被表面的问题迷惑。</li><li>自己犯傻的几率大于基础设施/常用工具犯傻的几率。</li><li>遇到问题解决步骤很重要，准确的方向可以省很多时间。<ol><li>先确定故障表现和复现条件</li><li>确定故障点（出现在网络、网关还是应用、数据库），弄清楚是不是新问题</li><li>再排查相关配置是否正确，回忆是否有做过相关修改变更</li><li>再排查故障点日志，必要的时候参考下代码，毕竟有的时候日志没写清楚错误的上下文</li></ol></li></ol></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/linux%E8%BF%90%E7%BB%B4/>linux运维</a>
+<a href=/blog/tags/kubernetes/>kubernetes</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/simple-eck-cluster-deployment/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>简单的ECK部署</h2></div></a></article><article><a href=/blog/p/kubernetes-manually-install-by-kubeadm/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>kubeadm安装实验集群记录</h2></div></a></article><article><a href=/blog/p/k3s-renew-client-ca-file-the-lazy-way/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>k3s更新客户端证书的偷懒方法</h2></div></a></article><article><a href=/blog/p/csr-%E6%96%B9%E5%BC%8F%E5%88%9B%E5%BB%BA-kubernetes-%E7%94%A8%E6%88%B7%E5%87%BA%E4%BA%86%E7%82%B9%E5%B7%AE%E9%94%99/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>csr 方式创建 kubernetes 用户出了点差错</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

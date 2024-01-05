@@ -1,125 +1,9 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Intro 分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。 在单机并发的情况下，我们可以用 mut"><title>python 实现 redis 分布式锁</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Intro 分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。 在单机并发的情况下，我们可以用 mut"><title>python 实现 redis 分布式锁</title><link rel=canonical href=https://nnnewb.github.io/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="python 实现 redis 分布式锁">
-<meta property="og:description" content="Intro 分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。 在单机并发的情况下，我们可以用 mut">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="python"><meta property="article:tag" content="redis"><meta property="article:tag" content="lua"><meta property="article:tag" content="分布式"><meta property="article:published_time" content="2018-12-17T14:57:00+08:00"><meta property="article:modified_time" content="2018-12-17T14:57:00+08:00">
-<meta name=twitter:title content="python 实现 redis 分布式锁">
-<meta name=twitter:description content="Intro 分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。 在单机并发的情况下，我们可以用 mut">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/python/>
-python
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/>python 实现 redis 分布式锁</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2018-12-17T14:57:00+08:00>2018年 12月 17日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 3 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=intro>Intro</h2>
-<p>分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。</p>
-<p>在单机并发的情况下，我们可以用 mutex，可以用 os 的文件锁，全局锁，多台服务器的并发就需要另一个持有并保护锁的角色了。</p>
-<p>概述如何使用 redis 实现一个分布式锁。</p>
-<h2 id=为何是-lua>为何是 Lua</h2>
-<p>redis 保证了 lua 解释器执行脚本的事务性，即执行结果要么不可见，要么已完成。</p>
-<p>参考<a class=link href=http://redisdoc.com/script/eval.html target=_blank rel=noopener>这篇文档</a>。</p>
-<h2 id=简单锁>简单锁</h2>
-<p>简单锁指的是简单互斥锁，一旦锁定，则其他锁定请求都必须等待。</p>
-<h3 id=加锁>加锁</h3>
-<p>直觉的想法是通过 redis 的键来保持锁，故准备一个用于锁定互斥的名字（比如说 mutex-1）然后指定为键。</p>
-<p>直接使用 set 是显然不正确的，如果临界区内程序崩溃或意外断网将导致死锁，所以 setnx 和 expire 是必选项。</p>
-<p>加锁需要判断锁的键为空，才能加锁，这两步必须保证原子性，要么都执行，要么一个都不执行。幸好 redis 提供了这方面保证，只要使用 lua 脚本的话。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="python 实现 redis 分布式锁"><meta property="og:description" content="Intro 分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。 在单机并发的情况下，我们可以用 mut"><meta property="og:url" content="https://nnnewb.github.io/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="python"><meta property="article:tag" content="redis"><meta property="article:tag" content="lua"><meta property="article:tag" content="分布式"><meta property="article:published_time" content="2018-12-17T14:57:00+08:00"><meta property="article:modified_time" content="2018-12-17T14:57:00+08:00"><meta name=twitter:title content="python 实现 redis 分布式锁"><meta name=twitter:description content="Intro 分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。 在单机并发的情况下，我们可以用 mut"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/python/>python</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/python-%E5%AE%9E%E7%8E%B0-redis-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/>python 实现 redis 分布式锁</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2018-12-17T14:57:00+08:00>2018年 12月 17日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 3 分钟</time></div></footer></div></header><section class=article-content><h2 id=intro>Intro</h2><p>分布式不是啥黑魔法，究其理念无非是用多台服务器处理更多的请求。提高每秒处理的数据量，并发就不可避免了。</p><p>在单机并发的情况下，我们可以用 mutex，可以用 os 的文件锁，全局锁，多台服务器的并发就需要另一个持有并保护锁的角色了。</p><p>概述如何使用 redis 实现一个分布式锁。</p><h2 id=为何是-lua>为何是 Lua</h2><p>redis 保证了 lua 解释器执行脚本的事务性，即执行结果要么不可见，要么已完成。</p><p>参考<a class=link href=http://redisdoc.com/script/eval.html target=_blank rel=noopener>这篇文档</a>。</p><h2 id=简单锁>简单锁</h2><p>简单锁指的是简单互斥锁，一旦锁定，则其他锁定请求都必须等待。</p><h3 id=加锁>加锁</h3><p>直觉的想法是通过 redis 的键来保持锁，故准备一个用于锁定互斥的名字（比如说 mutex-1）然后指定为键。</p><p>直接使用 set 是显然不正确的，如果临界区内程序崩溃或意外断网将导致死锁，所以 setnx 和 expire 是必选项。</p><p>加锁需要判断锁的键为空，才能加锁，这两步必须保证原子性，要么都执行，要么一个都不执行。幸好 redis 提供了这方面保证，只要使用 lua 脚本的话。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
@@ -128,23 +12,16 @@ python
 </span><span class=lnt>7
 </span><span class=lnt>8
 </span><span class=lnt>9
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=c1>-- 加锁</span>
-<span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;get&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span> <span class=o>==</span> <span class=kc>nil</span> <span class=kr>then</span>
-    <span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;setnx&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>],</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span> <span class=o>==</span> <span class=mi>1</span> <span class=kr>then</span>
-        <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;expire&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>],</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>2</span><span class=p>])</span>
-        <span class=kr>return</span> <span class=mi>1</span>
-    <span class=kr>else</span>
-        <span class=kr>return</span>
-    <span class=kr>end</span>
-<span class=kr>end</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>上面的 lua 代码用 python 再封装一层，就是这样</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=line><span class=cl><span class=c1>-- 加锁</span>
+</span></span><span class=line><span class=cl><span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;get&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span> <span class=o>==</span> <span class=kc>nil</span> <span class=kr>then</span>
+</span></span><span class=line><span class=cl>    <span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;setnx&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>],</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span> <span class=o>==</span> <span class=mi>1</span> <span class=kr>then</span>
+</span></span><span class=line><span class=cl>        <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;expire&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>],</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>2</span><span class=p>])</span>
+</span></span><span class=line><span class=cl>        <span class=kr>return</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl>    <span class=kr>else</span>
+</span></span><span class=line><span class=cl>        <span class=kr>return</span>
+</span></span><span class=line><span class=cl>    <span class=kr>end</span>
+</span></span><span class=line><span class=cl><span class=kr>end</span>
+</span></span></code></pre></td></tr></table></div></div><p>上面的 lua 代码用 python 再封装一层，就是这样</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -157,40 +34,22 @@ python
 </span><span class=lnt>11
 </span><span class=lnt>12
 </span><span class=lnt>13
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=k>def</span> <span class=nf>lock</span><span class=p>(</span><span class=n>key</span><span class=p>,</span> <span class=n>expire</span><span class=p>):</span>
-    <span class=n>redis</span><span class=o>.</span><span class=n>eval</span><span class=p>(</span>
-        <span class=s1>&#39;&#39;&#39;
-</span><span class=s1>-- 加锁
-</span><span class=s1>if redis.call(&#34;get&#34;, KEYS[1]) == nil then
-</span><span class=s1>    if redis.call(&#34;setnx&#34;, KEYS[1], ARGV[1]) ~= nil then
-</span><span class=s1>        redis.call(&#34;expire&#34;, KEYS[1], ARGV[2])
-</span><span class=s1>        return 1
-</span><span class=s1>    else
-</span><span class=s1>        return
-</span><span class=s1>    end
-</span><span class=s1>end
-</span><span class=s1>        &#39;&#39;&#39;</span><span class=p>,</span> <span class=mi>1</span><span class=p>,</span> <span class=n>key</span><span class=p>,</span> <span class=s2>&#34;lock&#34;</span><span class=p>,</span> <span class=n>expire</span><span class=p>)</span>
-</code></pre></td></tr></table>
-</div>
-</div><h3 id=解锁>解锁</h3>
-<p>解锁代码同样是通过 lua 实现。</p>
-<p>下面是<strong>错误实现例子</strong>。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;del&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>错误之处在于会解除非自己加的锁。如果临界区内的工作时间超过预期时间，那么就会造成误解锁的问题。</p>
-<p>下面是<strong>正确例子</strong>。</p>
-<p>为了标记锁持有者，需要修改加锁代码。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=k>def</span> <span class=nf>lock</span><span class=p>(</span><span class=n>key</span><span class=p>,</span> <span class=n>expire</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=n>redis</span><span class=o>.</span><span class=n>eval</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>        <span class=s1>&#39;&#39;&#39;
+</span></span></span><span class=line><span class=cl><span class=s1>-- 加锁
+</span></span></span><span class=line><span class=cl><span class=s1>if redis.call(&#34;get&#34;, KEYS[1]) == nil then
+</span></span></span><span class=line><span class=cl><span class=s1>    if redis.call(&#34;setnx&#34;, KEYS[1], ARGV[1]) ~= nil then
+</span></span></span><span class=line><span class=cl><span class=s1>        redis.call(&#34;expire&#34;, KEYS[1], ARGV[2])
+</span></span></span><span class=line><span class=cl><span class=s1>        return 1
+</span></span></span><span class=line><span class=cl><span class=s1>    else
+</span></span></span><span class=line><span class=cl><span class=s1>        return
+</span></span></span><span class=line><span class=cl><span class=s1>    end
+</span></span></span><span class=line><span class=cl><span class=s1>end
+</span></span></span><span class=line><span class=cl><span class=s1>        &#39;&#39;&#39;</span><span class=p>,</span> <span class=mi>1</span><span class=p>,</span> <span class=n>key</span><span class=p>,</span> <span class=s2>&#34;lock&#34;</span><span class=p>,</span> <span class=n>expire</span><span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=解锁>解锁</h3><p>解锁代码同样是通过 lua 实现。</p><p>下面是<strong>错误实现例子</strong>。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=line><span class=cl><span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;del&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span>
+</span></span></code></pre></td></tr></table></div></div><p>错误之处在于会解除非自己加的锁。如果临界区内的工作时间超过预期时间，那么就会造成误解锁的问题。</p><p>下面是<strong>正确例子</strong>。</p><p>为了标记锁持有者，需要修改加锁代码。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -203,46 +62,32 @@ python
 </span><span class=lnt>11
 </span><span class=lnt>12
 </span><span class=lnt>13
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=k>def</span> <span class=nf>lock</span><span class=p>(</span><span class=n>key</span><span class=p>,</span> <span class=n>owner</span><span class=p>,</span> <span class=n>expire</span><span class=p>):</span>
-    <span class=n>redis</span><span class=o>.</span><span class=n>eval</span><span class=p>(</span>
-        <span class=s1>&#39;&#39;&#39;
-</span><span class=s1>-- 加锁
-</span><span class=s1>if redis.call(&#34;get&#34;, KEYS[1]) == nil then
-</span><span class=s1>    if redis.call(&#34;setnx&#34;, KEYS[1], ARGV[1]) ~= nil then
-</span><span class=s1>        redis.call(&#34;expire&#34;, KEYS[1], ARGV[2])
-</span><span class=s1>        return 1
-</span><span class=s1>    else
-</span><span class=s1>        return
-</span><span class=s1>    end
-</span><span class=s1>end
-</span><span class=s1>        &#39;&#39;&#39;</span><span class=p>,</span> <span class=mi>1</span><span class=p>,</span> <span class=n>key</span><span class=p>,</span> <span class=n>owner</span><span class=p>,</span> <span class=n>expire</span><span class=p>)</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>解锁的 lua 代码。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=k>def</span> <span class=nf>lock</span><span class=p>(</span><span class=n>key</span><span class=p>,</span> <span class=n>owner</span><span class=p>,</span> <span class=n>expire</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=n>redis</span><span class=o>.</span><span class=n>eval</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>        <span class=s1>&#39;&#39;&#39;
+</span></span></span><span class=line><span class=cl><span class=s1>-- 加锁
+</span></span></span><span class=line><span class=cl><span class=s1>if redis.call(&#34;get&#34;, KEYS[1]) == nil then
+</span></span></span><span class=line><span class=cl><span class=s1>    if redis.call(&#34;setnx&#34;, KEYS[1], ARGV[1]) ~= nil then
+</span></span></span><span class=line><span class=cl><span class=s1>        redis.call(&#34;expire&#34;, KEYS[1], ARGV[2])
+</span></span></span><span class=line><span class=cl><span class=s1>        return 1
+</span></span></span><span class=line><span class=cl><span class=s1>    else
+</span></span></span><span class=line><span class=cl><span class=s1>        return
+</span></span></span><span class=line><span class=cl><span class=s1>    end
+</span></span></span><span class=line><span class=cl><span class=s1>end
+</span></span></span><span class=line><span class=cl><span class=s1>        &#39;&#39;&#39;</span><span class=p>,</span> <span class=mi>1</span><span class=p>,</span> <span class=n>key</span><span class=p>,</span> <span class=n>owner</span><span class=p>,</span> <span class=n>expire</span><span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div><p>解锁的 lua 代码。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=c1>-- 解锁</span>
-<span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;get&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span> <span class=o>==</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span> <span class=kr>then</span>
-    <span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;del&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span>
-<span class=kr>else</span>
-    <span class=kr>return</span> <span class=mi>0</span>
-<span class=kr>end</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>解锁的 python 代码。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=line><span class=cl><span class=c1>-- 解锁</span>
+</span></span><span class=line><span class=cl><span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;get&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span> <span class=o>==</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span> <span class=kr>then</span>
+</span></span><span class=line><span class=cl>    <span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;del&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span>
+</span></span><span class=line><span class=cl><span class=kr>else</span>
+</span></span><span class=line><span class=cl>    <span class=kr>return</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl><span class=kr>end</span>
+</span></span></code></pre></td></tr></table></div></div><p>解锁的 python 代码。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -254,28 +99,19 @@ python
 </span><span class=lnt>10
 </span><span class=lnt>11
 </span><span class=lnt>12
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=k>def</span> <span class=nf>unlock</span><span class=p>(</span><span class=n>key</span><span class=p>,</span> <span class=n>lock</span><span class=p>):</span>
-    <span class=n>redis</span><span class=o>.</span><span class=n>eval</span><span class=p>(</span>
-        <span class=s1>&#39;&#39;&#39;
-</span><span class=s1>-- 解锁
-</span><span class=s1>if redis.call(&#34;get&#34;, KEYS[1]) == ARGV[1] then
-</span><span class=s1>    return redis.call(&#34;del&#34;, KEYS[1])
-</span><span class=s1>else
-</span><span class=s1>    return 0
-</span><span class=s1>end
-</span><span class=s1>        &#39;&#39;&#39;</span><span class=p>,</span>
-        <span class=mi>1</span><span class=p>,</span> <span class=n>key</span><span class=p>,</span> <span class=n>lock</span>
-    <span class=p>)</span>
-</code></pre></td></tr></table>
-</div>
-</div><h3 id=超时和一致性>超时和一致性</h3>
-<p>关于超时有这样一个问题在。如果超时时间过长，那么超时的设置意义就不大，服务宕机 1 小时和宕机 24 小时都是事故。如果超时时间过短，那么超时就可能造成一致性上的损害。</p>
-<p>举例来说，付款处理花了 2.1s，但是锁超时 2.0s。这 0.1s 的数据竞争时间里，更新<code>update balance where id = xxx</code>和下一个更新 blance 的请求就指不定谁先执行了。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=k>def</span> <span class=nf>unlock</span><span class=p>(</span><span class=n>key</span><span class=p>,</span> <span class=n>lock</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=n>redis</span><span class=o>.</span><span class=n>eval</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>        <span class=s1>&#39;&#39;&#39;
+</span></span></span><span class=line><span class=cl><span class=s1>-- 解锁
+</span></span></span><span class=line><span class=cl><span class=s1>if redis.call(&#34;get&#34;, KEYS[1]) == ARGV[1] then
+</span></span></span><span class=line><span class=cl><span class=s1>    return redis.call(&#34;del&#34;, KEYS[1])
+</span></span></span><span class=line><span class=cl><span class=s1>else
+</span></span></span><span class=line><span class=cl><span class=s1>    return 0
+</span></span></span><span class=line><span class=cl><span class=s1>end
+</span></span></span><span class=line><span class=cl><span class=s1>        &#39;&#39;&#39;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=mi>1</span><span class=p>,</span> <span class=n>key</span><span class=p>,</span> <span class=n>lock</span>
+</span></span><span class=line><span class=cl>    <span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=超时和一致性>超时和一致性</h3><p>关于超时有这样一个问题在。如果超时时间过长，那么超时的设置意义就不大，服务宕机 1 小时和宕机 24 小时都是事故。如果超时时间过短，那么超时就可能造成一致性上的损害。</p><p>举例来说，付款处理花了 2.1s，但是锁超时 2.0s。这 0.1s 的数据竞争时间里，更新<code>update balance where id = xxx</code>和下一个更新 blance 的请求就指不定谁先执行了。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -288,254 +124,68 @@ python
 </span><span class=lnt>11
 </span><span class=lnt>12
 </span><span class=lnt>13
-</span><span class=lnt>14
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback>sequenceDiagram
-    participant 付款
-    participant 汇款
-    participant 锁
-
-    付款-&gt;&gt;锁:请求锁
-    锁--&gt;&gt;付款:已锁定
-    汇款-&gt;&gt;锁:请求锁
-    note over 付款,锁: 锁在2秒后超时，付款程序在2.1秒后完成
-    note over 锁: 2.0s到了，超时解锁
-    锁--&gt;&gt;汇款:已锁定
-    note over 付款,汇款:数据竞争
-    note over 付款:完成。
-
-</code></pre></td></tr></table>
-</div>
-</div><p>所以，设置了超时，那么必须保证一致性，整个处理要么全部完成，要么超时全部未完成，对编程能力提出了挑战。</p>
-<p>后续再想想能不能写篇博文。</p>
-<h2 id=读写锁>读写锁</h2>
-<p>读写锁的实现和简单锁别无二致，特征是多个读，一个写。在大量读取，少量写入的情况下，读写锁可以有效提高效率。</p>
-<h3 id=加读锁>加读锁</h3>
-<p>读锁实现和简单锁差别不大，在简单锁基础上稍作修改即可。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>sequenceDiagram
+</span></span><span class=line><span class=cl>    participant 付款
+</span></span><span class=line><span class=cl>    participant 汇款
+</span></span><span class=line><span class=cl>    participant 锁
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    付款-&gt;&gt;锁:请求锁
+</span></span><span class=line><span class=cl>    锁--&gt;&gt;付款:已锁定
+</span></span><span class=line><span class=cl>    汇款-&gt;&gt;锁:请求锁
+</span></span><span class=line><span class=cl>    note over 付款,锁: 锁在2秒后超时，付款程序在2.1秒后完成
+</span></span><span class=line><span class=cl>    note over 锁: 2.0s到了，超时解锁
+</span></span><span class=line><span class=cl>    锁--&gt;&gt;汇款:已锁定
+</span></span><span class=line><span class=cl>    note over 付款,汇款:数据竞争
+</span></span><span class=line><span class=cl>    note over 付款:完成。
+</span></span></code></pre></td></tr></table></div></div><p>所以，设置了超时，那么必须保证一致性，整个处理要么全部完成，要么超时全部未完成，对编程能力提出了挑战。</p><p>后续再想想能不能写篇博文。</p><h2 id=读写锁>读写锁</h2><p>读写锁的实现和简单锁别无二致，特征是多个读，一个写。在大量读取，少量写入的情况下，读写锁可以有效提高效率。</p><h3 id=加读锁>加读锁</h3><p>读锁实现和简单锁差别不大，在简单锁基础上稍作修改即可。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=c1>-- 读锁</span>
-<span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;get&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:write&#34;</span><span class=p>)</span>  <span class=kr>then</span>
-    <span class=kr>return</span> <span class=mi>0</span>
-<span class=kr>else</span>
-    <span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;hset&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:read&#34;</span><span class=p>,</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>],</span> <span class=mi>1</span><span class=p>)</span>
-<span class=kr>end</span>
-</code></pre></td></tr></table>
-</div>
-</div><h3 id=加写锁>加写锁</h3>
-<p>写锁实现差别也不大，这里使用 hash table 解决标记持有人的问题。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=line><span class=cl><span class=c1>-- 读锁</span>
+</span></span><span class=line><span class=cl><span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;get&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:write&#34;</span><span class=p>)</span>  <span class=kr>then</span>
+</span></span><span class=line><span class=cl>    <span class=kr>return</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl><span class=kr>else</span>
+</span></span><span class=line><span class=cl>    <span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;hset&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:read&#34;</span><span class=p>,</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>],</span> <span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=kr>end</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=加写锁>加写锁</h3><p>写锁实现差别也不大，这里使用 hash table 解决标记持有人的问题。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=c1>-- 写锁</span>
-<span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;hlen&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:read&#34;</span><span class=p>)</span> <span class=kr>then</span>
-    <span class=kr>return</span> <span class=mi>0</span>
-<span class=kr>else</span>
-    <span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;setnx&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:write&#34;</span><span class=p>,</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span>
-<span class=kr>end</span>
-</code></pre></td></tr></table>
-</div>
-</div><h3 id=解读锁>解读锁</h3>
-<p>读锁的解除只需要删除 hash table 里的自己就行了。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=line><span class=cl><span class=c1>-- 写锁</span>
+</span></span><span class=line><span class=cl><span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;hlen&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:read&#34;</span><span class=p>)</span> <span class=kr>then</span>
+</span></span><span class=line><span class=cl>    <span class=kr>return</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl><span class=kr>else</span>
+</span></span><span class=line><span class=cl>    <span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;setnx&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:write&#34;</span><span class=p>,</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span>
+</span></span><span class=line><span class=cl><span class=kr>end</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=解读锁>解读锁</h3><p>读锁的解除只需要删除 hash table 里的自己就行了。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=c1>-- 解读锁</span>
-<span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;hdel&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:read&#34;</span><span class=p>,</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span>
-</code></pre></td></tr></table>
-</div>
-</div><h3 id=解写锁>解写锁</h3>
-<p>写锁解除如解除简单锁一样。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=line><span class=cl><span class=c1>-- 解读锁</span>
+</span></span><span class=line><span class=cl><span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;hdel&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:read&#34;</span><span class=p>,</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=解写锁>解写锁</h3><p>写锁解除如解除简单锁一样。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=c1>-- 解锁</span>
-<span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;get&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:write&#34;</span><span class=p>)</span> <span class=o>==</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span> <span class=kr>then</span>
-    <span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;del&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:write&#34;</span><span class=p>)</span>
-<span class=kr>else</span>
-    <span class=kr>return</span> <span class=mi>0</span>
-<span class=kr>end</span>
-</code></pre></td></tr></table>
-</div>
-</div>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/python/>python</a>
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-lua data-lang=lua><span class=line><span class=cl><span class=c1>-- 解锁</span>
+</span></span><span class=line><span class=cl><span class=kr>if</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;get&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:write&#34;</span><span class=p>)</span> <span class=o>==</span> <span class=n>ARGV</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span> <span class=kr>then</span>
+</span></span><span class=line><span class=cl>    <span class=kr>return</span> <span class=n>redis.call</span><span class=p>(</span><span class=s2>&#34;del&#34;</span><span class=p>,</span> <span class=n>KEYS</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span><span class=o>..</span><span class=s2>&#34;:write&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=kr>else</span>
+</span></span><span class=line><span class=cl>    <span class=kr>return</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl><span class=kr>end</span>
+</span></span></code></pre></td></tr></table></div></div></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/python/>python</a>
 <a href=/blog/tags/redis/>redis</a>
 <a href=/blog/tags/lua/>lua</a>
-<a href=/blog/tags/%E5%88%86%E5%B8%83%E5%BC%8F/>分布式</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/b-tree/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>B树</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/avl-tree/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>AVL树</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/pattern-match-in-python310/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>pattern-match-in-python310</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>Flask源码阅读笔记：WSGI</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/django-%E7%9A%84%E5%90%84%E7%A7%8D%E5%85%B3%E7%B3%BB%E5%AD%97%E6%AE%B5%E8%AF%A6%E8%A7%A3/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>Django 的各种关系字段详解</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+<a href=/blog/tags/%E5%88%86%E5%B8%83%E5%BC%8F/>分布式</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/b-tree/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>B树</h2></div></a></article><article><a href=/blog/p/avl-tree/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>AVL树</h2></div></a></article><article><a href=/blog/p/pattern-match-in-python310/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>pattern-match-in-python310</h2></div></a></article><article><a href=/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>Flask源码阅读笔记：WSGI</h2></div></a></article><article><a href=/blog/p/django-%E7%9A%84%E5%90%84%E7%A7%8D%E5%85%B3%E7%B3%BB%E5%AD%97%E6%AE%B5%E8%AF%A6%E8%A7%A3/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>Django 的各种关系字段详解</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#intro>Intro</a></li>
-<li><a href=#为何是-lua>为何是 Lua</a></li>
-<li><a href=#简单锁>简单锁</a>
-<ol>
-<li><a href=#加锁>加锁</a></li>
-<li><a href=#解锁>解锁</a></li>
-<li><a href=#超时和一致性>超时和一致性</a></li>
-</ol>
-</li>
-<li><a href=#读写锁>读写锁</a>
-<ol>
-<li><a href=#加读锁>加读锁</a></li>
-<li><a href=#加写锁>加写锁</a></li>
-<li><a href=#解读锁>解读锁</a></li>
-<li><a href=#解写锁>解写锁</a></li>
-</ol>
-</li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#intro>Intro</a></li><li><a href=#为何是-lua>为何是 Lua</a></li><li><a href=#简单锁>简单锁</a><ol><li><a href=#加锁>加锁</a></li><li><a href=#解锁>解锁</a></li><li><a href=#超时和一致性>超时和一致性</a></li></ol></li><li><a href=#读写锁>读写锁</a><ol><li><a href=#加读锁>加读锁</a></li><li><a href=#加写锁>加写锁</a></li><li><a href=#解读锁>解读锁</a></li><li><a href=#解写锁>解写锁</a></li></ol></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

@@ -1,150 +1,9 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 翻到一本Windows编程书上介绍 DLL 注入，简单验证了一下并做个记录。 同时书上还介绍了另一种代码注入方法，APC 注入，有时间验证了再另写一"><title>基于CreateRemoteThread的DLL注入</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 翻到一本Windows编程书上介绍 DLL 注入，简单验证了一下并做个记录。 同时书上还介绍了另一种代码注入方法，APC 注入，有时间验证了再另写一"><title>基于CreateRemoteThread的DLL注入</title><link rel=canonical href=https://nnnewb.github.io/blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="基于CreateRemoteThread的DLL注入">
-<meta property="og:description" content="前言 翻到一本Windows编程书上介绍 DLL 注入，简单验证了一下并做个记录。 同时书上还介绍了另一种代码注入方法，APC 注入，有时间验证了再另写一">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="security"><meta property="article:tag" content="windows"><meta property="article:published_time" content="2022-07-11T15:10:00+08:00"><meta property="article:modified_time" content="2022-07-11T15:10:00+08:00">
-<meta name=twitter:title content="基于CreateRemoteThread的DLL注入">
-<meta name=twitter:description content="前言 翻到一本Windows编程书上介绍 DLL 注入，简单验证了一下并做个记录。 同时书上还介绍了另一种代码注入方法，APC 注入，有时间验证了再另写一">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/security/>
-security
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/>基于CreateRemoteThread的DLL注入</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2022-07-11T15:10:00+08:00>2022年 7月 11日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 3 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=前言>前言</h2>
-<p>翻到一本Windows编程书上介绍 DLL 注入，简单验证了一下并做个记录。</p>
-<p>同时书上还介绍了另一种代码注入方法，APC 注入，有时间验证了再另写一篇。</p>
-<h2 id=原理>原理</h2>
-<p><code>CreateRemoteThread</code> 注入 DLL 的大体流程如下。</p>
-<ol>
-<li><code>OpenProcess</code> 打开目标进程，受害进程权限高的话可能要特权。</li>
-<li><code>VirtualAllocEx</code> 在目标进程的地址空间里分配足够存放待注入 DLL 路径的空间。</li>
-<li><code>WriteProcessMemory</code> 在目标进程写 DLL 路径，位置是上一步分配好的地址。</li>
-<li><code>GetProcAddress(GetModuleHandle("kernel32.dll"), "LoadLibraryA")</code> 待调用函数地址。</li>
-<li><code>CreateRemoteThread</code> 在目标进程里启动线程，线程入口就是 <code>LoadLibraryA</code>。</li>
-</ol>
-<p>整个流程就是在目标进程的地址空间里写好参数（1~3步），然后调一个已经存在于目标进程地址空间中的函数（<code>kernel32.dll</code>里的<code>LoadLibraryA</code>）加载我们的 DLL（4~5步）。</p>
-<p>其中有个坑值得注意下：</p>
-<blockquote>
-<p><a class=link href=https://stackoverflow.com/questions/22750112/dll-injection-with-createremotethread target=_blank rel=noopener>DLL injection with CreateRemoteThread - stackoverflow</a></p>
-<p>The thing confuses me is that <code>GetProcAddress</code> returns the <code>LoadLibraryA</code> fucntion address of <strong>the current process</strong>, how can you pass it as a parameter to <code>CreateRemoteThread</code> and expect <strong>the target process</strong> to run it?</p>
-<p>accepted answer:</p>
-<blockquote>
-<p>It works by accident. It is a <em>very</em> common accident, Microsoft makes a great deal of effort to ensure that the operating system DLLs, like kernel32.dll, have a base address that doesn&rsquo;t conflict with any other DLLs. Further enhanced by kernel32.dll getting loaded very early at process initialization so low odds that it has to fight to get its preferred base address.</p>
-<p>You&rsquo;ll get away with easily. It is notable that this <strong>has</strong> gone wrong in the past, there was an XP security update oops that caused gdi32.dll to get relocated and made lots of machines fall over at boot. The correct way is fairly painful, CreateToolhelp32Snapshot() + Module32First/Next() to find the relocation offset isn&rsquo;t great joy. Frankly, you probably ought to not do this at all if the operating system is &ldquo;weird&rdquo; like that.</p>
-</blockquote>
-</blockquote>
-<p>在第四步使用 <code>GetProcAddress</code> 拿到的显然是当前进程地址空间里 <code>LoadLibraryA</code> 的地址，但另一个进程的地址空间里，<code>LoadLibraryA</code> 也是在同样的地址上吗？说好的地址空间随机化呢？</p>
-<p>从上面贴出的 stackoverflow 链接里，可以看到相关的讨论。主要就是两个观点：</p>
-<ul>
-<li>works by accident (very common accident).</li>
-<li>Microsoft intentionally implemented it.</li>
-</ul>
-<p>没有查找到更权威的说法的情况下暂且按下不谈。</p>
-<h2 id=案例>案例</h2>
-<p>案例分三个部分：</p>
-<ol>
-<li><code>injector</code>，注入者，负责执行 DLL 注入。</li>
-<li><code>payload</code>，待注入的 DLL，里面仅输出一行文字标识注入成功。</li>
-<li><code>victim</code>，一个简单的猜数字游戏，在案例中扮演受害者。</li>
-</ol>
-<p>使用 cmake 编译。所有源码如下。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="基于CreateRemoteThread的DLL注入"><meta property="og:description" content="前言 翻到一本Windows编程书上介绍 DLL 注入，简单验证了一下并做个记录。 同时书上还介绍了另一种代码注入方法，APC 注入，有时间验证了再另写一"><meta property="og:url" content="https://nnnewb.github.io/blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="security"><meta property="article:tag" content="windows"><meta property="article:published_time" content="2022-07-11T15:10:00+08:00"><meta property="article:modified_time" content="2022-07-11T15:10:00+08:00"><meta name=twitter:title content="基于CreateRemoteThread的DLL注入"><meta name=twitter:description content="前言 翻到一本Windows编程书上介绍 DLL 注入，简单验证了一下并做个记录。 同时书上还介绍了另一种代码注入方法，APC 注入，有时间验证了再另写一"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/security/>security</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/>基于CreateRemoteThread的DLL注入</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2022-07-11T15:10:00+08:00>2022年 7月 11日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 3 分钟</time></div></footer></div></header><section class=article-content><h2 id=前言>前言</h2><p>翻到一本Windows编程书上介绍 DLL 注入，简单验证了一下并做个记录。</p><p>同时书上还介绍了另一种代码注入方法，APC 注入，有时间验证了再另写一篇。</p><h2 id=原理>原理</h2><p><code>CreateRemoteThread</code> 注入 DLL 的大体流程如下。</p><ol><li><code>OpenProcess</code> 打开目标进程，受害进程权限高的话可能要特权。</li><li><code>VirtualAllocEx</code> 在目标进程的地址空间里分配足够存放待注入 DLL 路径的空间。</li><li><code>WriteProcessMemory</code> 在目标进程写 DLL 路径，位置是上一步分配好的地址。</li><li><code>GetProcAddress(GetModuleHandle("kernel32.dll"), "LoadLibraryA")</code> 待调用函数地址。</li><li><code>CreateRemoteThread</code> 在目标进程里启动线程，线程入口就是 <code>LoadLibraryA</code>。</li></ol><p>整个流程就是在目标进程的地址空间里写好参数（1~3步），然后调一个已经存在于目标进程地址空间中的函数（<code>kernel32.dll</code>里的<code>LoadLibraryA</code>）加载我们的 DLL（4~5步）。</p><p>其中有个坑值得注意下：</p><blockquote><p><a class=link href=https://stackoverflow.com/questions/22750112/dll-injection-with-createremotethread target=_blank rel=noopener>DLL injection with CreateRemoteThread - stackoverflow</a></p><p>The thing confuses me is that <code>GetProcAddress</code> returns the <code>LoadLibraryA</code> fucntion address of <strong>the current process</strong>, how can you pass it as a parameter to <code>CreateRemoteThread</code> and expect <strong>the target process</strong> to run it?</p><p>accepted answer:</p><blockquote><p>It works by accident. It is a <em>very</em> common accident, Microsoft makes a great deal of effort to ensure that the operating system DLLs, like kernel32.dll, have a base address that doesn&rsquo;t conflict with any other DLLs. Further enhanced by kernel32.dll getting loaded very early at process initialization so low odds that it has to fight to get its preferred base address.</p><p>You&rsquo;ll get away with easily. It is notable that this <strong>has</strong> gone wrong in the past, there was an XP security update oops that caused gdi32.dll to get relocated and made lots of machines fall over at boot. The correct way is fairly painful, CreateToolhelp32Snapshot() + Module32First/Next() to find the relocation offset isn&rsquo;t great joy. Frankly, you probably ought to not do this at all if the operating system is &ldquo;weird&rdquo; like that.</p></blockquote></blockquote><p>在第四步使用 <code>GetProcAddress</code> 拿到的显然是当前进程地址空间里 <code>LoadLibraryA</code> 的地址，但另一个进程的地址空间里，<code>LoadLibraryA</code> 也是在同样的地址上吗？说好的地址空间随机化呢？</p><p>从上面贴出的 stackoverflow 链接里，可以看到相关的讨论。主要就是两个观点：</p><ul><li>works by accident (very common accident).</li><li>Microsoft intentionally implemented it.</li></ul><p>没有查找到更权威的说法的情况下暂且按下不谈。</p><h2 id=案例>案例</h2><p>案例分三个部分：</p><ol><li><code>injector</code>，注入者，负责执行 DLL 注入。</li><li><code>payload</code>，待注入的 DLL，里面仅输出一行文字标识注入成功。</li><li><code>victim</code>，一个简单的猜数字游戏，在案例中扮演受害者。</li></ol><p>使用 cmake 编译。所有源码如下。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -197,66 +56,60 @@ security
 </span><span class=lnt>51
 </span><span class=lnt>52
 </span><span class=lnt>53
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=c1>// injector.cpp
-</span><span class=c1></span><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
-</span><span class=cp></span>
-<span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;Psapi.h&gt;</span><span class=cp>
-</span><span class=cp></span>
-<span class=n>LPCSTR</span> <span class=n>libPath</span> <span class=o>=</span> <span class=s>&#34;D:</span><span class=se>\\</span><span class=s>repos</span><span class=se>\\</span><span class=s>windows-codeinjection</span><span class=se>\\</span><span class=s>build</span><span class=se>\\</span><span class=s>Debug</span><span class=se>\\</span><span class=s>payload.dll&#34;</span><span class=p>;</span>
-
-<span class=kt>int</span> <span class=nf>main</span><span class=p>()</span>
-<span class=p>{</span>
-  <span class=c1>// 从命令行读被注入进程的ID
-</span><span class=c1></span>  <span class=n>DWORD</span> <span class=n>pid</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
-  <span class=n>std</span><span class=o>::</span><span class=n>cin</span> <span class=o>&gt;&gt;</span> <span class=n>pid</span><span class=p>;</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>pid</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span>
-  <span class=p>{</span>
-    <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;invalid pid input&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
-  <span class=p>}</span>
-  <span class=c1>// 打开被注入进程
-</span><span class=c1></span>  <span class=n>HANDLE</span> <span class=n>hProcess</span> <span class=o>=</span> <span class=n>OpenProcess</span><span class=p>(</span><span class=n>PROCESS_ALL_ACCESS</span><span class=p>,</span> <span class=n>FALSE</span><span class=p>,</span> <span class=n>pid</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(</span><span class=nb>NULL</span> <span class=o>==</span> <span class=n>hProcess</span><span class=p>)</span>
-  <span class=p>{</span>
-    <span class=k>return</span> <span class=mi>1</span><span class=p>;</span>
-  <span class=p>}</span>
-  <span class=c1>// 在目标进程里分配存放 DLL 路径的空间
-</span><span class=c1></span>  <span class=n>LPVOID</span> <span class=n>lpRemoteDllName</span> <span class=o>=</span> <span class=n>VirtualAllocEx</span><span class=p>(</span><span class=n>hProcess</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>,</span> <span class=n>strlen</span><span class=p>(</span><span class=n>libPath</span><span class=p>)</span> <span class=o>+</span> <span class=mi>1</span><span class=p>,</span> <span class=n>MEM_COMMIT</span><span class=p>,</span> <span class=n>PAGE_READWRITE</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>lpRemoteDllName</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span>
-  <span class=p>{</span>
-    <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;[ERROR] VirtualAllocEx failed, last error &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>GetLastError</span><span class=p>()</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
-    <span class=k>return</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
-  <span class=p>}</span>
-  <span class=c1>// 写入 DLL 路径
-</span><span class=c1></span>  <span class=k>if</span> <span class=p>(</span><span class=n>WriteProcessMemory</span><span class=p>(</span><span class=n>hProcess</span><span class=p>,</span> <span class=n>lpRemoteDllName</span><span class=p>,</span> <span class=n>libPath</span><span class=p>,</span> <span class=n>strlen</span><span class=p>(</span><span class=n>libPath</span><span class=p>)</span> <span class=o>+</span> <span class=mi>1</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>)</span> <span class=o>==</span> <span class=n>FALSE</span><span class=p>)</span>
-  <span class=p>{</span>
-    <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;[ERROR] WriteProcessMemory failed, last error &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>GetLastError</span><span class=p>()</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
-    <span class=k>return</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
-  <span class=p>}</span>
-  <span class=c1>// 从本进程地址空间读取 LoadLibraryA 函数的地址
-</span><span class=c1></span>  <span class=n>LPVOID</span> <span class=n>lpProcAddr</span> <span class=o>=</span> <span class=p>(</span><span class=n>LPVOID</span><span class=p>)</span><span class=n>GetProcAddress</span><span class=p>(</span><span class=n>GetModuleHandle</span><span class=p>(</span><span class=s>&#34;kernel32.dll&#34;</span><span class=p>),</span> <span class=s>&#34;LoadLibraryA&#34;</span><span class=p>);</span>
-  <span class=c1>// 在目标进程创建线程，执行 LoadLibraryA(我们的DLL路径)
-</span><span class=c1></span>  <span class=n>HANDLE</span> <span class=n>hThread</span> <span class=o>=</span> <span class=n>CreateRemoteThread</span><span class=p>(</span><span class=n>hProcess</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>,</span> <span class=p>(</span><span class=n>LPTHREAD_START_ROUTINE</span><span class=p>)</span><span class=n>lpProcAddr</span><span class=p>,</span> <span class=p>(</span><span class=n>LPVOID</span><span class=p>)</span><span class=n>lpRemoteDllName</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>);</span>
-  <span class=c1>// 收尾
-</span><span class=c1></span>  <span class=k>if</span> <span class=p>(</span><span class=n>WaitForSingleObject</span><span class=p>(</span><span class=n>hThread</span><span class=p>,</span> <span class=n>INFINITE</span><span class=p>)</span> <span class=o>!=</span> <span class=n>WAIT_OBJECT_0</span><span class=p>)</span>
-  <span class=p>{</span>
-    <span class=n>CloseHandle</span><span class=p>(</span><span class=n>hProcess</span><span class=p>);</span>
-    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
-  <span class=p>}</span>
-
-  <span class=n>DWORD</span> <span class=n>exitCode</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
-  <span class=n>GetExitCodeThread</span><span class=p>(</span><span class=n>hThread</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>exitCode</span><span class=p>);</span>
-  <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;thread exit with code &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>exitCode</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
-  <span class=n>CloseHandle</span><span class=p>(</span><span class=n>hProcess</span><span class=p>);</span>
-  <span class=k>return</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=c1>// injector.cpp
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;Psapi.h&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=n>LPCSTR</span> <span class=n>libPath</span> <span class=o>=</span> <span class=s>&#34;D:</span><span class=se>\\</span><span class=s>repos</span><span class=se>\\</span><span class=s>windows-codeinjection</span><span class=se>\\</span><span class=s>build</span><span class=se>\\</span><span class=s>Debug</span><span class=se>\\</span><span class=s>payload.dll&#34;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>int</span> <span class=nf>main</span><span class=p>()</span>
+</span></span><span class=line><span class=cl><span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// 从命令行读被注入进程的ID
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>DWORD</span> <span class=n>pid</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>std</span><span class=o>::</span><span class=n>cin</span> <span class=o>&gt;&gt;</span> <span class=n>pid</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>pid</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>  <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;invalid pid input&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// 打开被注入进程
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>HANDLE</span> <span class=n>hProcess</span> <span class=o>=</span> <span class=n>OpenProcess</span><span class=p>(</span><span class=n>PROCESS_ALL_ACCESS</span><span class=p>,</span> <span class=n>FALSE</span><span class=p>,</span> <span class=n>pid</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=nb>NULL</span> <span class=o>==</span> <span class=n>hProcess</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>  <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// 在目标进程里分配存放 DLL 路径的空间
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>LPVOID</span> <span class=n>lpRemoteDllName</span> <span class=o>=</span> <span class=n>VirtualAllocEx</span><span class=p>(</span><span class=n>hProcess</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>,</span> <span class=n>strlen</span><span class=p>(</span><span class=n>libPath</span><span class=p>)</span> <span class=o>+</span> <span class=mi>1</span><span class=p>,</span> <span class=n>MEM_COMMIT</span><span class=p>,</span> <span class=n>PAGE_READWRITE</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>lpRemoteDllName</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>  <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;[ERROR] VirtualAllocEx failed, last error &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>GetLastError</span><span class=p>()</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// 写入 DLL 路径
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=k>if</span> <span class=p>(</span><span class=n>WriteProcessMemory</span><span class=p>(</span><span class=n>hProcess</span><span class=p>,</span> <span class=n>lpRemoteDllName</span><span class=p>,</span> <span class=n>libPath</span><span class=p>,</span> <span class=n>strlen</span><span class=p>(</span><span class=n>libPath</span><span class=p>)</span> <span class=o>+</span> <span class=mi>1</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>)</span> <span class=o>==</span> <span class=n>FALSE</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>  <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;[ERROR] WriteProcessMemory failed, last error &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>GetLastError</span><span class=p>()</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// 从本进程地址空间读取 LoadLibraryA 函数的地址
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>LPVOID</span> <span class=n>lpProcAddr</span> <span class=o>=</span> <span class=p>(</span><span class=n>LPVOID</span><span class=p>)</span><span class=n>GetProcAddress</span><span class=p>(</span><span class=n>GetModuleHandle</span><span class=p>(</span><span class=s>&#34;kernel32.dll&#34;</span><span class=p>),</span> <span class=s>&#34;LoadLibraryA&#34;</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// 在目标进程创建线程，执行 LoadLibraryA(我们的DLL路径)
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>HANDLE</span> <span class=n>hThread</span> <span class=o>=</span> <span class=n>CreateRemoteThread</span><span class=p>(</span><span class=n>hProcess</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>,</span> <span class=p>(</span><span class=n>LPTHREAD_START_ROUTINE</span><span class=p>)</span><span class=n>lpProcAddr</span><span class=p>,</span> <span class=p>(</span><span class=n>LPVOID</span><span class=p>)</span><span class=n>lpRemoteDllName</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>,</span> <span class=nb>NULL</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// 收尾
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=k>if</span> <span class=p>(</span><span class=n>WaitForSingleObject</span><span class=p>(</span><span class=n>hThread</span><span class=p>,</span> <span class=n>INFINITE</span><span class=p>)</span> <span class=o>!=</span> <span class=n>WAIT_OBJECT_0</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>  <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>CloseHandle</span><span class=p>(</span><span class=n>hProcess</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=n>DWORD</span> <span class=n>exitCode</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>GetExitCodeThread</span><span class=p>(</span><span class=n>hThread</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>exitCode</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;thread exit with code &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>exitCode</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>CloseHandle</span><span class=p>(</span><span class=n>hProcess</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -287,44 +140,38 @@ security
 </span><span class=lnt>29
 </span><span class=lnt>30
 </span><span class=lnt>31
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=c1>// victim.cpp
-</span><span class=c1></span><span class=cp>#include</span> <span class=cpf>&lt;cmath&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
-</span><span class=cp></span>
-<span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
-</span><span class=cp></span>
-<span class=kt>int</span> <span class=nf>main</span><span class=p>()</span>
-<span class=p>{</span>
-  <span class=kt>int</span> <span class=n>guess</span><span class=p>;</span>
-  <span class=kt>int</span> <span class=n>result</span> <span class=o>=</span> <span class=n>std</span><span class=o>::</span><span class=n>rand</span><span class=p>();</span>
-  <span class=n>DWORD</span> <span class=n>pid</span> <span class=o>=</span> <span class=n>GetCurrentProcessId</span><span class=p>();</span>
-  <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;current process id: &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>pid</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
-  <span class=k>for</span> <span class=p>(;;)</span>
-  <span class=p>{</span>
-    <span class=n>std</span><span class=o>::</span><span class=n>cin</span> <span class=o>&gt;&gt;</span> <span class=n>guess</span><span class=p>;</span>
-    <span class=k>if</span> <span class=p>(</span><span class=n>guess</span> <span class=o>&gt;</span> <span class=n>result</span><span class=p>)</span>
-    <span class=p>{</span>
-      <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;too big&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
-    <span class=p>}</span>
-    <span class=k>else</span> <span class=k>if</span> <span class=p>(</span><span class=n>guess</span> <span class=o>&lt;</span> <span class=n>result</span><span class=p>)</span>
-    <span class=p>{</span>
-      <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;too small&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
-    <span class=p>}</span>
-    <span class=k>else</span>
-    <span class=p>{</span>
-      <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;correct!&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
-      <span class=k>break</span><span class=p>;</span>
-    <span class=p>}</span>
-  <span class=p>}</span>
-  <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=c1>// victim.cpp
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=cp>#include</span> <span class=cpf>&lt;cmath&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=kt>int</span> <span class=nf>main</span><span class=p>()</span>
+</span></span><span class=line><span class=cl><span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=kt>int</span> <span class=n>guess</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=kt>int</span> <span class=n>result</span> <span class=o>=</span> <span class=n>std</span><span class=o>::</span><span class=n>rand</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=n>DWORD</span> <span class=n>pid</span> <span class=o>=</span> <span class=n>GetCurrentProcessId</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;current process id: &#34;</span> <span class=o>&lt;&lt;</span> <span class=n>pid</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(;;)</span>
+</span></span><span class=line><span class=cl>  <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>std</span><span class=o>::</span><span class=n>cin</span> <span class=o>&gt;&gt;</span> <span class=n>guess</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>guess</span> <span class=o>&gt;</span> <span class=n>result</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;too big&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=k>else</span> <span class=k>if</span> <span class=p>(</span><span class=n>guess</span> <span class=o>&lt;</span> <span class=n>result</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;too small&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=k>else</span>
+</span></span><span class=line><span class=cl>    <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;correct!&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>      <span class=k>break</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -357,46 +204,40 @@ security
 </span><span class=lnt>31
 </span><span class=lnt>32
 </span><span class=lnt>33
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=c1>// payload.cpp
-</span><span class=c1></span><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
-</span><span class=cp></span>
-<span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
-</span><span class=cp></span>
-<span class=n>BOOL</span> <span class=n>WINAPI</span> <span class=nf>DllMain</span><span class=p>(</span>
-    <span class=n>HINSTANCE</span> <span class=n>hinstDLL</span><span class=p>,</span> <span class=c1>// handle to DLL module
-</span><span class=c1></span>    <span class=n>DWORD</span> <span class=n>fdwReason</span><span class=p>,</span>    <span class=c1>// reason for calling function
-</span><span class=c1></span>    <span class=n>LPVOID</span> <span class=n>lpReserved</span><span class=p>)</span>  <span class=c1>// reserved
-</span><span class=c1></span><span class=p>{</span>
-    <span class=c1>// Perform actions based on the reason for calling.
-</span><span class=c1></span>    <span class=k>switch</span> <span class=p>(</span><span class=n>fdwReason</span><span class=p>)</span>
-    <span class=p>{</span>
-    <span class=k>case</span> <span class=nl>DLL_PROCESS_ATTACH</span><span class=p>:</span>
-        <span class=c1>// Initialize once for each new process.
-</span><span class=c1></span>        <span class=c1>// Return FALSE to fail DLL load.
-</span><span class=c1></span>        <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;dll injected!&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
-        <span class=k>break</span><span class=p>;</span>
-
-    <span class=k>case</span> <span class=nl>DLL_THREAD_ATTACH</span><span class=p>:</span>
-        <span class=c1>// Do thread-specific initialization.
-</span><span class=c1></span>        <span class=k>break</span><span class=p>;</span>
-
-    <span class=k>case</span> <span class=nl>DLL_THREAD_DETACH</span><span class=p>:</span>
-        <span class=c1>// Do thread-specific cleanup.
-</span><span class=c1></span>        <span class=k>break</span><span class=p>;</span>
-
-    <span class=k>case</span> <span class=nl>DLL_PROCESS_DETACH</span><span class=p>:</span>
-        <span class=c1>// Perform any necessary cleanup.
-</span><span class=c1></span>        <span class=k>break</span><span class=p>;</span>
-    <span class=p>}</span>
-    <span class=k>return</span> <span class=n>TRUE</span><span class=p>;</span> <span class=c1>// Successful DLL_PROCESS_ATTACH.
-</span><span class=c1></span><span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=c1>// payload.cpp
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;iostream&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=n>BOOL</span> <span class=n>WINAPI</span> <span class=nf>DllMain</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>    <span class=n>HINSTANCE</span> <span class=n>hinstDLL</span><span class=p>,</span> <span class=c1>// handle to DLL module
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=n>DWORD</span> <span class=n>fdwReason</span><span class=p>,</span>    <span class=c1>// reason for calling function
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=n>LPVOID</span> <span class=n>lpReserved</span><span class=p>)</span>  <span class=c1>// reserved
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// Perform actions based on the reason for calling.
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=k>switch</span> <span class=p>(</span><span class=n>fdwReason</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>case</span> <span class=nl>DLL_PROCESS_ATTACH</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Initialize once for each new process.
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=c1>// Return FALSE to fail DLL load.
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=n>std</span><span class=o>::</span><span class=n>cout</span> <span class=o>&lt;&lt;</span> <span class=s>&#34;dll injected!&#34;</span> <span class=o>&lt;&lt;</span> <span class=n>std</span><span class=o>::</span><span class=n>endl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=k>break</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=k>case</span> <span class=nl>DLL_THREAD_ATTACH</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Do thread-specific initialization.
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=k>break</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=k>case</span> <span class=nl>DLL_THREAD_DETACH</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Do thread-specific cleanup.
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=k>break</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=k>case</span> <span class=nl>DLL_PROCESS_DETACH</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Perform any necessary cleanup.
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=k>break</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>TRUE</span><span class=p>;</span> <span class=c1>// Successful DLL_PROCESS_ATTACH.
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -407,162 +248,24 @@ security
 </span><span class=lnt> 9
 </span><span class=lnt>10
 </span><span class=lnt>11
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=c># CMakeLists.txt
-</span><span class=c></span><span class=nb>cmake_minimum_required</span><span class=p>(</span><span class=s>VERSION</span> <span class=s>3.20</span><span class=p>)</span><span class=err>
-</span><span class=err></span><span class=nb>project</span><span class=p>(</span>
-    <span class=s>windows-codeinjection</span>
-    <span class=s>VERSION</span> <span class=s>0.1.0</span>
-    <span class=s>LANGUAGES</span> <span class=s>CXX</span>
-<span class=p>)</span><span class=err>
-</span><span class=err>
-</span><span class=err></span><span class=nb>add_executable</span><span class=p>(</span><span class=s>injector</span> <span class=s>injector/main.cpp</span><span class=p>)</span><span class=err>
-</span><span class=err></span><span class=nb>add_executable</span><span class=p>(</span><span class=s>victim</span> <span class=s>victim/main.cpp</span><span class=p>)</span><span class=err>
-</span><span class=err></span><span class=nb>add_library</span><span class=p>(</span><span class=s>payload</span> <span class=s>SHARED</span> <span class=s>payload/main.cpp</span><span class=p>)</span><span class=err>
-</span></code></pre></td></tr></table>
-</div>
-</div><p>最终验证结果</p>
-<p><img src=/blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/image-20220711153811971.png width=577 height=595 srcset="/blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/image-20220711153811971_huc97e2c808d003a774f83d98497b007c5_19412_480x0_resize_box_3.png 480w, /blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/image-20220711153811971_huc97e2c808d003a774f83d98497b007c5_19412_1024x0_resize_box_3.png 1024w" loading=lazy alt=验证结果 class=gallery-image data-flex-grow=96 data-flex-basis=232px></p>
-<h2 id=总结>总结</h2>
-<p>哈，魔术师的秘密。</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/security/>security</a>
-<a href=/blog/tags/windows/>windows</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/%E5%87%A0%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84-pwn-%E7%BB%83%E4%B9%A0/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>几个简单的 pwn 练习</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/sqli-labs-training-5/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>sqli-labs 实验记录 #5</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/sqli-labs-training-4/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>sqli-labs 实验记录 #4</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/sqli-labs-training-3/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>sqli-labs 实验记录 #3</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/sqli-labs-training-2/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>sqli-labs 实验记录 #2</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=line><span class=cl><span class=c># CMakeLists.txt
+</span></span></span><span class=line><span class=cl><span class=c></span><span class=nb>cmake_minimum_required</span><span class=p>(</span><span class=s>VERSION</span> <span class=s>3.20</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>project</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>    <span class=s>windows-codeinjection</span>
+</span></span><span class=line><span class=cl>    <span class=s>VERSION</span> <span class=s>0.1.0</span>
+</span></span><span class=line><span class=cl>    <span class=s>LANGUAGES</span> <span class=s>CXX</span>
+</span></span><span class=line><span class=cl><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>add_executable</span><span class=p>(</span><span class=s>injector</span> <span class=s>injector/main.cpp</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>add_executable</span><span class=p>(</span><span class=s>victim</span> <span class=s>victim/main.cpp</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>add_library</span><span class=p>(</span><span class=s>payload</span> <span class=s>SHARED</span> <span class=s>payload/main.cpp</span><span class=p>)</span><span class=err>
+</span></span></span></code></pre></td></tr></table></div></div><p>最终验证结果</p><p><img src=/blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/image-20220711153811971.png width=577 height=595 srcset="/blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/image-20220711153811971_huc97e2c808d003a774f83d98497b007c5_19412_480x0_resize_box_3.png 480w, /blog/p/%E5%9F%BA%E4%BA%8Ecreateremotethread%E7%9A%84dll%E6%B3%A8%E5%85%A5/image-20220711153811971_huc97e2c808d003a774f83d98497b007c5_19412_1024x0_resize_box_3.png 1024w" loading=lazy alt=验证结果 class=gallery-image data-flex-grow=96 data-flex-basis=232px></p><h2 id=总结>总结</h2><p>哈，魔术师的秘密。</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/security/>security</a>
+<a href=/blog/tags/windows/>windows</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/%E5%87%A0%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84-pwn-%E7%BB%83%E4%B9%A0/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>几个简单的 pwn 练习</h2></div></a></article><article><a href=/blog/p/sqli-labs-training-5/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>sqli-labs 实验记录 #5</h2></div></a></article><article><a href=/blog/p/sqli-labs-training-4/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>sqli-labs 实验记录 #4</h2></div></a></article><article><a href=/blog/p/sqli-labs-training-3/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>sqli-labs 实验记录 #3</h2></div></a></article><article><a href=/blog/p/sqli-labs-training-2/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>sqli-labs 实验记录 #2</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#原理>原理</a></li>
-<li><a href=#案例>案例</a></li>
-<li><a href=#总结>总结</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#前言>前言</a></li><li><a href=#原理>原理</a></li><li><a href=#案例>案例</a></li><li><a href=#总结>总结</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

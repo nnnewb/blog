@@ -1,120 +1,9 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，"><title>nasm汇编手写个PE可执行文件</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/hand-write-pe-file-with-nasm-assembly/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，"><title>nasm汇编手写个PE可执行文件</title><link rel=canonical href=https://nnnewb.github.io/blog/p/hand-write-pe-file-with-nasm-assembly/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="nasm汇编手写个PE可执行文件">
-<meta property="og:description" content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/hand-write-pe-file-with-nasm-assembly/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="汇编"><meta property="article:tag" content="逆向"><meta property="article:tag" content="windows"><meta property="article:published_time" content="2021-10-13T11:05:00+08:00"><meta property="article:modified_time" content="2021-10-13T11:05:00+08:00">
-<meta name=twitter:title content="nasm汇编手写个PE可执行文件">
-<meta name=twitter:description content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/%E6%B1%87%E7%BC%96/>
-汇编
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/hand-write-pe-file-with-nasm-assembly/>nasm汇编手写个PE可执行文件</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2021-10-13T11:05:00+08:00>2021年 10月 13日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 9 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=前言>前言</h2>
-<p>主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 <code>-Wl,section-start=</code> 来修改 section 地址，但 <em>msvc</em> 没有对应物，就蛋疼。手动改 PE 来添加 section 好像可行，但不知道该怎么做，lief 也不熟悉。</p>
-<p>正好瞎谷歌的时候发现 nasm 可以直接编译出 PE 文件，这就听起来很有意思了。汇编嘛，听着就很底层，很自由，改个 Section 地址不是手到擒来。于是就学学看。</p>
-<p>参考文章附于文末。</p>
-<h2 id=0x01-nasm-基本用法>0x01 nasm 基本用法</h2>
-<h3 id=11-label>1.1 label</h3>
-<p>汇编当然有经典的 <em>label</em> 和 <em>instruction</em> 了，<em>instruction</em> 的参数就叫 <em>operand</em> 。</p>
-<p>nasm 的 label 语法很简单，任何不是宏和 <em>instruction</em> 或者伪指令的东西，出现在行首，都会被认作 label。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="nasm汇编手写个PE可执行文件"><meta property="og:description" content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，"><meta property="og:url" content="https://nnnewb.github.io/blog/p/hand-write-pe-file-with-nasm-assembly/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="汇编"><meta property="article:tag" content="逆向"><meta property="article:tag" content="windows"><meta property="article:published_time" content="2021-10-13T11:05:00+08:00"><meta property="article:modified_time" content="2021-10-13T11:05:00+08:00"><meta name=twitter:title content="nasm汇编手写个PE可执行文件"><meta name=twitter:description content="前言 主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 -Wl,section-start= 来修改 section 地址，但 msvc 没有对应物，"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/%E6%B1%87%E7%BC%96/>汇编</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/hand-write-pe-file-with-nasm-assembly/>nasm汇编手写个PE可执行文件</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2021-10-13T11:05:00+08:00>2021年 10月 13日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 9 分钟</time></div></footer></div></header><section class=article-content><h2 id=前言>前言</h2><p>主要是虽然有个汇编器 nasm 但是不知道怎么用，啥汇编都是调试器里纸上谈兵。最近碰到个问题，MinGW 可以用参数 <code>-Wl,section-start=</code> 来修改 section 地址，但 <em>msvc</em> 没有对应物，就蛋疼。手动改 PE 来添加 section 好像可行，但不知道该怎么做，lief 也不熟悉。</p><p>正好瞎谷歌的时候发现 nasm 可以直接编译出 PE 文件，这就听起来很有意思了。汇编嘛，听着就很底层，很自由，改个 Section 地址不是手到擒来。于是就学学看。</p><p>参考文章附于文末。</p><h2 id=0x01-nasm-基本用法>0x01 nasm 基本用法</h2><h3 id=11-label>1.1 label</h3><p>汇编当然有经典的 <em>label</em> 和 <em>instruction</em> 了，<em>instruction</em> 的参数就叫 <em>operand</em> 。</p><p>nasm 的 label 语法很简单，任何不是宏和 <em>instruction</em> 或者伪指令的东西，出现在行首，都会被认作 label。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
@@ -122,113 +11,33 @@
 </span><span class=lnt>6
 </span><span class=lnt>7
 </span><span class=lnt>8
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>lbl1:</span> <span class=c>; 这是label
-</span><span class=c></span>	<span class=nf>sub</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>4</span><span class=no>h</span>
-	<span class=nf>jmp</span> <span class=no>lbl</span>
-<span class=nf>lbl2</span>   <span class=c>; 这也是 label
-</span><span class=c></span>	<span class=no>sub</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>4</span><span class=no>h</span>
-<span class=nf>lbl3</span> <span class=no>db</span> <span class=mi>1</span> <span class=c>; 这还是 label
-</span><span class=c></span><span class=no>.label4</span> <span class=c>; 这是本地 label，可以用 .label4 或者全称 lbl3.label4 访问
-</span><span class=c></span><span class=no>.@label5</span> <span class=c>; 这是特殊 label ，只能在宏里使用，避免干扰本地label
-</span></code></pre></td></tr></table>
-</div>
-</div><p>label 可以被视作一个数字参与运算，比如说 <code>lbl3-lbl2</code> 这样算出偏移。或者还可以参数伪指令计算。总之用处很多。</p>
-<h3 id=12-伪指令>1.2 伪指令</h3>
-<p>伪指令是一些并不是真正的 x86 机器指令，但还是被用在了 instruction 域中的指 令，因为使用它们可以带来很大的方便。当前的伪指令有<code>DB</code>,<code>DW</code>,<code>DD</code>,<code>DQ</code>和 <code>DT</code>，它们对应的未初始化指令是 <code>RESB</code>, <code>RESW</code>,<code> RESD</code>,<code> RESQ</code> 和 <code>REST</code>，<code>INCBIN</code> 命令，<code>EQU</code> 命令和 <code>TIEMS</code> 前缀。</p>
-<p>不复制粘贴了，看文档好吧。</p>
-<h3 id=12-有效地址>1.2 有效地址</h3>
-<p>有效地址是指令的操作数，是对内存的引用。nasm中有效地址的语法非常简单：由一个可计算表达式组成，放在中括号内。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=nl>lbl1:</span> <span class=c1>; 这是label
+</span></span></span><span class=line><span class=cl><span class=c1></span>	<span class=nf>sub</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>4</span><span class=no>h</span>
+</span></span><span class=line><span class=cl>	<span class=nf>jmp</span> <span class=no>lbl</span>
+</span></span><span class=line><span class=cl><span class=nf>lbl2</span>   <span class=c1>; 这也是 label
+</span></span></span><span class=line><span class=cl><span class=c1></span>	<span class=nf>sub</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>4</span><span class=no>h</span>
+</span></span><span class=line><span class=cl><span class=nf>lbl3</span> <span class=no>db</span> <span class=mi>1</span> <span class=c1>; 这还是 label
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=na>.label4</span> <span class=c1>; 这是本地 label，可以用 .label4 或者全称 lbl3.label4 访问
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=nf>.@label5</span> <span class=c1>; 这是特殊 label ，只能在宏里使用，避免干扰本地label
+</span></span></span></code></pre></td></tr></table></div></div><p>label 可以被视作一个数字参与运算，比如说 <code>lbl3-lbl2</code> 这样算出偏移。或者还可以参数伪指令计算。总之用处很多。</p><h3 id=12-伪指令>1.2 伪指令</h3><p>伪指令是一些并不是真正的 x86 机器指令，但还是被用在了 instruction 域中的指 令，因为使用它们可以带来很大的方便。当前的伪指令有<code>DB</code>,<code>DW</code>,<code>DD</code>,<code>DQ</code>和 <code>DT</code>，它们对应的未初始化指令是 <code>RESB</code>, <code>RESW</code>,<code> RESD</code>,<code> RESQ</code> 和 <code>REST</code>，<code>INCBIN</code> 命令，<code>EQU</code> 命令和 <code>TIEMS</code> 前缀。</p><p>不复制粘贴了，看文档好吧。</p><h3 id=12-有效地址>1.2 有效地址</h3><p>有效地址是指令的操作数，是对内存的引用。nasm中有效地址的语法非常简单：由一个可计算表达式组成，放在中括号内。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>wordvar:</span>
-	<span class=nf>dw</span> <span class=mi>123</span>
-	<span class=nf>mov</span> <span class=no>ax</span><span class=p>,</span> <span class=p>[</span><span class=no>wordvar</span><span class=p>]</span> <span class=c>; [wordvar] 就是取 dw 123 的首地址
-</span><span class=c></span>	<span class=no>mov</span> <span class=no>ax</span><span class=p>,</span> <span class=p>[</span><span class=no>wordvar</span><span class=err>+</span><span class=mi>1</span><span class=p>]</span> <span class=c>; wordvar+1 label 参与算术运算，取 dw 123 地址 + 1字节
-</span><span class=c></span>	<span class=no>mov</span> <span class=no>ax</span><span class=p>,</span> <span class=p>[</span><span class=no>es</span><span class=p>:</span><span class=no>wordvar</span><span class=err>+</span><span class=no>bx</span><span class=p>]</span> <span class=c>; 加上段选择子，寄存器参与运算
-</span></code></pre></td></tr></table>
-</div>
-</div><p>与上例不一致的表达式都不是 nasm 的有效地址，比如 <code>es:wordvar[bx]</code> 。</p>
-<p>还可以用 <code>BYTE</code> <code>WORD</code> <code>DWORD</code> <code>NOSPLIT</code> 等关键字强迫 nasm 产生特定形式的有效地址。比如 <code>[dword eax+3]</code> 。</p>
-<p>详细还是看文档。</p>
-<h3 id=13-常数>1.3 常数</h3>
-<p>支持的常数类型包括：</p>
-<ul>
-<li>
-<p>数值</p>
-<ul>
-<li><code>100</code> 10进制</li>
-<li><code>100h</code> 16进制，<code>h</code>结尾</li>
-<li><code>0x100</code> 16进制，<code>0x</code>开头</li>
-<li><code>$0100</code> 16进制，<code>$0</code>开头</li>
-<li><code>777q</code> 8进制，<code>q</code>结尾</li>
-<li><code>10010011b</code> 2进制，<code>b</code>结尾</li>
-</ul>
-</li>
-<li>
-<p>字符</p>
-<ul>
-<li><code>abcd</code> 字符型常数，小端序</li>
-</ul>
-</li>
-<li>
-<p>字符串</p>
-<ul>
-<li>一般只有伪指令接受，形式如 <code>db 'abcd'</code> 、<code>db 'a','b','c','d'</code> 。</li>
-</ul>
-</li>
-<li>
-<p>浮点数</p>
-<ul>
-<li>反正用不到我也懒得看。</li>
-</ul>
-</li>
-</ul>
-<h3 id=14-表达式>1.4 表达式</h3>
-<p>和C的差不多，除了+-*/%和位运算，多了个 <code>//</code> 表示带符号除法，<code>%%</code> 表示带符号取模。</p>
-<h3 id=15-预处理器>1.5 预处理器</h3>
-<p>预处理器指令以 <code>%</code> 开头。举几个例子</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=nl>wordvar:</span>
+</span></span><span class=line><span class=cl>	<span class=nf>dw</span> <span class=mi>123</span>
+</span></span><span class=line><span class=cl>	<span class=nf>mov</span> <span class=no>ax</span><span class=p>,</span> <span class=p>[</span><span class=no>wordvar</span><span class=p>]</span> <span class=c1>; [wordvar] 就是取 dw 123 的首地址
+</span></span></span><span class=line><span class=cl><span class=c1></span>	<span class=nf>mov</span> <span class=no>ax</span><span class=p>,</span> <span class=p>[</span><span class=no>wordvar</span><span class=err>+</span><span class=mi>1</span><span class=p>]</span> <span class=c1>; wordvar+1 label 参与算术运算，取 dw 123 地址 + 1字节
+</span></span></span><span class=line><span class=cl><span class=c1></span>	<span class=nf>mov</span> <span class=no>ax</span><span class=p>,</span> <span class=p>[</span><span class=no>es</span><span class=p>:</span><span class=no>wordvar</span><span class=err>+</span><span class=no>bx</span><span class=p>]</span> <span class=c1>; 加上段选择子，寄存器参与运算
+</span></span></span></code></pre></td></tr></table></div></div><p>与上例不一致的表达式都不是 nasm 的有效地址，比如 <code>es:wordvar[bx]</code> 。</p><p>还可以用 <code>BYTE</code> <code>WORD</code> <code>DWORD</code> <code>NOSPLIT</code> 等关键字强迫 nasm 产生特定形式的有效地址。比如 <code>[dword eax+3]</code> 。</p><p>详细还是看文档。</p><h3 id=13-常数>1.3 常数</h3><p>支持的常数类型包括：</p><ul><li><p>数值</p><ul><li><code>100</code> 10进制</li><li><code>100h</code> 16进制，<code>h</code>结尾</li><li><code>0x100</code> 16进制，<code>0x</code>开头</li><li><code>$0100</code> 16进制，<code>$0</code>开头</li><li><code>777q</code> 8进制，<code>q</code>结尾</li><li><code>10010011b</code> 2进制，<code>b</code>结尾</li></ul></li><li><p>字符</p><ul><li><code>abcd</code> 字符型常数，小端序</li></ul></li><li><p>字符串</p><ul><li>一般只有伪指令接受，形式如 <code>db 'abcd'</code> 、<code>db 'a','b','c','d'</code> 。</li></ul></li><li><p>浮点数</p><ul><li>反正用不到我也懒得看。</li></ul></li></ul><h3 id=14-表达式>1.4 表达式</h3><p>和C的差不多，除了+-*/%和位运算，多了个 <code>//</code> 表示带符号除法，<code>%%</code> 表示带符号取模。</p><h3 id=15-预处理器>1.5 预处理器</h3><p>预处理器指令以 <code>%</code> 开头。举几个例子</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=err>%</span><span class=nf>define</span> <span class=no>FOO</span> <span class=no>BAR</span>
-<span class=err>%</span><span class=nf>define</span> <span class=no>FN</span><span class=p>(</span><span class=no>x</span><span class=p>)</span> <span class=p>(</span><span class=no>x</span><span class=err>+</span><span class=mi>1</span><span class=p>)</span>
-<span class=err>%</span><span class=nf>include</span> <span class=err>&#34;</span><span class=no>xxx.asm</span><span class=err>&#34;</span>
-<span class=err>%</span><span class=nf>undef</span> <span class=no>FOO</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>其他懒得写了，先知道这几个和C类似的宏就行，更多看文档。</p>
-<h3 id=16-汇编器指令>1.6 汇编器指令</h3>
-<p>提几个会用到的。</p>
-<p><code>BITS</code>，指定目标处理器模式，比如 <code>BITS 32</code> 就是32位模式。现在找16位的环境怕是也难。</p>
-<p><code>SECTION</code>，改变正在编写的代码要汇编进的段。要是打算汇编成 <code>obj</code> 让链接器去链接出新文件会有点用。但是输出格式是 <code>bin</code> 的时候就没有卵用了。</p>
-<p><code>EXTERN</code>，导入外部符号，还是汇编成 <code>obj</code> 让链接器用的时候会有点用，链接器会搞定链接，输出格式是 <code>bin</code> 的时候就没卵用。</p>
-<p><code>GLOBAL</code>，导出符号，和<code>EXTERN</code>的应用场景差不多。熟悉C的码农应该能理解。</p>
-<h3 id=17-输出格式>1.7 输出格式</h3>
-<p>几个值得关注的输出格式。</p>
-<p><code>-f win32</code> 就是输出成 win32 对象文件 <code>.obj</code>，之后可以用 <code>gcc</code> 或者 <code>link.exe</code> 之类的东西链接。</p>
-<p><code>-f bin</code> 输出成二进制文件，你写了啥就输出啥，nasm 就是个翻译官。<code>.COM</code>和<code>.SYS</code>都是纯二进制格式的，你要是写这些可能有用。还有操作系统引导程序之类的纯二进制程序，不需要别的什么文件格式的情况。</p>
-<p><code>-f elf</code> 你要是写 linux 下的程序就有用。</p>
-<h3 id=18-总结>1.8 总结</h3>
-<p>基本就是这样，更多东西就现查现用好吧。善用谷歌。</p>
-<h2 id=0x02-简单汇编程序>0x02 简单汇编程序</h2>
-<p>先写一个简单的汇编程序，不直接产生可执行文件，而是需要链接器进一步链接。例子需要安装 MinGW。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=err>%</span><span class=nf>define</span> <span class=no>FOO</span> <span class=no>BAR</span>
+</span></span><span class=line><span class=cl><span class=err>%</span><span class=nf>define</span> <span class=no>FN</span><span class=p>(</span><span class=no>x</span><span class=p>)</span> <span class=p>(</span><span class=no>x</span><span class=err>+</span><span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=err>%</span><span class=nf>include</span> <span class=err>&#34;</span><span class=no>xxx.asm</span><span class=err>&#34;</span>
+</span></span><span class=line><span class=cl><span class=err>%</span><span class=nf>undef</span> <span class=no>FOO</span>
+</span></span></code></pre></td></tr></table></div></div><p>其他懒得写了，先知道这几个和C类似的宏就行，更多看文档。</p><h3 id=16-汇编器指令>1.6 汇编器指令</h3><p>提几个会用到的。</p><p><code>BITS</code>，指定目标处理器模式，比如 <code>BITS 32</code> 就是32位模式。现在找16位的环境怕是也难。</p><p><code>SECTION</code>，改变正在编写的代码要汇编进的段。要是打算汇编成 <code>obj</code> 让链接器去链接出新文件会有点用。但是输出格式是 <code>bin</code> 的时候就没有卵用了。</p><p><code>EXTERN</code>，导入外部符号，还是汇编成 <code>obj</code> 让链接器用的时候会有点用，链接器会搞定链接，输出格式是 <code>bin</code> 的时候就没卵用。</p><p><code>GLOBAL</code>，导出符号，和<code>EXTERN</code>的应用场景差不多。熟悉C的码农应该能理解。</p><h3 id=17-输出格式>1.7 输出格式</h3><p>几个值得关注的输出格式。</p><p><code>-f win32</code> 就是输出成 win32 对象文件 <code>.obj</code>，之后可以用 <code>gcc</code> 或者 <code>link.exe</code> 之类的东西链接。</p><p><code>-f bin</code> 输出成二进制文件，你写了啥就输出啥，nasm 就是个翻译官。<code>.COM</code>和<code>.SYS</code>都是纯二进制格式的，你要是写这些可能有用。还有操作系统引导程序之类的纯二进制程序，不需要别的什么文件格式的情况。</p><p><code>-f elf</code> 你要是写 linux 下的程序就有用。</p><h3 id=18-总结>1.8 总结</h3><p>基本就是这样，更多东西就现查现用好吧。善用谷歌。</p><h2 id=0x02-简单汇编程序>0x02 简单汇编程序</h2><p>先写一个简单的汇编程序，不直接产生可执行文件，而是需要链接器进一步链接。例子需要安装 MinGW。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -246,52 +55,29 @@
 </span><span class=lnt>16
 </span><span class=lnt>17
 </span><span class=lnt>18
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>section</span> <span class=no>.data</span>
-    <span class=nf>global</span> <span class=no>HelloWorld</span>
-
-<span class=nl>HelloWorld:</span>
-    <span class=nf>db</span> <span class=err>&#39;</span><span class=no>hello</span> <span class=no>world</span><span class=err>&#39;</span><span class=p>,</span><span class=mi>0</span> <span class=c>; 定义一个字符串常量，用于输出
-</span><span class=c></span>
-<span class=nf>section</span> <span class=no>.text</span>
-    <span class=nf>global</span> <span class=no>_main</span> <span class=c>; _main 就是 C 的 main, 用于让链接器识别出入口点，生成命令行程序
-</span><span class=c></span>    <span class=no>extern</span> <span class=no>_printf</span> <span class=c>; _printf 就是 C 的 printf, 用于输出 hello world
-</span><span class=c></span>
-<span class=nl>_main:</span>
-    <span class=nf>push</span> <span class=no>ebp</span> <span class=c>; 其实我们自己写就不用啰嗦 push ebp/mov ebp,esp 了, 心里有底就行
-</span><span class=c></span>    <span class=no>mov</span> <span class=no>ebp</span><span class=p>,</span> <span class=no>esp</span>
-    <span class=nf>push</span> <span class=no>HelloWorld</span> <span class=c>; 压入字符串常量的地址做参数
-</span><span class=c></span>    <span class=no>call</span> <span class=no>_printf</span>    <span class=c>; 调用 printf 输出
-</span><span class=c></span>    <span class=no>add</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>4</span>      <span class=c>; 根据 cdecl 约定，完成平栈
-</span><span class=c></span>    <span class=no>pop</span> <span class=no>ebp</span>         <span class=c>; 要返回一个值的话可以再加一行 mov eax, 0 等同于 return 0
-</span><span class=c></span>    <span class=no>retn</span>            <span class=c>; 完事
-</span></code></pre></td></tr></table>
-</div>
-</div><p>编译命令，要安装 MinGW 才有 gcc 可以用。或者其他链接器也可以，GoLink 好像就行，但是我没用过。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=nf>section</span> <span class=no>.data</span>
+</span></span><span class=line><span class=cl>    <span class=nf>global</span> <span class=no>HelloWorld</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=nl>HelloWorld:</span>
+</span></span><span class=line><span class=cl>    <span class=nf>db</span> <span class=err>&#39;</span><span class=no>hello</span> <span class=no>world</span><span class=err>&#39;</span><span class=p>,</span><span class=mi>0</span> <span class=c1>; 定义一个字符串常量，用于输出
+</span></span></span><span class=line><span class=cl><span class=c1></span>
+</span></span><span class=line><span class=cl><span class=nf>section</span> <span class=no>.text</span>
+</span></span><span class=line><span class=cl>    <span class=nf>global</span> <span class=no>_main</span> <span class=c1>; _main 就是 C 的 main, 用于让链接器识别出入口点，生成命令行程序
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=nf>extern</span> <span class=no>_printf</span> <span class=c1>; _printf 就是 C 的 printf, 用于输出 hello world
+</span></span></span><span class=line><span class=cl><span class=c1></span>
+</span></span><span class=line><span class=cl><span class=nl>_main:</span>
+</span></span><span class=line><span class=cl>    <span class=nf>push</span> <span class=no>ebp</span> <span class=c1>; 其实我们自己写就不用啰嗦 push ebp/mov ebp,esp 了, 心里有底就行
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=nf>mov</span> <span class=no>ebp</span><span class=p>,</span> <span class=no>esp</span>
+</span></span><span class=line><span class=cl>    <span class=nf>push</span> <span class=no>HelloWorld</span> <span class=c1>; 压入字符串常量的地址做参数
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=nf>call</span> <span class=no>_printf</span>    <span class=c1>; 调用 printf 输出
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=nf>add</span> <span class=no>esp</span><span class=p>,</span> <span class=mi>4</span>      <span class=c1>; 根据 cdecl 约定，完成平栈
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=nf>pop</span> <span class=no>ebp</span>         <span class=c1>; 要返回一个值的话可以再加一行 mov eax, 0 等同于 return 0
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=nf>retn</span>            <span class=c1>; 完事
+</span></span></span></code></pre></td></tr></table></div></div><p>编译命令，要安装 MinGW 才有 gcc 可以用。或者其他链接器也可以，GoLink 好像就行，但是我没用过。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>nasm main.asm -f win32 -o main.o
-gcc main.o -o main.exe
-</code></pre></td></tr></table>
-</div>
-</div><p>生成的代码放进调试器看看。</p>
-<p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013092916141.png loading=lazy alt=image-20211013092916141></p>
-<p>可以看到我们的汇编代码忠实地出现在调试器里。</p>
-<p>这就是 nasm 的简单用法了，想要拿汇编写一点简单的验证代码是没问题的，也可以手写汇编函数，再链接到 C/C++ 代码里。当然，写 C/C++ 的大佬大概也知道 Visual C++ 支持内嵌汇编，<code>__asm {}</code> 就行，这也算一种选项。</p>
-<h2 id=0x03-生成二进制代码>0x03 生成二进制代码</h2>
-<p>使用 <code>nasm -f bin</code> 可以直接从汇编代码生成二进制文件，也就是没有链接这一步。</p>
-<p>当然，没有链接这一步（或者说链接相关信息不由 nasm 管理），<code>global</code> 和 <code>extern</code> 都没有意义，在 <code>-f bin</code> 时汇编器会直接提示错误，不能使用。但相对的，因为 nasm 没自动生成更多信息，我们也对汇编结果有了更强的控制力，也要负担更多责任。</p>
-<h3 id=31-生成-dos-文件头>3.1 生成 DOS 文件头</h3>
-<p>PE 文件格式不再赘述，参考微软的 <a class=link href=https://docs.microsoft.com/en-us/windows/win32/debug/pe-format target=_blank rel=noopener>PE Format</a> 文档，或者维基百科的 PE 格式图即可。</p>
-<p>先从生成 PE 文件的文件头开始，填充可执行文件的必要信息。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=line><span class=cl>nasm main.asm -f win32 -o main.o
+</span></span><span class=line><span class=cl>gcc main.o -o main.exe
+</span></span></code></pre></td></tr></table></div></div><p>生成的代码放进调试器看看。</p><p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013092916141.png loading=lazy alt=image-20211013092916141></p><p>可以看到我们的汇编代码忠实地出现在调试器里。</p><p>这就是 nasm 的简单用法了，想要拿汇编写一点简单的验证代码是没问题的，也可以手写汇编函数，再链接到 C/C++ 代码里。当然，写 C/C++ 的大佬大概也知道 Visual C++ 支持内嵌汇编，<code>__asm {}</code> 就行，这也算一种选项。</p><h2 id=0x03-生成二进制代码>0x03 生成二进制代码</h2><p>使用 <code>nasm -f bin</code> 可以直接从汇编代码生成二进制文件，也就是没有链接这一步。</p><p>当然，没有链接这一步（或者说链接相关信息不由 nasm 管理），<code>global</code> 和 <code>extern</code> 都没有意义，在 <code>-f bin</code> 时汇编器会直接提示错误，不能使用。但相对的，因为 nasm 没自动生成更多信息，我们也对汇编结果有了更强的控制力，也要负担更多责任。</p><h3 id=31-生成-dos-文件头>3.1 生成 DOS 文件头</h3><p>PE 文件格式不再赘述，参考微软的 <a class=link href=https://docs.microsoft.com/en-us/windows/win32/debug/pe-format target=_blank rel=noopener>PE Format</a> 文档，或者维基百科的 PE 格式图即可。</p><p>先从生成 PE 文件的文件头开始，填充可执行文件的必要信息。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -316,57 +102,32 @@ gcc main.o -o main.exe
 </span><span class=lnt>23
 </span><span class=lnt>24
 </span><span class=lnt>25
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nf>BITS</span> <span class=mi>32</span>
-
-<span class=c>; 由编译器生成的 DOS 文件头其实包含了一段输出 This program cannot be run in DOS mode 的代码
-</span><span class=c>; 我们不需要，这里直接忽略。
-</span><span class=c></span><span class=nl>dos_header:</span>
-    <span class=na>.magic</span>    <span class=no>dw</span>    <span class=s>&#34;MZ&#34;</span> <span class=c>; dw 伪指令会放置一个双字节 word, 也就是操作数 MZ
-</span><span class=c></span>    <span class=no>.cblp</span>     <span class=no>dw</span>     <span class=mi>90</span><span class=no>h</span> <span class=c>; 90h 就是 0x90
-</span><span class=c></span>    <span class=no>.cp</span>       <span class=no>dw</span>     <span class=mi>3</span>
-    <span class=na>.crlc</span>     <span class=no>dw</span>     <span class=mi>0</span>
-    <span class=na>.cparhdr</span>  <span class=no>dw</span>     <span class=mi>4</span>
-    <span class=na>.minalloc</span> <span class=no>dw</span>     <span class=mi>0</span>
-    <span class=na>.maxalloc</span> <span class=no>dw</span>     <span class=p>-</span><span class=mi>1</span>
-    <span class=na>.ss</span>       <span class=no>dw</span>     <span class=mi>0</span>
-    <span class=na>.sp</span>       <span class=no>dw</span>     <span class=mi>0</span><span class=no>B8h</span>
-    <span class=na>.csum</span>     <span class=no>dw</span>     <span class=mi>0</span>
-    <span class=na>.ip</span>       <span class=no>dw</span>     <span class=mi>0</span>
-    <span class=na>.cs</span>       <span class=no>dw</span>     <span class=mi>0</span>
-    <span class=na>.lfarlc</span>   <span class=no>dw</span>     <span class=mi>40</span><span class=no>h</span>
-    <span class=na>.ovno</span>     <span class=no>dw</span>     <span class=mi>0</span>
-    <span class=na>.res</span>      <span class=no>times</span>  <span class=mi>4</span> <span class=no>dw</span> <span class=mi>0</span> <span class=c>; 伪指令 times 重复 n 次，放置 4 个双字节 word ，值为 0
-</span><span class=c></span>    <span class=no>.oemid</span>    <span class=no>dw</span>     <span class=mi>0</span>
-    <span class=na>.oeminfo</span>  <span class=no>dw</span>     <span class=mi>0</span>
-    <span class=na>.res2</span>     <span class=no>times</span>  <span class=mi>10</span> <span class=no>dw</span> <span class=mi>0</span>
-    <span class=na>.lfanew</span>   <span class=no>dd</span>     <span class=no>.next</span>    <span class=c>; 紧随其后的就是 NT 文件头了，所以 lfanew 直接指向自己末尾后
-</span><span class=c></span>    <span class=no>.next</span><span class=p>:</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>关于链接器自动生成的文件头，可以参考这篇文章 <a class=link href=http://blog.marcinchwedczuk.pl/a-closer-look-at-portable-executable-msdos-stub target=_blank rel=noopener>a closer look at portable executable MS-DOS stub</a> 。</p>
-<p>反正咱无脑复制了。</p>
-<h3 id=32--生成-pe-文件头>3.2 生成 PE 文件头</h3>
-<p>生成 PE 文件头之前我们要预先考虑几个要素。</p>
-<ul>
-<li>
-<p>文件如何对齐？</p>
-<p>对齐到 0x400，大部分内容都可以在一个 0x400 里填写完，计算量比较少。</p>
-</li>
-<li>
-<p>Section 如何对齐？</p>
-<p>对齐到 0x1000，同样是简化计算。</p>
-</li>
-<li>
-<p>需要几个 Section？</p>
-<p>一个 <code>.text</code> 就足够了。</p>
-</li>
-</ul>
-<p>其余文件头内容，出于简单考虑，包括重定位和 IAT 在内的大部分东西都留空，仅仅写一个什么效果都没有的可执行文件。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=nf>BITS</span> <span class=mi>32</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>; 由编译器生成的 DOS 文件头其实包含了一段输出 This program cannot be run in DOS mode 的代码
+</span></span></span><span class=line><span class=cl><span class=c1>; 我们不需要，这里直接忽略。
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=nl>dos_header:</span>
+</span></span><span class=line><span class=cl>    <span class=na>.magic</span>    <span class=no>dw</span>    <span class=s>&#34;MZ&#34;</span> <span class=c1>; dw 伪指令会放置一个双字节 word, 也就是操作数 MZ
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.cblp</span>     <span class=no>dw</span>     <span class=mi>90</span><span class=no>h</span> <span class=c1>; 90h 就是 0x90
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.cp</span>       <span class=no>dw</span>     <span class=mi>3</span>
+</span></span><span class=line><span class=cl>    <span class=na>.crlc</span>     <span class=no>dw</span>     <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.cparhdr</span>  <span class=no>dw</span>     <span class=mi>4</span>
+</span></span><span class=line><span class=cl>    <span class=na>.minalloc</span> <span class=no>dw</span>     <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.maxalloc</span> <span class=no>dw</span>     <span class=p>-</span><span class=mi>1</span>
+</span></span><span class=line><span class=cl>    <span class=na>.ss</span>       <span class=no>dw</span>     <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.sp</span>       <span class=no>dw</span>     <span class=mi>0</span><span class=no>B8h</span>
+</span></span><span class=line><span class=cl>    <span class=na>.csum</span>     <span class=no>dw</span>     <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.ip</span>       <span class=no>dw</span>     <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.cs</span>       <span class=no>dw</span>     <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.lfarlc</span>   <span class=no>dw</span>     <span class=mi>40</span><span class=no>h</span>
+</span></span><span class=line><span class=cl>    <span class=na>.ovno</span>     <span class=no>dw</span>     <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.res</span>      <span class=no>times</span>  <span class=mi>4</span> <span class=no>dw</span> <span class=mi>0</span> <span class=c1>; 伪指令 times 重复 n 次，放置 4 个双字节 word ，值为 0
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.oemid</span>    <span class=no>dw</span>     <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.oeminfo</span>  <span class=no>dw</span>     <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.res2</span>     <span class=no>times</span>  <span class=mi>10</span> <span class=no>dw</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.lfanew</span>   <span class=no>dd</span>     <span class=no>.next</span>    <span class=c1>; 紧随其后的就是 NT 文件头了，所以 lfanew 直接指向自己末尾后
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=nl>.next:</span>
+</span></span></code></pre></td></tr></table></div></div><p>关于链接器自动生成的文件头，可以参考这篇文章 <a class=link href=http://blog.marcinchwedczuk.pl/a-closer-look-at-portable-executable-msdos-stub target=_blank rel=noopener>a closer look at portable executable MS-DOS stub</a> 。</p><p>反正咱无脑复制了。</p><h3 id=32--生成-pe-文件头>3.2 生成 PE 文件头</h3><p>生成 PE 文件头之前我们要预先考虑几个要素。</p><ul><li><p>文件如何对齐？</p><p>对齐到 0x400，大部分内容都可以在一个 0x400 里填写完，计算量比较少。</p></li><li><p>Section 如何对齐？</p><p>对齐到 0x1000，同样是简化计算。</p></li><li><p>需要几个 Section？</p><p>一个 <code>.text</code> 就足够了。</p></li></ul><p>其余文件头内容，出于简单考虑，包括重定位和 IAT 在内的大部分东西都留空，仅仅写一个什么效果都没有的可执行文件。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -437,313 +198,99 @@ gcc main.o -o main.exe
 </span><span class=lnt>69
 </span><span class=lnt>70
 </span><span class=lnt>71
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>nt_header:</span>
-<span class=nl>pe_signature:</span>
-    <span class=na>.sig</span>                    <span class=no>dd</span>      <span class=s>&#34;PE&#34;</span> <span class=c>; 魔术标识, dd 伪指令填充一个 DWORD, 结果是 PE\0\0
-</span><span class=c></span>
-<span class=nl>file_header:</span>
-    <span class=na>.machine</span>                <span class=no>dw</span>      <span class=mi>0x014c</span> <span class=c>; 支持 Intel I386
-</span><span class=c></span>    <span class=no>.numberofsections</span>       <span class=no>dw</span>      <span class=mi>0x01</span>   <span class=c>; 本文件包含一个 Section
-</span><span class=c></span>    <span class=no>.timedatestamp</span>          <span class=no>dd</span>      <span class=mi>0</span>
-    <span class=na>.pointertosymboltable</span>   <span class=no>dd</span>      <span class=mi>0</span>
-    <span class=na>.numberofsymbols</span>        <span class=no>dd</span>      <span class=mi>0</span>
-    <span class=na>.optheadersize</span>          <span class=no>dw</span>      <span class=no>$OPT_HEADER_SIZE</span> <span class=c>; opt_header_size 会在稍后的 optional_header 末尾计算得到
-</span><span class=c></span>    <span class=no>.characteristics</span>        <span class=no>dw</span>      <span class=mi>0x102</span> 			<span class=c>; 声明本文件是一个32位Windows可执行程序
-</span><span class=c></span>
-<span class=nl>optional_header:</span>
-    <span class=na>.magic</span>                      <span class=no>dw</span> <span class=mi>0x10b</span>
-    <span class=na>.linker_version</span>             <span class=no>db</span> <span class=mi>8</span><span class=p>,</span><span class=mi>0</span>
-    <span class=na>.sizeof_code</span>                <span class=no>dd</span> <span class=mi>1000</span><span class=no>h</span> <span class=c>; 共包含 0x1000 字节的代码段
-</span><span class=c></span>    <span class=no>.sizeof_initialized_data</span>    <span class=no>dd</span> <span class=mi>0</span>
-    <span class=na>.sizeof_uninitialized_data</span>  <span class=no>dd</span> <span class=mi>0</span>
-    <span class=na>.addressof_entrypoint</span>       <span class=no>dd</span> <span class=mi>1000</span><span class=no>h</span> <span class=c>; 入口点 RVA
-</span><span class=c></span>    <span class=no>.baseof_code</span>                <span class=no>dd</span> <span class=mi>1000</span><span class=no>h</span> <span class=c>; 代码段 RVA
-</span><span class=c></span>    <span class=no>.baseof_data</span>                <span class=no>dd</span> <span class=mi>0</span><span class=no>h</span>    <span class=c>; 数据段 RVA, 没有数据段就留空了
-</span><span class=c></span>    <span class=no>.image_base</span>                 <span class=no>dd</span> <span class=mi>4000000</span><span class=no>h</span> <span class=c>; 镜像基址 0x04000000, 后面是 6 个 0
-</span><span class=c></span>    <span class=no>.section_alignment</span>          <span class=no>dd</span> <span class=mi>1000</span><span class=no>h</span> <span class=c>; section 对齐到 1000h
-</span><span class=c></span>    <span class=no>.file_alignment</span>             <span class=no>dd</span> <span class=mi>400</span><span class=no>h</span>  <span class=c>; 文件对齐到 400h
-</span><span class=c></span>    <span class=no>.os_version</span>                 <span class=no>dw</span> <span class=mi>4</span><span class=p>,</span><span class=mi>0</span>
-    <span class=na>.img_version</span>                <span class=no>dw</span> <span class=mi>0</span><span class=p>,</span><span class=mi>0</span>
-    <span class=na>.subsystem_version</span>          <span class=no>dw</span> <span class=mi>4</span><span class=p>,</span><span class=mi>0</span>
-    <span class=na>.win32_ver_value</span>            <span class=no>dd</span> <span class=mi>0</span>
-    <span class=na>.sizeof_img</span>                 <span class=no>dd</span> <span class=mi>2000</span><span class=no>h</span> <span class=c>; 请求的镜像总大小，文件头到代码段起点共 1000h, 代码段 1000h, 共计 2000h
-</span><span class=c></span>    <span class=no>.sizeof_headers</span>             <span class=no>dd</span> <span class=mi>400</span><span class=no>h</span>  <span class=c>; 文件头大小对齐到了 400h, 我们知道文件头肯定不足 400h, 所以 sizeof_headers 直接填 400h 就行
-</span><span class=c></span>    <span class=no>.checksum</span>                   <span class=no>dd</span> <span class=mi>0</span>
-    <span class=na>.subsystem</span>                  <span class=no>dw</span> <span class=mi>2</span>
-    <span class=na>.dll_characteristics</span>        <span class=no>dw</span> <span class=mi>0x400</span> <span class=c>; 不支持 SEH, 不开启 ASLR
-</span><span class=c></span>    <span class=no>.sizeof_stack_reserved</span>      <span class=no>dd</span> <span class=mi>0x100000</span>
-    <span class=na>.sizeof_stack_commit</span>        <span class=no>dd</span> <span class=mi>0x1000</span>
-    <span class=na>.sizeof_heap_reserved</span>       <span class=no>dd</span> <span class=mi>0x100000</span>
-    <span class=na>.sizeof_heap_commit</span>         <span class=no>dd</span> <span class=mi>0x1000</span>
-    <span class=na>.loeader_flags</span>              <span class=no>dd</span> <span class=mi>0</span>
-    <span class=na>.numberof_rva_and_sizes</span>     <span class=no>dd</span> <span class=mi>10</span><span class=no>h</span>   <span class=c>; 后续有 16 个 Data Directories
-</span><span class=c></span>
-<span class=nl>data_directories:</span>
-    <span class=nf>times</span> <span class=mi>10</span><span class=no>h</span> <span class=no>dd</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>0</span> <span class=c>; 所有的 data directories 填充 0
-</span><span class=c></span>
-<span class=c>; 通过伪指令 equ ，给 $OPT_HEADER_SIZE 赋值为 (当前地址 - optional_header标签)
-</span><span class=c>; 也就是整个 optional_header 的大小
-</span><span class=c></span><span class=nf>$OPT_HEADER_SIZE</span> <span class=no>equ</span> <span class=no>$</span> <span class=p>-</span> <span class=no>optional_header</span>
-
-<span class=nl>section_table:</span>
-    <span class=nl>.text:</span>
-        <span class=nf>db</span> <span class=err>&#34;</span><span class=no>.text</span><span class=err>&#34;</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>0</span>                     <span class=c>; section name
-</span><span class=c></span>                                                <span class=c>; 注意对齐到了 8 字节，不足部分 0 填充, 不能超出
-</span><span class=c></span>        <span class=no>dd</span> <span class=mi>1000</span><span class=no>h</span>                                <span class=c>; virtual size
-</span><span class=c></span>                                                <span class=c>; Section 使用的内存大小
-</span><span class=c></span>        <span class=no>dd</span> <span class=mi>1000</span><span class=no>h</span>                                <span class=c>; virtual address
-</span><span class=c></span>                                                <span class=c>; Section 的起始点 RVA
-</span><span class=c></span>        <span class=no>dd</span> <span class=mi>400</span><span class=no>h</span>         					  <span class=c>; sizeof raw data
-</span><span class=c></span>                                                <span class=c>; 我们知道对齐到了 400h 且代码肯定比这少, 所以 raw data 必然有 400h 大小
-</span><span class=c></span>        <span class=no>dd</span> <span class=no>code</span>                                 <span class=c>; pointer to raw data
-</span><span class=c></span>                                                <span class=c>; 用 label 告诉汇编器 raw data 的偏移
-</span><span class=c></span>        <span class=no>dd</span> <span class=mi>0</span>                                    <span class=c>; pointer to relocations
-</span><span class=c></span>        <span class=no>dd</span> <span class=mi>0</span>                                    <span class=c>; pointer to linenum
-</span><span class=c></span>        <span class=no>dw</span> <span class=mi>0</span>                                    <span class=c>; number of relocations
-</span><span class=c></span>        <span class=no>dw</span> <span class=mi>0</span>                                    <span class=c>; number of linenum
-</span><span class=c></span>        <span class=no>dd</span> <span class=mi>0x60000020</span>                           <span class=c>; characteristics
-</span><span class=c></span>                                                <span class=c>; 含义是：代码段 - 可读
-</span><span class=c></span>
-<span class=nf>align</span> <span class=mi>400</span><span class=no>h</span><span class=p>,</span> <span class=no>db</span> <span class=mi>0</span>
-<span class=c>; align 伪指令，不足的部分填充0, 对齐到 400h
-</span><span class=c>; 相对文件头到这里, 肯定是不足 400h 的, align 伪指令会填充到满 400h 为止。
-</span><span class=c>; 这样一来, 整个文件头大小, 正好就是 400h
-</span></code></pre></td></tr></table>
-</div>
-</div><h3 id=32-编写汇编代码>3.2 编写汇编代码</h3>
-<p>文件头定义完成后，就可以开始写汇编代码了。正常这时候还要处理导入表，但我们跳过了。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=nl>nt_header:</span>
+</span></span><span class=line><span class=cl><span class=nl>pe_signature:</span>
+</span></span><span class=line><span class=cl>    <span class=na>.sig</span>                    <span class=no>dd</span>      <span class=s>&#34;PE&#34;</span> <span class=c1>; 魔术标识, dd 伪指令填充一个 DWORD, 结果是 PE\0\0
+</span></span></span><span class=line><span class=cl><span class=c1></span>
+</span></span><span class=line><span class=cl><span class=nl>file_header:</span>
+</span></span><span class=line><span class=cl>    <span class=na>.machine</span>                <span class=no>dw</span>      <span class=mi>0x014c</span> <span class=c1>; 支持 Intel I386
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.numberofsections</span>       <span class=no>dw</span>      <span class=mi>0x01</span>   <span class=c1>; 本文件包含一个 Section
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.timedatestamp</span>          <span class=no>dd</span>      <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.pointertosymboltable</span>   <span class=no>dd</span>      <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.numberofsymbols</span>        <span class=no>dd</span>      <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.optheadersize</span>          <span class=no>dw</span>      <span class=no>$OPT_HEADER_SIZE</span> <span class=c1>; opt_header_size 会在稍后的 optional_header 末尾计算得到
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.characteristics</span>        <span class=no>dw</span>      <span class=mi>0x102</span> 			<span class=c1>; 声明本文件是一个32位Windows可执行程序
+</span></span></span><span class=line><span class=cl><span class=c1></span>
+</span></span><span class=line><span class=cl><span class=nl>optional_header:</span>
+</span></span><span class=line><span class=cl>    <span class=na>.magic</span>                      <span class=no>dw</span> <span class=mi>0x10b</span>
+</span></span><span class=line><span class=cl>    <span class=na>.linker_version</span>             <span class=no>db</span> <span class=mi>8</span><span class=p>,</span><span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.sizeof_code</span>                <span class=no>dd</span> <span class=mi>1000</span><span class=no>h</span> <span class=c1>; 共包含 0x1000 字节的代码段
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.sizeof_initialized_data</span>    <span class=no>dd</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.sizeof_uninitialized_data</span>  <span class=no>dd</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.addressof_entrypoint</span>       <span class=no>dd</span> <span class=mi>1000</span><span class=no>h</span> <span class=c1>; 入口点 RVA
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.baseof_code</span>                <span class=no>dd</span> <span class=mi>1000</span><span class=no>h</span> <span class=c1>; 代码段 RVA
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.baseof_data</span>                <span class=no>dd</span> <span class=mi>0</span><span class=no>h</span>    <span class=c1>; 数据段 RVA, 没有数据段就留空了
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.image_base</span>                 <span class=no>dd</span> <span class=mi>4000000</span><span class=no>h</span> <span class=c1>; 镜像基址 0x04000000, 后面是 6 个 0
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.section_alignment</span>          <span class=no>dd</span> <span class=mi>1000</span><span class=no>h</span> <span class=c1>; section 对齐到 1000h
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.file_alignment</span>             <span class=no>dd</span> <span class=mi>400</span><span class=no>h</span>  <span class=c1>; 文件对齐到 400h
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.os_version</span>                 <span class=no>dw</span> <span class=mi>4</span><span class=p>,</span><span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.img_version</span>                <span class=no>dw</span> <span class=mi>0</span><span class=p>,</span><span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.subsystem_version</span>          <span class=no>dw</span> <span class=mi>4</span><span class=p>,</span><span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.win32_ver_value</span>            <span class=no>dd</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.sizeof_img</span>                 <span class=no>dd</span> <span class=mi>2000</span><span class=no>h</span> <span class=c1>; 请求的镜像总大小，文件头到代码段起点共 1000h, 代码段 1000h, 共计 2000h
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.sizeof_headers</span>             <span class=no>dd</span> <span class=mi>400</span><span class=no>h</span>  <span class=c1>; 文件头大小对齐到了 400h, 我们知道文件头肯定不足 400h, 所以 sizeof_headers 直接填 400h 就行
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.checksum</span>                   <span class=no>dd</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.subsystem</span>                  <span class=no>dw</span> <span class=mi>2</span>
+</span></span><span class=line><span class=cl>    <span class=na>.dll_characteristics</span>        <span class=no>dw</span> <span class=mi>0x400</span> <span class=c1>; 不支持 SEH, 不开启 ASLR
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=na>.sizeof_stack_reserved</span>      <span class=no>dd</span> <span class=mi>0x100000</span>
+</span></span><span class=line><span class=cl>    <span class=na>.sizeof_stack_commit</span>        <span class=no>dd</span> <span class=mi>0x1000</span>
+</span></span><span class=line><span class=cl>    <span class=na>.sizeof_heap_reserved</span>       <span class=no>dd</span> <span class=mi>0x100000</span>
+</span></span><span class=line><span class=cl>    <span class=na>.sizeof_heap_commit</span>         <span class=no>dd</span> <span class=mi>0x1000</span>
+</span></span><span class=line><span class=cl>    <span class=na>.loeader_flags</span>              <span class=no>dd</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl>    <span class=na>.numberof_rva_and_sizes</span>     <span class=no>dd</span> <span class=mi>10</span><span class=no>h</span>   <span class=c1>; 后续有 16 个 Data Directories
+</span></span></span><span class=line><span class=cl><span class=c1></span>
+</span></span><span class=line><span class=cl><span class=nl>data_directories:</span>
+</span></span><span class=line><span class=cl>    <span class=nf>times</span> <span class=mi>10</span><span class=no>h</span> <span class=no>dd</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>0</span> <span class=c1>; 所有的 data directories 填充 0
+</span></span></span><span class=line><span class=cl><span class=c1></span>
+</span></span><span class=line><span class=cl><span class=c1>; 通过伪指令 equ ，给 $OPT_HEADER_SIZE 赋值为 (当前地址 - optional_header标签)
+</span></span></span><span class=line><span class=cl><span class=c1>; 也就是整个 optional_header 的大小
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=nf>$OPT_HEADER_SIZE</span> <span class=no>equ</span> <span class=no>$</span> <span class=p>-</span> <span class=no>optional_header</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=nl>section_table:</span>
+</span></span><span class=line><span class=cl>    <span class=nl>.text:</span>
+</span></span><span class=line><span class=cl>        <span class=nf>db</span> <span class=err>&#34;</span><span class=no>.text</span><span class=err>&#34;</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>0</span>                     <span class=c1>; section name
+</span></span></span><span class=line><span class=cl><span class=c1></span>                                                <span class=c1>; 注意对齐到了 8 字节，不足部分 0 填充, 不能超出
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nf>dd</span> <span class=mi>1000</span><span class=no>h</span>                                <span class=c1>; virtual size
+</span></span></span><span class=line><span class=cl><span class=c1></span>                                                <span class=c1>; Section 使用的内存大小
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nf>dd</span> <span class=mi>1000</span><span class=no>h</span>                                <span class=c1>; virtual address
+</span></span></span><span class=line><span class=cl><span class=c1></span>                                                <span class=c1>; Section 的起始点 RVA
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nf>dd</span> <span class=mi>400</span><span class=no>h</span>         					  <span class=c1>; sizeof raw data
+</span></span></span><span class=line><span class=cl><span class=c1></span>                                                <span class=c1>; 我们知道对齐到了 400h 且代码肯定比这少, 所以 raw data 必然有 400h 大小
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nf>dd</span> <span class=no>code</span>                                 <span class=c1>; pointer to raw data
+</span></span></span><span class=line><span class=cl><span class=c1></span>                                                <span class=c1>; 用 label 告诉汇编器 raw data 的偏移
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nf>dd</span> <span class=mi>0</span>                                    <span class=c1>; pointer to relocations
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nf>dd</span> <span class=mi>0</span>                                    <span class=c1>; pointer to linenum
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nf>dw</span> <span class=mi>0</span>                                    <span class=c1>; number of relocations
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nf>dw</span> <span class=mi>0</span>                                    <span class=c1>; number of linenum
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nf>dd</span> <span class=mi>0x60000020</span>                           <span class=c1>; characteristics
+</span></span></span><span class=line><span class=cl><span class=c1></span>                                                <span class=c1>; 含义是：代码段 - 可读
+</span></span></span><span class=line><span class=cl><span class=c1></span>
+</span></span><span class=line><span class=cl><span class=nf>align</span> <span class=mi>400</span><span class=no>h</span><span class=p>,</span> <span class=no>db</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl><span class=c1>; align 伪指令，不足的部分填充0, 对齐到 400h
+</span></span></span><span class=line><span class=cl><span class=c1>; 相对文件头到这里, 肯定是不足 400h 的, align 伪指令会填充到满 400h 为止。
+</span></span></span><span class=line><span class=cl><span class=c1>; 这样一来, 整个文件头大小, 正好就是 400h
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=32-编写汇编代码>3.2 编写汇编代码</h3><p>文件头定义完成后，就可以开始写汇编代码了。正常这时候还要处理导入表，但我们跳过了。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=nl>code:</span>
-<span class=nl>.start:</span>
-	<span class=nf>xor</span> <span class=no>eax</span><span class=p>,</span> <span class=no>eax</span>
-	<span class=nf>retn</span>
-
-<span class=nf>align</span> <span class=mi>400</span><span class=no>h</span><span class=p>,</span> <span class=no>db</span> <span class=mi>0</span> <span class=c>; 同样，再次对齐到 400h ，把代码段的剩余部分填充成 0
-</span></code></pre></td></tr></table>
-</div>
-</div><p>到这里，整个 PE 文件的内容就填写完毕了。</p>
-<p>文件头的绝大多数字段并不是我们关注的对象，计算偏移和对齐是最蛋疼的。</p>
-<h3 id=33-关于对齐的坑>3.3 关于对齐的坑</h3>
-<blockquote>
-<p>There are additional restrictions on image files if the SectionAlignment value in the optional header is less than the page size of the architecture. For such files, the location of section data in the file must match its location in memory when the image is loaded, so that the physical offset for section data is the same as the RVA.</p>
-</blockquote>
-<p>微软文档里指出，在 Section 对齐的大小小于体系结构指定的页大小（4K）的时候，会有个额外限制，要求 Section 数据在文件中的偏移 <strong>必须</strong> 对应在内存中的 RVA 。也就是说，如果 Section 对齐为 1 字节，<code>VirtualAddress</code> 指定为 1000h，那 Section 数据必须存放在文件的 1000h 偏移处，否则生成的可执行文件会出现“不是有效的Win32应用程序”错误。</p>
-<h3 id=34-其他坑>3.4 其他坑</h3>
-<p>建议不要参考单独的某几篇文章，多找些相关的文章博客和文档，互相对照着看。PE格式错误不会有具体的提示，我也没找到什么好用的工具去检查到底哪儿有错，只能建议多用用 CFF Explorer 和 lief、pefile 这些能检查文件格式的库了，要是这些都不行那就看看16进制编辑器什么的吧，比如 HexWorkshop。IDA 在这儿没啥用。</p>
-<p>另外我还发现1字节对齐的时候，x32dbg 调试会看不到汇编代码，在内存布局里进入自己的PE文件后只能看到PE头，但没有反汇编。不过调试器还是可以正常单步调试和查看寄存器。</p>
-<h3 id=35-编译>3.5 编译</h3>
-<p>上面的汇编代码用 nasm 即可编译，不需要其他编译或链接工具了。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-shell data-lang=shell>nasm pe.asm -f bin -o pe.exe
-</code></pre></td></tr></table>
-</div>
-</div><p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104216658.png loading=lazy alt=image-20211013104216658></p>
-<p>也可以放进调试器看看。</p>
-<p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104451137.png loading=lazy alt=image-20211013104451137></p>
-<p>可以看到，代码段正确出现在 4001000h 这个地址上（基址+1000h），内容也符合我们写的汇编代码。</p>
-<p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104646905.png loading=lazy alt=image-20211013104646905></p>
-<p>在内存布局窗口也能看到。</p>
-<h2 id=总结>总结</h2>
-<p>这是个对 PE 文件格式有所了解后的一个简单应用，原先是只会拿其他编程语言去读 PE 文件头的内容，现在学会了用汇编器去写一个简单的 PE 文件。之所以是汇编器去写，而不是拿 C/C++/Python 去写，还是因为我菜而且懒。好了跳过关于我菜的话题吧。</p>
-<p>参考文档（不分先后）：</p>
-<ul>
-<li><a class=link href=http://blog.marcinchwedczuk.pl/a-closer-look-at-portable-executable-msdos-stub target=_blank rel=noopener>http://blog.marcinchwedczuk.pl/a-closer-look-at-portable-executable-msdos-stub</a></li>
-<li><a class=link href=https://docs.microsoft.com/en-us/windows/win32/debug/pe-format target=_blank rel=noopener>https://docs.microsoft.com/en-us/windows/win32/debug/pe-format</a></li>
-<li><a class=link href=https://reverseengineering.stackexchange.com/questions/11758/how-do-you-calculate-address-start-size-of-pe-section-like-rdata-data target=_blank rel=noopener>https://reverseengineering.stackexchange.com/questions/11758/how-do-you-calculate-address-start-size-of-pe-section-like-rdata-data</a></li>
-<li><a class=link href=http://www.phreedom.org/research/tinype/ target=_blank rel=noopener>http://www.phreedom.org/research/tinype/</a></li>
-<li><a class=link href=https://stackoverflow.com/questions/17456372/create-and-use-sections-for-pe-file-in-assembly-nasm target=_blank rel=noopener>https://stackoverflow.com/questions/17456372/create-and-use-sections-for-pe-file-in-assembly-nasm</a></li>
-<li><a class=link href=https://bitcodersblog.wordpress.com/2017/05/10/win32-in-nasm-part-1/ target=_blank rel=noopener>https://bitcodersblog.wordpress.com/2017/05/10/win32-in-nasm-part-1/</a></li>
-</ul>
-<p>大部分代码其实是来自 tinype，被我调来调去改了很多。自己动手折腾一遍远比走马观花看一遍收获更多，有些实践问题不跟着抄一次改一改是不会发现的。有言道“实践出真知”，虽然说现在有些沙雕把生活经验当成真理导致一帮人捧书本一帮人捧经验，搞得啥事情都非黑即白&mldr;把伟人的话当成互相攻讦的武器。</p>
-<p>淦，好好的学习，结果总结的时候越想越气。</p>
-<p>果然，“人类的悲欢并不相通，我只觉得他们吵闹。”</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/%E6%B1%87%E7%BC%96/>汇编</a>
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-asm data-lang=asm><span class=line><span class=cl><span class=nl>code:</span>
+</span></span><span class=line><span class=cl><span class=nl>.start:</span>
+</span></span><span class=line><span class=cl>	<span class=nf>xor</span> <span class=no>eax</span><span class=p>,</span> <span class=no>eax</span>
+</span></span><span class=line><span class=cl>	<span class=nf>retn</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=nf>align</span> <span class=mi>400</span><span class=no>h</span><span class=p>,</span> <span class=no>db</span> <span class=mi>0</span> <span class=c1>; 同样，再次对齐到 400h ，把代码段的剩余部分填充成 0
+</span></span></span></code></pre></td></tr></table></div></div><p>到这里，整个 PE 文件的内容就填写完毕了。</p><p>文件头的绝大多数字段并不是我们关注的对象，计算偏移和对齐是最蛋疼的。</p><h3 id=33-关于对齐的坑>3.3 关于对齐的坑</h3><blockquote><p>There are additional restrictions on image files if the SectionAlignment value in the optional header is less than the page size of the architecture. For such files, the location of section data in the file must match its location in memory when the image is loaded, so that the physical offset for section data is the same as the RVA.</p></blockquote><p>微软文档里指出，在 Section 对齐的大小小于体系结构指定的页大小（4K）的时候，会有个额外限制，要求 Section 数据在文件中的偏移 <strong>必须</strong> 对应在内存中的 RVA 。也就是说，如果 Section 对齐为 1 字节，<code>VirtualAddress</code> 指定为 1000h，那 Section 数据必须存放在文件的 1000h 偏移处，否则生成的可执行文件会出现“不是有效的Win32应用程序”错误。</p><h3 id=34-其他坑>3.4 其他坑</h3><p>建议不要参考单独的某几篇文章，多找些相关的文章博客和文档，互相对照着看。PE格式错误不会有具体的提示，我也没找到什么好用的工具去检查到底哪儿有错，只能建议多用用 CFF Explorer 和 lief、pefile 这些能检查文件格式的库了，要是这些都不行那就看看16进制编辑器什么的吧，比如 HexWorkshop。IDA 在这儿没啥用。</p><p>另外我还发现1字节对齐的时候，x32dbg 调试会看不到汇编代码，在内存布局里进入自己的PE文件后只能看到PE头，但没有反汇编。不过调试器还是可以正常单步调试和查看寄存器。</p><h3 id=35-编译>3.5 编译</h3><p>上面的汇编代码用 nasm 即可编译，不需要其他编译或链接工具了。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=line><span class=cl>nasm pe.asm -f bin -o pe.exe
+</span></span></code></pre></td></tr></table></div></div><p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104216658.png loading=lazy alt=image-20211013104216658></p><p>也可以放进调试器看看。</p><p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104451137.png loading=lazy alt=image-20211013104451137></p><p>可以看到，代码段正确出现在 4001000h 这个地址上（基址+1000h），内容也符合我们写的汇编代码。</p><p><img src=/blog/image/nasm%e6%89%8b%e5%86%99%e4%b8%aaPE%e5%8f%af%e6%89%a7%e8%a1%8c%e6%96%87%e4%bb%b6/image-20211013104646905.png loading=lazy alt=image-20211013104646905></p><p>在内存布局窗口也能看到。</p><h2 id=总结>总结</h2><p>这是个对 PE 文件格式有所了解后的一个简单应用，原先是只会拿其他编程语言去读 PE 文件头的内容，现在学会了用汇编器去写一个简单的 PE 文件。之所以是汇编器去写，而不是拿 C/C++/Python 去写，还是因为我菜而且懒。好了跳过关于我菜的话题吧。</p><p>参考文档（不分先后）：</p><ul><li><a class=link href=http://blog.marcinchwedczuk.pl/a-closer-look-at-portable-executable-msdos-stub target=_blank rel=noopener>http://blog.marcinchwedczuk.pl/a-closer-look-at-portable-executable-msdos-stub</a></li><li><a class=link href=https://docs.microsoft.com/en-us/windows/win32/debug/pe-format target=_blank rel=noopener>https://docs.microsoft.com/en-us/windows/win32/debug/pe-format</a></li><li><a class=link href=https://reverseengineering.stackexchange.com/questions/11758/how-do-you-calculate-address-start-size-of-pe-section-like-rdata-data target=_blank rel=noopener>https://reverseengineering.stackexchange.com/questions/11758/how-do-you-calculate-address-start-size-of-pe-section-like-rdata-data</a></li><li><a class=link href=http://www.phreedom.org/research/tinype/ target=_blank rel=noopener>http://www.phreedom.org/research/tinype/</a></li><li><a class=link href=https://stackoverflow.com/questions/17456372/create-and-use-sections-for-pe-file-in-assembly-nasm target=_blank rel=noopener>https://stackoverflow.com/questions/17456372/create-and-use-sections-for-pe-file-in-assembly-nasm</a></li><li><a class=link href=https://bitcodersblog.wordpress.com/2017/05/10/win32-in-nasm-part-1/ target=_blank rel=noopener>https://bitcodersblog.wordpress.com/2017/05/10/win32-in-nasm-part-1/</a></li></ul><p>大部分代码其实是来自 tinype，被我调来调去改了很多。自己动手折腾一遍远比走马观花看一遍收获更多，有些实践问题不跟着抄一次改一改是不会发现的。有言道“实践出真知”，虽然说现在有些沙雕把生活经验当成真理导致一帮人捧书本一帮人捧经验，搞得啥事情都非黑即白&mldr;把伟人的话当成互相攻讦的武器。</p><p>淦，好好的学习，结果总结的时候越想越气。</p><p>果然，“人类的悲欢并不相通，我只觉得他们吵闹。”</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/%E6%B1%87%E7%BC%96/>汇编</a>
 <a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
-<a href=/blog/tags/windows/>windows</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/assembly-learning-note/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>32位 Windows x86 汇编语言学习</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-08/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理08：混淆技术入门</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-07/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理07 - 花指令入门</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-06/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理06：反调试技术入门</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理04 - zlib压缩壳案例</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+<a href=/blog/tags/windows/>windows</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/assembly-learning-note/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>32位 Windows x86 汇编语言学习</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-08/><div class=article-image><img src=/blog/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理08：混淆技术入门</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-07/><div class=article-image><img src=/blog/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理07 - 花指令入门</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-06/><div class=article-image><img src=/blog/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理06：反调试技术入门</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/><div class=article-image><img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理04 - zlib压缩壳案例</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#0x01-nasm-基本用法>0x01 nasm 基本用法</a>
-<ol>
-<li><a href=#11-label>1.1 label</a></li>
-<li><a href=#12-伪指令>1.2 伪指令</a></li>
-<li><a href=#12-有效地址>1.2 有效地址</a></li>
-<li><a href=#13-常数>1.3 常数</a></li>
-<li><a href=#14-表达式>1.4 表达式</a></li>
-<li><a href=#15-预处理器>1.5 预处理器</a></li>
-<li><a href=#16-汇编器指令>1.6 汇编器指令</a></li>
-<li><a href=#17-输出格式>1.7 输出格式</a></li>
-<li><a href=#18-总结>1.8 总结</a></li>
-</ol>
-</li>
-<li><a href=#0x02-简单汇编程序>0x02 简单汇编程序</a></li>
-<li><a href=#0x03-生成二进制代码>0x03 生成二进制代码</a>
-<ol>
-<li><a href=#31-生成-dos-文件头>3.1 生成 DOS 文件头</a></li>
-<li><a href=#32--生成-pe-文件头>3.2 生成 PE 文件头</a></li>
-<li><a href=#32-编写汇编代码>3.2 编写汇编代码</a></li>
-<li><a href=#33-关于对齐的坑>3.3 关于对齐的坑</a></li>
-<li><a href=#34-其他坑>3.4 其他坑</a></li>
-<li><a href=#35-编译>3.5 编译</a></li>
-</ol>
-</li>
-<li><a href=#总结>总结</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#前言>前言</a></li><li><a href=#0x01-nasm-基本用法>0x01 nasm 基本用法</a><ol><li><a href=#11-label>1.1 label</a></li><li><a href=#12-伪指令>1.2 伪指令</a></li><li><a href=#12-有效地址>1.2 有效地址</a></li><li><a href=#13-常数>1.3 常数</a></li><li><a href=#14-表达式>1.4 表达式</a></li><li><a href=#15-预处理器>1.5 预处理器</a></li><li><a href=#16-汇编器指令>1.6 汇编器指令</a></li><li><a href=#17-输出格式>1.7 输出格式</a></li><li><a href=#18-总结>1.8 总结</a></li></ol></li><li><a href=#0x02-简单汇编程序>0x02 简单汇编程序</a></li><li><a href=#0x03-生成二进制代码>0x03 生成二进制代码</a><ol><li><a href=#31-生成-dos-文件头>3.1 生成 DOS 文件头</a></li><li><a href=#32--生成-pe-文件头>3.2 生成 PE 文件头</a></li><li><a href=#32-编写汇编代码>3.2 编写汇编代码</a></li><li><a href=#33-关于对齐的坑>3.3 关于对齐的坑</a></li><li><a href=#34-其他坑>3.4 其他坑</a></li><li><a href=#35-编译>3.5 编译</a></li></ol></li><li><a href=#总结>总结</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

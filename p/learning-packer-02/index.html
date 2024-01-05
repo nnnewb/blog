@@ -1,128 +1,9 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成"><title>加壳原理02 - 简单加壳机</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-02/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成"><title>加壳原理02 - 简单加壳机</title><link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-02/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="加壳原理02 - 简单加壳机">
-<meta property="og:description" content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-02/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="汇编"><meta property="article:tag" content="Windows"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-09-28T16:57:00+08:00"><meta property="article:modified_time" content="2021-09-28T16:57:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-02/cover.jpg">
-<meta name=twitter:title content="加壳原理02 - 简单加壳机">
-<meta name=twitter:description content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成"><meta name=twitter:card content="summary_large_image">
-<meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-02/cover.jpg">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class="has-image main-article">
-<header class=article-header>
-<div class=article-image>
-<a href=/blog/p/learning-packer-02/>
-<img src=/blog/p/learning-packer-02/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/blog/p/learning-packer-02/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /blog/p/learning-packer-02/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理02 - 简单加壳机">
-</a>
-</div>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/%E9%80%86%E5%90%91/>
-逆向
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/learning-packer-02/>加壳原理02 - 简单加壳机</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2021-09-28T16:57:00+08:00>2021年 9月 28日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 5 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=前言>前言</h2>
-<p>对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成一个文件。</p>
-<p>这么说可能有点太简单化，大部分的工作其实就在这儿：如何处理被加载的程序？压缩？加密？混淆？加载器（或者叫壳程序）如何反调试？</p>
-<p>这里先写一个简单的加壳机，仅仅是把被加载的PE文件作为一个 Section，添加到壳程序里，让壳程序直接从这个 Section 加载并运行。其他花里胡哨的操作都先不整，仅作为证明工作原理的案例。</p>
-<h2 id=0x01-壳程序>0x01 壳程序</h2>
-<h3 id=11-思路>1.1 思路</h3>
-<p>和加载一个PE文件不同，既然被加载的程序就在 Section 里，那需要做的只有定位到 Section，然后把 Section 内容当读取进内存的 PE 文件内容处理就好了。</p>
-<p>壳程序应该尽量保持轻量，不在原始程序上添加太多东西（加完壳大小翻一倍还多了一堆DLL依赖那谁受得了啊），所以很多标准C库的函数也不能用了，像是<code>memcpy</code>、<code>strcmp</code> 都要自己简单实现一个。</p>
-<h3 id=12--壳实现>1.2 壳实现</h3>
-<p>绝大部分内容和之前文章中的 <code>load_PE</code> 一致，入口点修改为 <code>_start</code>，需要注意。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>  1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="加壳原理02 - 简单加壳机"><meta property="og:description" content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成"><meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-02/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="汇编"><meta property="article:tag" content="Windows"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-09-28T16:57:00+08:00"><meta property="article:modified_time" content="2021-09-28T16:57:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-02/cover.jpg"><meta name=twitter:title content="加壳原理02 - 简单加壳机"><meta name=twitter:description content="前言 对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成"><meta name=twitter:card content="summary_large_image"><meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-02/cover.jpg"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class="has-image main-article"><header class=article-header><div class=article-image><a href=/blog/p/learning-packer-02/><img src=/blog/p/learning-packer-02/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/blog/p/learning-packer-02/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /blog/p/learning-packer-02/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理02 - 简单加壳机"></a></div><div class=article-details><header class=article-category><a href=/blog/categories/%E9%80%86%E5%90%91/>逆向</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/learning-packer-02/>加壳原理02 - 简单加壳机</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2021-09-28T16:57:00+08:00>2021年 9月 28日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 5 分钟</time></div></footer></div></header><section class=article-content><h2 id=前言>前言</h2><p>对 Windows 程序的加载和运行过程有了基本了解后，手动加载并运行一个PE文件并不成问题。加壳仅仅是在这上面更进一步：把加载程序和被加载的程序合并成一个文件。</p><p>这么说可能有点太简单化，大部分的工作其实就在这儿：如何处理被加载的程序？压缩？加密？混淆？加载器（或者叫壳程序）如何反调试？</p><p>这里先写一个简单的加壳机，仅仅是把被加载的PE文件作为一个 Section，添加到壳程序里，让壳程序直接从这个 Section 加载并运行。其他花里胡哨的操作都先不整，仅作为证明工作原理的案例。</p><h2 id=0x01-壳程序>0x01 壳程序</h2><h3 id=11-思路>1.1 思路</h3><p>和加载一个PE文件不同，既然被加载的程序就在 Section 里，那需要做的只有定位到 Section，然后把 Section 内容当读取进内存的 PE 文件内容处理就好了。</p><p>壳程序应该尽量保持轻量，不在原始程序上添加太多东西（加完壳大小翻一倍还多了一堆DLL依赖那谁受得了啊），所以很多标准C库的函数也不能用了，像是<code>memcpy</code>、<code>strcmp</code> 都要自己简单实现一个。</p><h3 id=12--壳实现>1.2 壳实现</h3><p>绝大部分内容和之前文章中的 <code>load_PE</code> 一致，入口点修改为 <code>_start</code>，需要注意。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>  1
 </span><span class=lnt>  2
 </span><span class=lnt>  3
 </span><span class=lnt>  4
@@ -330,255 +211,221 @@
 </span><span class=lnt>206
 </span><span class=lnt>207
 </span><span class=lnt>208
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;winnt.h&gt;</span><span class=cp>
-</span><span class=cp></span>
-<span class=kt>void</span> <span class=o>*</span><span class=nf>load_PE</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>PE_data</span><span class=p>);</span>
-<span class=kt>void</span> <span class=nf>fix_iat</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span><span class=p>);</span>
-<span class=kt>void</span> <span class=nf>fix_base_reloc</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span><span class=p>);</span>
-<span class=kt>int</span> <span class=nf>mystrcmp</span><span class=p>(</span><span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>str1</span><span class=p>,</span> <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>str2</span><span class=p>);</span>
-<span class=kt>void</span> <span class=nf>mymemcpy</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>dest</span><span class=p>,</span> <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>src</span><span class=p>,</span> <span class=n>size_t</span> <span class=n>length</span><span class=p>);</span>
-
-<span class=kt>int</span> <span class=nf>_start</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
-  <span class=kt>char</span> <span class=o>*</span><span class=n>unpacker_VA</span> <span class=o>=</span> <span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=p>)</span><span class=n>GetModuleHandleA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>);</span>
-
-  <span class=n>IMAGE_DOS_HEADER</span> <span class=o>*</span><span class=n>p_DOS_header</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_DOS_HEADER</span> <span class=o>*</span><span class=p>)</span><span class=n>unpacker_VA</span><span class=p>;</span>
-  <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=p>)(((</span><span class=kt>char</span> <span class=o>*</span><span class=p>)</span><span class=n>unpacker_VA</span><span class=p>)</span> <span class=o>+</span> <span class=n>p_DOS_header</span><span class=o>-&gt;</span><span class=n>e_lfanew</span><span class=p>);</span>
-  <span class=n>IMAGE_SECTION_HEADER</span> <span class=o>*</span><span class=n>sections</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_SECTION_HEADER</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_NT_headers</span> <span class=o>+</span> <span class=mi>1</span><span class=p>);</span>
-
-  <span class=kt>char</span> <span class=o>*</span><span class=n>packed</span> <span class=o>=</span> <span class=nb>NULL</span><span class=p>;</span>
-  <span class=kt>char</span> <span class=n>packed_section_name</span><span class=p>[]</span> <span class=o>=</span> <span class=s>&#34;.packed&#34;</span><span class=p>;</span>
-
-  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>FileHeader</span><span class=p>.</span><span class=n>NumberOfSections</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
-    <span class=k>if</span> <span class=p>(</span><span class=n>mystrcmp</span><span class=p>(</span><span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>Name</span><span class=p>,</span> <span class=n>packed_section_name</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
-      <span class=n>packed</span> <span class=o>=</span> <span class=n>unpacker_VA</span> <span class=o>+</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>VirtualAddress</span><span class=p>;</span>
-      <span class=k>break</span><span class=p>;</span>
-    <span class=p>}</span>
-  <span class=p>}</span>
-
-  <span class=k>if</span> <span class=p>(</span><span class=n>packed</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-    <span class=kt>void</span> <span class=p>(</span><span class=o>*</span><span class=n>entrypoint</span><span class=p>)(</span><span class=kt>void</span><span class=p>)</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=p>(</span><span class=o>*</span><span class=p>)(</span><span class=kt>void</span><span class=p>))</span><span class=n>load_PE</span><span class=p>(</span><span class=n>packed</span><span class=p>);</span>
-    <span class=n>entrypoint</span><span class=p>();</span>
-  <span class=p>}</span>
-
-  <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
-<span class=p>}</span>
-
-<span class=kt>void</span> <span class=o>*</span><span class=nf>load_PE</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>PE_data</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>IMAGE_DOS_HEADER</span> <span class=o>*</span><span class=n>p_DOS_header</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_DOS_HEADER</span> <span class=o>*</span><span class=p>)</span><span class=n>PE_data</span><span class=p>;</span>
-  <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=p>)(</span><span class=n>PE_data</span> <span class=o>+</span> <span class=n>p_DOS_header</span><span class=o>-&gt;</span><span class=n>e_lfanew</span><span class=p>);</span>
-
-  <span class=c1>// extract information from PE header
-</span><span class=c1></span>  <span class=n>DWORD</span> <span class=n>size_of_image</span> <span class=o>=</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>SizeOfImage</span><span class=p>;</span>
-  <span class=n>DWORD</span> <span class=n>entry_point_RVA</span> <span class=o>=</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>AddressOfEntryPoint</span><span class=p>;</span>
-  <span class=n>DWORD</span> <span class=n>size_of_headers</span> <span class=o>=</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>SizeOfHeaders</span><span class=p>;</span>
-
-  <span class=c1>// allocate memory
-</span><span class=c1></span>  <span class=c1>// https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
-</span><span class=c1></span>  <span class=kt>char</span> <span class=o>*</span><span class=n>p_image_base</span> <span class=o>=</span> <span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=p>)</span><span class=n>VirtualAlloc</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=n>size_of_image</span><span class=p>,</span> <span class=n>MEM_RESERVE</span> <span class=o>|</span> <span class=n>MEM_COMMIT</span><span class=p>,</span> <span class=n>PAGE_READWRITE</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>p_image_base</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-    <span class=k>return</span> <span class=nb>NULL</span><span class=p>;</span>
-  <span class=p>}</span>
-
-  <span class=c1>// copy PE headers in memory
-</span><span class=c1></span>  <span class=n>mymemcpy</span><span class=p>(</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>PE_data</span><span class=p>,</span> <span class=n>size_of_headers</span><span class=p>);</span>
-
-  <span class=c1>// Section headers starts right after the IMAGE_NT_HEADERS struct, so we do some pointer arithmetic-fu here.
-</span><span class=c1></span>  <span class=n>IMAGE_SECTION_HEADER</span> <span class=o>*</span><span class=n>sections</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_SECTION_HEADER</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_NT_headers</span> <span class=o>+</span> <span class=mi>1</span><span class=p>);</span>
-
-  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>FileHeader</span><span class=p>.</span><span class=n>NumberOfSections</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
-    <span class=c1>// calculate the VA we need to copy the content, from the RVA
-</span><span class=c1></span>    <span class=c1>// section[i].VirtualAddress is a RVA, mind it
-</span><span class=c1></span>    <span class=kt>char</span> <span class=o>*</span><span class=n>dest</span> <span class=o>=</span> <span class=n>p_image_base</span> <span class=o>+</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>VirtualAddress</span><span class=p>;</span>
-
-    <span class=c1>// check if there is Raw data to copy
-</span><span class=c1></span>    <span class=k>if</span> <span class=p>(</span><span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>SizeOfRawData</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
-      <span class=c1>// We copy SizeOfRaw data bytes, from the offset PointerToRawData in the file
-</span><span class=c1></span>      <span class=n>mymemcpy</span><span class=p>(</span><span class=n>dest</span><span class=p>,</span> <span class=n>PE_data</span> <span class=o>+</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>PointerToRawData</span><span class=p>,</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>SizeOfRawData</span><span class=p>);</span>
-    <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
-      <span class=k>for</span> <span class=p>(</span><span class=n>size_t</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>Misc</span><span class=p>.</span><span class=n>VirtualSize</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
-        <span class=n>dest</span><span class=p>[</span><span class=n>i</span><span class=p>]</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
-      <span class=p>}</span>
-    <span class=p>}</span>
-  <span class=p>}</span>
-
-  <span class=n>fix_iat</span><span class=p>(</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>p_NT_headers</span><span class=p>);</span>
-  <span class=n>fix_base_reloc</span><span class=p>(</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>p_NT_headers</span><span class=p>);</span>
-
-  <span class=c1>// Set permission for the PE header to read only
-</span><span class=c1></span>  <span class=n>DWORD</span> <span class=n>oldProtect</span><span class=p>;</span>
-  <span class=n>VirtualProtect</span><span class=p>(</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>SizeOfHeaders</span><span class=p>,</span> <span class=n>PAGE_READONLY</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>oldProtect</span><span class=p>);</span>
-
-  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>FileHeader</span><span class=p>.</span><span class=n>NumberOfSections</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
-    <span class=kt>char</span> <span class=o>*</span><span class=n>dest</span> <span class=o>=</span> <span class=n>p_image_base</span> <span class=o>+</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>VirtualAddress</span><span class=p>;</span>
-    <span class=n>DWORD</span> <span class=n>s_perm</span> <span class=o>=</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>Characteristics</span><span class=p>;</span>
-    <span class=n>DWORD</span> <span class=n>v_perm</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=c1>// flags are not the same between virtal protect and the section header
-</span><span class=c1></span>    <span class=k>if</span> <span class=p>(</span><span class=n>s_perm</span> <span class=o>&amp;</span> <span class=n>IMAGE_SCN_MEM_EXECUTE</span><span class=p>)</span> <span class=p>{</span>
-      <span class=n>v_perm</span> <span class=o>=</span> <span class=p>(</span><span class=n>s_perm</span> <span class=o>&amp;</span> <span class=n>IMAGE_SCN_MEM_WRITE</span><span class=p>)</span> <span class=o>?</span> <span class=nl>PAGE_EXECUTE_READWRITE</span> <span class=p>:</span> <span class=n>PAGE_EXECUTE_READ</span><span class=p>;</span>
-    <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
-      <span class=n>v_perm</span> <span class=o>=</span> <span class=p>(</span><span class=n>s_perm</span> <span class=o>&amp;</span> <span class=n>IMAGE_SCN_MEM_WRITE</span><span class=p>)</span> <span class=o>?</span> <span class=nl>PAGE_READWRITE</span> <span class=p>:</span> <span class=n>PAGE_READONLY</span><span class=p>;</span>
-    <span class=p>}</span>
-    <span class=n>VirtualProtect</span><span class=p>(</span><span class=n>dest</span><span class=p>,</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>Misc</span><span class=p>.</span><span class=n>VirtualSize</span><span class=p>,</span> <span class=n>v_perm</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>oldProtect</span><span class=p>);</span>
-  <span class=p>}</span>
-
-  <span class=k>return</span> <span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>entry_point_RVA</span><span class=p>);</span>
-<span class=p>}</span>
-
-<span class=kt>void</span> <span class=nf>fix_iat</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>IMAGE_DATA_DIRECTORY</span> <span class=o>*</span><span class=n>data_directory</span> <span class=o>=</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>DataDirectory</span><span class=p>;</span>
-
-  <span class=c1>// load the address of the import descriptors array
-</span><span class=c1></span>  <span class=n>IMAGE_IMPORT_DESCRIPTOR</span> <span class=o>*</span><span class=n>import_descriptors</span> <span class=o>=</span>
-      <span class=p>(</span><span class=n>IMAGE_IMPORT_DESCRIPTOR</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>data_directory</span><span class=p>[</span><span class=n>IMAGE_DIRECTORY_ENTRY_IMPORT</span><span class=p>].</span><span class=n>VirtualAddress</span><span class=p>);</span>
-
-  <span class=c1>// this array is null terminated
-</span><span class=c1></span>  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>import_descriptors</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>OriginalFirstThunk</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
-    <span class=c1>// Get the name of the dll, and import it
-</span><span class=c1></span>    <span class=kt>char</span> <span class=o>*</span><span class=n>module_name</span> <span class=o>=</span> <span class=n>p_image_base</span> <span class=o>+</span> <span class=n>import_descriptors</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>Name</span><span class=p>;</span>
-    <span class=n>HMODULE</span> <span class=n>import_module</span> <span class=o>=</span> <span class=n>LoadLibraryA</span><span class=p>(</span><span class=n>module_name</span><span class=p>);</span>
-    <span class=k>if</span> <span class=p>(</span><span class=n>import_module</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-      <span class=c1>// panic!
-</span><span class=c1></span>      <span class=n>ExitProcess</span><span class=p>(</span><span class=mi>255</span><span class=p>);</span>
-    <span class=p>}</span>
-
-    <span class=c1>// the lookup table points to function names or ordinals =&gt; it is the IDT
-</span><span class=c1></span>    <span class=n>IMAGE_THUNK_DATA</span> <span class=o>*</span><span class=n>lookup_table</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_THUNK_DATA</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>import_descriptors</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>OriginalFirstThunk</span><span class=p>);</span>
-
-    <span class=c1>// the address table is a copy of the lookup table at first
-</span><span class=c1></span>    <span class=c1>// but we put the addresses of the loaded function inside =&gt; that&#39;s the IAT
-</span><span class=c1></span>    <span class=n>IMAGE_THUNK_DATA</span> <span class=o>*</span><span class=n>address_table</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_THUNK_DATA</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>import_descriptors</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>FirstThunk</span><span class=p>);</span>
-
-    <span class=c1>// null terminated array, again
-</span><span class=c1></span>    <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>lookup_table</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>u1</span><span class=p>.</span><span class=n>AddressOfData</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
-      <span class=kt>void</span> <span class=o>*</span><span class=n>function_handle</span> <span class=o>=</span> <span class=nb>NULL</span><span class=p>;</span>
-
-      <span class=c1>// Check the lookup table for the adresse of the function name to import
-</span><span class=c1></span>      <span class=n>DWORD</span> <span class=n>lookup_addr</span> <span class=o>=</span> <span class=n>lookup_table</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>u1</span><span class=p>.</span><span class=n>AddressOfData</span><span class=p>;</span>
-
-      <span class=k>if</span> <span class=p>((</span><span class=n>lookup_addr</span> <span class=o>&amp;</span> <span class=n>IMAGE_ORDINAL_FLAG</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span> <span class=c1>// if first bit is not 1
-</span><span class=c1></span>        <span class=c1>// import by name : get the IMAGE_IMPORT_BY_NAME struct
-</span><span class=c1></span>        <span class=n>IMAGE_IMPORT_BY_NAME</span> <span class=o>*</span><span class=n>image_import</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_IMPORT_BY_NAME</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>lookup_addr</span><span class=p>);</span>
-        <span class=c1>// this struct points to the ASCII function name
-</span><span class=c1></span>        <span class=kt>char</span> <span class=o>*</span><span class=n>funct_name</span> <span class=o>=</span> <span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=p>)</span><span class=o>&amp;</span><span class=p>(</span><span class=n>image_import</span><span class=o>-&gt;</span><span class=n>Name</span><span class=p>);</span>
-        <span class=c1>// get that function address from it&#39;s module and name
-</span><span class=c1></span>        <span class=n>function_handle</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=p>)</span><span class=n>GetProcAddress</span><span class=p>(</span><span class=n>import_module</span><span class=p>,</span> <span class=n>funct_name</span><span class=p>);</span>
-      <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
-        <span class=c1>// import by ordinal, directly
-</span><span class=c1></span>        <span class=n>function_handle</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=p>)</span><span class=n>GetProcAddress</span><span class=p>(</span><span class=n>import_module</span><span class=p>,</span> <span class=p>(</span><span class=n>LPSTR</span><span class=p>)</span><span class=n>lookup_addr</span><span class=p>);</span>
-      <span class=p>}</span>
-
-      <span class=k>if</span> <span class=p>(</span><span class=n>function_handle</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-        <span class=n>ExitProcess</span><span class=p>(</span><span class=mi>255</span><span class=p>);</span>
-      <span class=p>}</span>
-
-      <span class=c1>// change the IAT, and put the function address inside.
-</span><span class=c1></span>      <span class=n>address_table</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>u1</span><span class=p>.</span><span class=n>Function</span> <span class=o>=</span> <span class=p>(</span><span class=n>DWORD</span><span class=p>)</span><span class=n>function_handle</span><span class=p>;</span>
-    <span class=p>}</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-
-<span class=kt>void</span> <span class=nf>fix_base_reloc</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>IMAGE_DATA_DIRECTORY</span> <span class=o>*</span><span class=n>data_directory</span> <span class=o>=</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>DataDirectory</span><span class=p>;</span>
-
-  <span class=c1>// this is how much we shifted the ImageBase
-</span><span class=c1></span>  <span class=n>DWORD</span> <span class=n>delta_VA_reloc</span> <span class=o>=</span> <span class=p>((</span><span class=n>DWORD</span><span class=p>)</span><span class=n>p_image_base</span><span class=p>)</span> <span class=o>-</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>ImageBase</span><span class=p>;</span>
-
-  <span class=c1>// if there is a relocation table, and we actually shitfted the ImageBase
-</span><span class=c1></span>  <span class=k>if</span> <span class=p>(</span><span class=n>data_directory</span><span class=p>[</span><span class=n>IMAGE_DIRECTORY_ENTRY_BASERELOC</span><span class=p>].</span><span class=n>VirtualAddress</span> <span class=o>!=</span> <span class=mi>0</span> <span class=o>&amp;&amp;</span> <span class=n>delta_VA_reloc</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
-
-    <span class=c1>// calculate the relocation table address
-</span><span class=c1></span>    <span class=n>IMAGE_BASE_RELOCATION</span> <span class=o>*</span><span class=n>p_reloc</span> <span class=o>=</span>
-        <span class=p>(</span><span class=n>IMAGE_BASE_RELOCATION</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>data_directory</span><span class=p>[</span><span class=n>IMAGE_DIRECTORY_ENTRY_BASERELOC</span><span class=p>].</span><span class=n>VirtualAddress</span><span class=p>);</span>
-
-    <span class=c1>// once again, a null terminated array
-</span><span class=c1></span>    <span class=k>while</span> <span class=p>(</span><span class=n>p_reloc</span><span class=o>-&gt;</span><span class=n>VirtualAddress</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
-
-      <span class=c1>// how any relocation in this block
-</span><span class=c1></span>      <span class=c1>// ie the total size, minus the size of the &#34;header&#34;, divided by 2 (those are words, so 2 bytes for each)
-</span><span class=c1></span>      <span class=n>DWORD</span> <span class=n>size</span> <span class=o>=</span> <span class=p>(</span><span class=n>p_reloc</span><span class=o>-&gt;</span><span class=n>SizeOfBlock</span> <span class=o>-</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>IMAGE_BASE_RELOCATION</span><span class=p>))</span> <span class=o>/</span> <span class=mi>2</span><span class=p>;</span>
-      <span class=c1>// the first relocation element in the block, right after the header (using pointer arithmetic again)
-</span><span class=c1></span>      <span class=n>WORD</span> <span class=o>*</span><span class=n>fixups</span> <span class=o>=</span> <span class=p>(</span><span class=n>WORD</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_reloc</span> <span class=o>+</span> <span class=mi>1</span><span class=p>);</span>
-      <span class=k>for</span> <span class=p>(</span><span class=n>size_t</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>size</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
-        <span class=c1>// type is the first 4 bits of the relocation word
-</span><span class=c1></span>        <span class=kt>int</span> <span class=n>type</span> <span class=o>=</span> <span class=n>fixups</span><span class=p>[</span><span class=n>i</span><span class=p>]</span> <span class=o>&gt;&gt;</span> <span class=mi>12</span><span class=p>;</span>
-        <span class=c1>// offset is the last 12 bits
-</span><span class=c1></span>        <span class=kt>int</span> <span class=n>offset</span> <span class=o>=</span> <span class=n>fixups</span><span class=p>[</span><span class=n>i</span><span class=p>]</span> <span class=o>&amp;</span> <span class=mh>0x0fff</span><span class=p>;</span>
-        <span class=c1>// this is the address we are going to change
-</span><span class=c1></span>        <span class=n>DWORD</span> <span class=o>*</span><span class=n>change_addr</span> <span class=o>=</span> <span class=p>(</span><span class=n>DWORD</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>p_reloc</span><span class=o>-&gt;</span><span class=n>VirtualAddress</span> <span class=o>+</span> <span class=n>offset</span><span class=p>);</span>
-
-        <span class=c1>// there is only one type used that needs to make a change
-</span><span class=c1></span>        <span class=k>switch</span> <span class=p>(</span><span class=n>type</span><span class=p>)</span> <span class=p>{</span>
-        <span class=k>case</span> <span class=nl>IMAGE_REL_BASED_HIGHLOW</span><span class=p>:</span>
-          <span class=o>*</span><span class=n>change_addr</span> <span class=o>+=</span> <span class=n>delta_VA_reloc</span><span class=p>;</span>
-          <span class=k>break</span><span class=p>;</span>
-        <span class=k>default</span><span class=o>:</span>
-          <span class=k>break</span><span class=p>;</span>
-        <span class=p>}</span>
-      <span class=p>}</span>
-
-      <span class=c1>// switch to the next relocation block, based on the size
-</span><span class=c1></span>      <span class=n>p_reloc</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_BASE_RELOCATION</span> <span class=o>*</span><span class=p>)(((</span><span class=n>DWORD</span><span class=p>)</span><span class=n>p_reloc</span><span class=p>)</span> <span class=o>+</span> <span class=n>p_reloc</span><span class=o>-&gt;</span><span class=n>SizeOfBlock</span><span class=p>);</span>
-    <span class=p>}</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-
-<span class=kt>int</span> <span class=nf>mystrcmp</span><span class=p>(</span><span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>str1</span><span class=p>,</span> <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>str2</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>while</span> <span class=p>(</span><span class=o>*</span><span class=n>str1</span> <span class=o>==</span> <span class=o>*</span><span class=n>str2</span> <span class=o>&amp;&amp;</span> <span class=o>*</span><span class=n>str1</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>str1</span><span class=o>++</span><span class=p>;</span>
-    <span class=n>str2</span><span class=o>++</span><span class=p>;</span>
-  <span class=p>}</span>
-  <span class=k>if</span> <span class=p>(</span><span class=o>*</span><span class=n>str1</span> <span class=o>==</span> <span class=mi>0</span> <span class=o>&amp;&amp;</span> <span class=o>*</span><span class=n>str2</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
-    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
-  <span class=p>}</span>
-  <span class=k>return</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
-<span class=p>}</span>
-
-<span class=kt>void</span> <span class=nf>mymemcpy</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>dest</span><span class=p>,</span> <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>src</span><span class=p>,</span> <span class=n>size_t</span> <span class=n>length</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>for</span> <span class=p>(</span><span class=n>size_t</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>length</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>dest</span><span class=p>[</span><span class=n>i</span><span class=p>]</span> <span class=o>=</span> <span class=n>src</span><span class=p>[</span><span class=n>i</span><span class=p>];</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>构建参数（CMAKE）</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;winnt.h&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=o>*</span><span class=nf>load_PE</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>PE_data</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>fix_iat</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>fix_base_reloc</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=kt>int</span> <span class=nf>mystrcmp</span><span class=p>(</span><span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>str1</span><span class=p>,</span> <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>str2</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>mymemcpy</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>dest</span><span class=p>,</span> <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>src</span><span class=p>,</span> <span class=kt>size_t</span> <span class=n>length</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>int</span> <span class=nf>_start</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=kt>char</span> <span class=o>*</span><span class=n>unpacker_VA</span> <span class=o>=</span> <span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=p>)</span><span class=nf>GetModuleHandleA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=n>IMAGE_DOS_HEADER</span> <span class=o>*</span><span class=n>p_DOS_header</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_DOS_HEADER</span> <span class=o>*</span><span class=p>)</span><span class=n>unpacker_VA</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=p>)(((</span><span class=kt>char</span> <span class=o>*</span><span class=p>)</span><span class=n>unpacker_VA</span><span class=p>)</span> <span class=o>+</span> <span class=n>p_DOS_header</span><span class=o>-&gt;</span><span class=n>e_lfanew</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=n>IMAGE_SECTION_HEADER</span> <span class=o>*</span><span class=n>sections</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_SECTION_HEADER</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_NT_headers</span> <span class=o>+</span> <span class=mi>1</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=kt>char</span> <span class=o>*</span><span class=n>packed</span> <span class=o>=</span> <span class=nb>NULL</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=kt>char</span> <span class=n>packed_section_name</span><span class=p>[]</span> <span class=o>=</span> <span class=s>&#34;.packed&#34;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>FileHeader</span><span class=p>.</span><span class=n>NumberOfSections</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=nf>mystrcmp</span><span class=p>(</span><span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>Name</span><span class=p>,</span> <span class=n>packed_section_name</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=n>packed</span> <span class=o>=</span> <span class=n>unpacker_VA</span> <span class=o>+</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>VirtualAddress</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>      <span class=k>break</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>packed</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kt>void</span> <span class=p>(</span><span class=o>*</span><span class=n>entrypoint</span><span class=p>)(</span><span class=kt>void</span><span class=p>)</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=p>(</span><span class=o>*</span><span class=p>)(</span><span class=kt>void</span><span class=p>))</span><span class=nf>load_PE</span><span class=p>(</span><span class=n>packed</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=nf>entrypoint</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=o>*</span><span class=nf>load_PE</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>PE_data</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>IMAGE_DOS_HEADER</span> <span class=o>*</span><span class=n>p_DOS_header</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_DOS_HEADER</span> <span class=o>*</span><span class=p>)</span><span class=n>PE_data</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=p>)(</span><span class=n>PE_data</span> <span class=o>+</span> <span class=n>p_DOS_header</span><span class=o>-&gt;</span><span class=n>e_lfanew</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// extract information from PE header
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>DWORD</span> <span class=n>size_of_image</span> <span class=o>=</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>SizeOfImage</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>DWORD</span> <span class=n>entry_point_RVA</span> <span class=o>=</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>AddressOfEntryPoint</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>DWORD</span> <span class=n>size_of_headers</span> <span class=o>=</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>SizeOfHeaders</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// allocate memory
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=c1>// https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=kt>char</span> <span class=o>*</span><span class=n>p_image_base</span> <span class=o>=</span> <span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=p>)</span><span class=nf>VirtualAlloc</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=n>size_of_image</span><span class=p>,</span> <span class=n>MEM_RESERVE</span> <span class=o>|</span> <span class=n>MEM_COMMIT</span><span class=p>,</span> <span class=n>PAGE_READWRITE</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>p_image_base</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=nb>NULL</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// copy PE headers in memory
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=nf>mymemcpy</span><span class=p>(</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>PE_data</span><span class=p>,</span> <span class=n>size_of_headers</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// Section headers starts right after the IMAGE_NT_HEADERS struct, so we do some pointer arithmetic-fu here.
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>IMAGE_SECTION_HEADER</span> <span class=o>*</span><span class=n>sections</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_SECTION_HEADER</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_NT_headers</span> <span class=o>+</span> <span class=mi>1</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>FileHeader</span><span class=p>.</span><span class=n>NumberOfSections</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// calculate the VA we need to copy the content, from the RVA
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>// section[i].VirtualAddress is a RVA, mind it
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kt>char</span> <span class=o>*</span><span class=n>dest</span> <span class=o>=</span> <span class=n>p_image_base</span> <span class=o>+</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>VirtualAddress</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=c1>// check if there is Raw data to copy
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=k>if</span> <span class=p>(</span><span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>SizeOfRawData</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=c1>// We copy SizeOfRaw data bytes, from the offset PointerToRawData in the file
+</span></span></span><span class=line><span class=cl><span class=c1></span>      <span class=nf>mymemcpy</span><span class=p>(</span><span class=n>dest</span><span class=p>,</span> <span class=n>PE_data</span> <span class=o>+</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>PointerToRawData</span><span class=p>,</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>SizeOfRawData</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=k>for</span> <span class=p>(</span><span class=kt>size_t</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>Misc</span><span class=p>.</span><span class=n>VirtualSize</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=n>dest</span><span class=p>[</span><span class=n>i</span><span class=p>]</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>      <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=nf>fix_iat</span><span class=p>(</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>p_NT_headers</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=nf>fix_base_reloc</span><span class=p>(</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>p_NT_headers</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// Set permission for the PE header to read only
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>DWORD</span> <span class=n>oldProtect</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=nf>VirtualProtect</span><span class=p>(</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>SizeOfHeaders</span><span class=p>,</span> <span class=n>PAGE_READONLY</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>oldProtect</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>FileHeader</span><span class=p>.</span><span class=n>NumberOfSections</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kt>char</span> <span class=o>*</span><span class=n>dest</span> <span class=o>=</span> <span class=n>p_image_base</span> <span class=o>+</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>VirtualAddress</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=n>DWORD</span> <span class=n>s_perm</span> <span class=o>=</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>Characteristics</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=n>DWORD</span> <span class=n>v_perm</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=c1>// flags are not the same between virtal protect and the section header
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=k>if</span> <span class=p>(</span><span class=n>s_perm</span> <span class=o>&amp;</span> <span class=n>IMAGE_SCN_MEM_EXECUTE</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=n>v_perm</span> <span class=o>=</span> <span class=p>(</span><span class=n>s_perm</span> <span class=o>&amp;</span> <span class=n>IMAGE_SCN_MEM_WRITE</span><span class=p>)</span> <span class=o>?</span> <span class=nl>PAGE_EXECUTE_READWRITE</span> <span class=p>:</span> <span class=n>PAGE_EXECUTE_READ</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=n>v_perm</span> <span class=o>=</span> <span class=p>(</span><span class=n>s_perm</span> <span class=o>&amp;</span> <span class=n>IMAGE_SCN_MEM_WRITE</span><span class=p>)</span> <span class=o>?</span> <span class=nl>PAGE_READWRITE</span> <span class=p>:</span> <span class=n>PAGE_READONLY</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=nf>VirtualProtect</span><span class=p>(</span><span class=n>dest</span><span class=p>,</span> <span class=n>sections</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>Misc</span><span class=p>.</span><span class=n>VirtualSize</span><span class=p>,</span> <span class=n>v_perm</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>oldProtect</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>entry_point_RVA</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>fix_iat</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>IMAGE_DATA_DIRECTORY</span> <span class=o>*</span><span class=n>data_directory</span> <span class=o>=</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>DataDirectory</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// load the address of the import descriptors array
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>IMAGE_IMPORT_DESCRIPTOR</span> <span class=o>*</span><span class=n>import_descriptors</span> <span class=o>=</span>
+</span></span><span class=line><span class=cl>      <span class=p>(</span><span class=n>IMAGE_IMPORT_DESCRIPTOR</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>data_directory</span><span class=p>[</span><span class=n>IMAGE_DIRECTORY_ENTRY_IMPORT</span><span class=p>].</span><span class=n>VirtualAddress</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// this array is null terminated
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>import_descriptors</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>OriginalFirstThunk</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// Get the name of the dll, and import it
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kt>char</span> <span class=o>*</span><span class=n>module_name</span> <span class=o>=</span> <span class=n>p_image_base</span> <span class=o>+</span> <span class=n>import_descriptors</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>Name</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=n>HMODULE</span> <span class=n>import_module</span> <span class=o>=</span> <span class=nf>LoadLibraryA</span><span class=p>(</span><span class=n>module_name</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>import_module</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=c1>// panic!
+</span></span></span><span class=line><span class=cl><span class=c1></span>      <span class=nf>ExitProcess</span><span class=p>(</span><span class=mi>255</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=c1>// the lookup table points to function names or ordinals =&gt; it is the IDT
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=n>IMAGE_THUNK_DATA</span> <span class=o>*</span><span class=n>lookup_table</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_THUNK_DATA</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>import_descriptors</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>OriginalFirstThunk</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=c1>// the address table is a copy of the lookup table at first
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>// but we put the addresses of the loaded function inside =&gt; that&#39;s the IAT
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=n>IMAGE_THUNK_DATA</span> <span class=o>*</span><span class=n>address_table</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_THUNK_DATA</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>import_descriptors</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>FirstThunk</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=c1>// null terminated array, again
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>lookup_table</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>u1</span><span class=p>.</span><span class=n>AddressOfData</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=kt>void</span> <span class=o>*</span><span class=n>function_handle</span> <span class=o>=</span> <span class=nb>NULL</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>      <span class=c1>// Check the lookup table for the adresse of the function name to import
+</span></span></span><span class=line><span class=cl><span class=c1></span>      <span class=n>DWORD</span> <span class=n>lookup_addr</span> <span class=o>=</span> <span class=n>lookup_table</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>u1</span><span class=p>.</span><span class=n>AddressOfData</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>      <span class=k>if</span> <span class=p>((</span><span class=n>lookup_addr</span> <span class=o>&amp;</span> <span class=n>IMAGE_ORDINAL_FLAG</span><span class=p>)</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span> <span class=c1>// if first bit is not 1
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=c1>// import by name : get the IMAGE_IMPORT_BY_NAME struct
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=n>IMAGE_IMPORT_BY_NAME</span> <span class=o>*</span><span class=n>image_import</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_IMPORT_BY_NAME</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>lookup_addr</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// this struct points to the ASCII function name
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=kt>char</span> <span class=o>*</span><span class=n>funct_name</span> <span class=o>=</span> <span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=p>)</span><span class=o>&amp;</span><span class=p>(</span><span class=n>image_import</span><span class=o>-&gt;</span><span class=n>Name</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// get that function address from it&#39;s module and name
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=n>function_handle</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=p>)</span><span class=nf>GetProcAddress</span><span class=p>(</span><span class=n>import_module</span><span class=p>,</span> <span class=n>funct_name</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>      <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// import by ordinal, directly
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=n>function_handle</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=p>)</span><span class=nf>GetProcAddress</span><span class=p>(</span><span class=n>import_module</span><span class=p>,</span> <span class=p>(</span><span class=n>LPSTR</span><span class=p>)</span><span class=n>lookup_addr</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>      <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>      <span class=k>if</span> <span class=p>(</span><span class=n>function_handle</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=nf>ExitProcess</span><span class=p>(</span><span class=mi>255</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>      <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>      <span class=c1>// change the IAT, and put the function address inside.
+</span></span></span><span class=line><span class=cl><span class=c1></span>      <span class=n>address_table</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>u1</span><span class=p>.</span><span class=n>Function</span> <span class=o>=</span> <span class=p>(</span><span class=n>DWORD</span><span class=p>)</span><span class=n>function_handle</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>fix_base_reloc</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>p_image_base</span><span class=p>,</span> <span class=n>IMAGE_NT_HEADERS</span> <span class=o>*</span><span class=n>p_NT_headers</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>IMAGE_DATA_DIRECTORY</span> <span class=o>*</span><span class=n>data_directory</span> <span class=o>=</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>DataDirectory</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// this is how much we shifted the ImageBase
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>DWORD</span> <span class=n>delta_VA_reloc</span> <span class=o>=</span> <span class=p>((</span><span class=n>DWORD</span><span class=p>)</span><span class=n>p_image_base</span><span class=p>)</span> <span class=o>-</span> <span class=n>p_NT_headers</span><span class=o>-&gt;</span><span class=n>OptionalHeader</span><span class=p>.</span><span class=n>ImageBase</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// if there is a relocation table, and we actually shitfted the ImageBase
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=k>if</span> <span class=p>(</span><span class=n>data_directory</span><span class=p>[</span><span class=n>IMAGE_DIRECTORY_ENTRY_BASERELOC</span><span class=p>].</span><span class=n>VirtualAddress</span> <span class=o>!=</span> <span class=mi>0</span> <span class=o>&amp;&amp;</span> <span class=n>delta_VA_reloc</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=c1>// calculate the relocation table address
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=n>IMAGE_BASE_RELOCATION</span> <span class=o>*</span><span class=n>p_reloc</span> <span class=o>=</span>
+</span></span><span class=line><span class=cl>        <span class=p>(</span><span class=n>IMAGE_BASE_RELOCATION</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>data_directory</span><span class=p>[</span><span class=n>IMAGE_DIRECTORY_ENTRY_BASERELOC</span><span class=p>].</span><span class=n>VirtualAddress</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=c1>// once again, a null terminated array
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=k>while</span> <span class=p>(</span><span class=n>p_reloc</span><span class=o>-&gt;</span><span class=n>VirtualAddress</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>      <span class=c1>// how any relocation in this block
+</span></span></span><span class=line><span class=cl><span class=c1></span>      <span class=c1>// ie the total size, minus the size of the &#34;header&#34;, divided by 2 (those are words, so 2 bytes for each)
+</span></span></span><span class=line><span class=cl><span class=c1></span>      <span class=n>DWORD</span> <span class=n>size</span> <span class=o>=</span> <span class=p>(</span><span class=n>p_reloc</span><span class=o>-&gt;</span><span class=n>SizeOfBlock</span> <span class=o>-</span> <span class=k>sizeof</span><span class=p>(</span><span class=n>IMAGE_BASE_RELOCATION</span><span class=p>))</span> <span class=o>/</span> <span class=mi>2</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>      <span class=c1>// the first relocation element in the block, right after the header (using pointer arithmetic again)
+</span></span></span><span class=line><span class=cl><span class=c1></span>      <span class=n>WORD</span> <span class=o>*</span><span class=n>fixups</span> <span class=o>=</span> <span class=p>(</span><span class=n>WORD</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_reloc</span> <span class=o>+</span> <span class=mi>1</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>      <span class=k>for</span> <span class=p>(</span><span class=kt>size_t</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>size</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// type is the first 4 bits of the relocation word
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=kt>int</span> <span class=n>type</span> <span class=o>=</span> <span class=n>fixups</span><span class=p>[</span><span class=n>i</span><span class=p>]</span> <span class=o>&gt;&gt;</span> <span class=mi>12</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// offset is the last 12 bits
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=kt>int</span> <span class=n>offset</span> <span class=o>=</span> <span class=n>fixups</span><span class=p>[</span><span class=n>i</span><span class=p>]</span> <span class=o>&amp;</span> <span class=mh>0x0fff</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// this is the address we are going to change
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=n>DWORD</span> <span class=o>*</span><span class=n>change_addr</span> <span class=o>=</span> <span class=p>(</span><span class=n>DWORD</span> <span class=o>*</span><span class=p>)(</span><span class=n>p_image_base</span> <span class=o>+</span> <span class=n>p_reloc</span><span class=o>-&gt;</span><span class=n>VirtualAddress</span> <span class=o>+</span> <span class=n>offset</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=c1>// there is only one type used that needs to make a change
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=k>switch</span> <span class=p>(</span><span class=n>type</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=k>case</span> <span class=nl>IMAGE_REL_BASED_HIGHLOW</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>          <span class=o>*</span><span class=n>change_addr</span> <span class=o>+=</span> <span class=n>delta_VA_reloc</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>          <span class=k>break</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=k>default</span><span class=o>:</span>
+</span></span><span class=line><span class=cl>          <span class=k>break</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span>
+</span></span><span class=line><span class=cl>      <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>      <span class=c1>// switch to the next relocation block, based on the size
+</span></span></span><span class=line><span class=cl><span class=c1></span>      <span class=n>p_reloc</span> <span class=o>=</span> <span class=p>(</span><span class=n>IMAGE_BASE_RELOCATION</span> <span class=o>*</span><span class=p>)(((</span><span class=n>DWORD</span><span class=p>)</span><span class=n>p_reloc</span><span class=p>)</span> <span class=o>+</span> <span class=n>p_reloc</span><span class=o>-&gt;</span><span class=n>SizeOfBlock</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>int</span> <span class=nf>mystrcmp</span><span class=p>(</span><span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>str1</span><span class=p>,</span> <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>str2</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>while</span> <span class=p>(</span><span class=o>*</span><span class=n>str1</span> <span class=o>==</span> <span class=o>*</span><span class=n>str2</span> <span class=o>&amp;&amp;</span> <span class=o>*</span><span class=n>str1</span> <span class=o>!=</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>str1</span><span class=o>++</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=n>str2</span><span class=o>++</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=o>*</span><span class=n>str1</span> <span class=o>==</span> <span class=mi>0</span> <span class=o>&amp;&amp;</span> <span class=o>*</span><span class=n>str2</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>mymemcpy</span><span class=p>(</span><span class=kt>char</span> <span class=o>*</span><span class=n>dest</span><span class=p>,</span> <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>src</span><span class=p>,</span> <span class=kt>size_t</span> <span class=n>length</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(</span><span class=kt>size_t</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>length</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>dest</span><span class=p>[</span><span class=n>i</span><span class=p>]</span> <span class=o>=</span> <span class=n>src</span><span class=p>[</span><span class=n>i</span><span class=p>];</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>构建参数（CMAKE）</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=nb>add_executable</span><span class=p>(</span><span class=s>loader_2</span> <span class=s>WIN32</span> <span class=s>loader_2.c</span><span class=p>)</span><span class=err>
-</span><span class=err></span><span class=nb>target_compile_options</span><span class=p>(</span><span class=s>loader_2</span> <span class=s>PRIVATE</span> <span class=s>/GS-</span><span class=p>)</span><span class=err>
-</span><span class=err></span><span class=nb>target_link_options</span><span class=p>(</span><span class=s>loader_2</span> <span class=s>PRIVATE</span> <span class=s>/NODEFAULTLIB</span> <span class=s>/ENTRY:_start</span><span class=p>)</span><span class=err>
-</span></code></pre></td></tr></table>
-</div>
-</div><p>参数<code>/GS-</code>是为了避免在<code>/NODEFAULTLIB</code>下出现一些缓存区安全检查代码链接错误。参考<a class=link href="https://docs.microsoft.com/en-us/cpp/build/reference/gs-buffer-security-check?view=msvc-160" target=_blank rel=noopener>文档</a>。</p>
-<h2 id=0x02-加壳机>0x02 加壳机</h2>
-<p>相信已经发现了，上文并没有提到怎么把程序嵌入壳程序里。这是因为加壳并不是在壳程序编译时直接把文件嵌进去=，=虽然理论上来说也可以，但这里不讨论了。仅仅看加壳机加壳的场景吧。</p>
-<h3 id=21-加壳机原理>2.1 加壳机原理</h3>
-<p>加壳机做的事情包括：</p>
-<ul>
-<li>在 section table 里添加 section
-<ul>
-<li>根据 section table 和 file_alignment 决定如何分配空间</li>
-<li>根据 section_alignment 计算 virtual size</li>
-<li>根据上一个 section 大小和位置计算 virtual address</li>
-<li>填充 pointer_to_raw_data 和 size_of_raw_data</li>
-<li>设置合适的 characteristics</li>
-</ul>
-</li>
-<li>计算修改 number_of_sections</li>
-<li>计算修改 size_of_image</li>
-<li>计算修改 size_of_headers</li>
-</ul>
-<p>反正看起来就很麻烦，不过幸好操作 PE 文件的库不少，GitHub 搜一搜就有。这里用 <a class=link href=https://github.com/lief-project/LIEF target=_blank rel=noopener>LIEF</a> 这个库，操作蛮简单的。</p>
-<h3 id=22-源码>2.2 源码</h3>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=line><span class=cl><span class=nb>add_executable</span><span class=p>(</span><span class=s>loader_2</span> <span class=s>WIN32</span> <span class=s>loader_2.c</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>target_compile_options</span><span class=p>(</span><span class=s>loader_2</span> <span class=s>PRIVATE</span> <span class=s>/GS-</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>target_link_options</span><span class=p>(</span><span class=s>loader_2</span> <span class=s>PRIVATE</span> <span class=s>/NODEFAULTLIB</span> <span class=s>/ENTRY:_start</span><span class=p>)</span><span class=err>
+</span></span></span></code></pre></td></tr></table></div></div><p>参数<code>/GS-</code>是为了避免在<code>/NODEFAULTLIB</code>下出现一些缓存区安全检查代码链接错误。参考<a class=link href="https://docs.microsoft.com/en-us/cpp/build/reference/gs-buffer-security-check?view=msvc-160" target=_blank rel=noopener>文档</a>。</p><h2 id=0x02-加壳机>0x02 加壳机</h2><p>相信已经发现了，上文并没有提到怎么把程序嵌入壳程序里。这是因为加壳并不是在壳程序编译时直接把文件嵌进去=，=虽然理论上来说也可以，但这里不讨论了。仅仅看加壳机加壳的场景吧。</p><h3 id=21-加壳机原理>2.1 加壳机原理</h3><p>加壳机做的事情包括：</p><ul><li>在 section table 里添加 section<ul><li>根据 section table 和 file_alignment 决定如何分配空间</li><li>根据 section_alignment 计算 virtual size</li><li>根据上一个 section 大小和位置计算 virtual address</li><li>填充 pointer_to_raw_data 和 size_of_raw_data</li><li>设置合适的 characteristics</li></ul></li><li>计算修改 number_of_sections</li><li>计算修改 size_of_image</li><li>计算修改 size_of_headers</li></ul><p>反正看起来就很麻烦，不过幸好操作 PE 文件的库不少，GitHub 搜一搜就有。这里用 <a class=link href=https://github.com/lief-project/LIEF target=_blank rel=noopener>LIEF</a> 这个库，操作蛮简单的。</p><h3 id=22-源码>2.2 源码</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -621,57 +468,50 @@
 </span><span class=lnt>41
 </span><span class=lnt>42
 </span><span class=lnt>43
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;LIEF/LIEF.hpp&gt;</span><span class=cp>
-</span><span class=cp>#include</span> <span class=cpf>&lt;vector&gt;</span><span class=cp>
-</span><span class=cp></span>
-<span class=n>std</span><span class=o>::</span><span class=n>vector</span><span class=o>&lt;</span><span class=kt>uint8_t</span><span class=o>&gt;</span> <span class=n>read_file</span><span class=p>(</span><span class=k>const</span> <span class=n>std</span><span class=o>::</span><span class=n>string</span> <span class=o>&amp;</span><span class=n>path</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>auto</span> <span class=n>h</span> <span class=o>=</span> <span class=n>CreateFile</span><span class=p>(</span><span class=n>path</span><span class=p>.</span><span class=n>c_str</span><span class=p>(),</span> <span class=n>GENERIC_READ</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=k>nullptr</span><span class=p>,</span> <span class=n>OPEN_EXISTING</span><span class=p>,</span> <span class=n>FILE_ATTRIBUTE_NORMAL</span><span class=p>,</span> <span class=k>nullptr</span><span class=p>);</span>
-  <span class=n>DWORD</span> <span class=n>readbyte</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
-  <span class=k>auto</span> <span class=n>filesize</span> <span class=o>=</span> <span class=n>GetFileSize</span><span class=p>(</span><span class=n>h</span><span class=p>,</span> <span class=k>nullptr</span><span class=p>);</span>
-  <span class=k>auto</span> <span class=n>content</span> <span class=o>=</span> <span class=n>std</span><span class=o>::</span><span class=n>vector</span><span class=o>&lt;</span><span class=kt>uint8_t</span><span class=o>&gt;</span><span class=p>();</span>
-  <span class=n>content</span><span class=p>.</span><span class=n>resize</span><span class=p>(</span><span class=n>filesize</span><span class=p>,</span> <span class=mi>0</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(</span><span class=o>!</span><span class=n>ReadFile</span><span class=p>(</span><span class=n>h</span><span class=p>,</span> <span class=n>content</span><span class=p>.</span><span class=n>data</span><span class=p>(),</span> <span class=n>filesize</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>readbyte</span><span class=p>,</span> <span class=k>nullptr</span><span class=p>))</span> <span class=p>{</span>
-    <span class=n>abort</span><span class=p>();</span>
-  <span class=p>}</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>readbyte</span> <span class=o>!=</span> <span class=n>filesize</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>abort</span><span class=p>();</span>
-  <span class=p>}</span>
-
-  <span class=n>CloseHandle</span><span class=p>(</span><span class=n>h</span><span class=p>);</span>
-  <span class=k>return</span> <span class=n>content</span><span class=p>;</span>
-<span class=p>}</span>
-
-<span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>int</span> <span class=n>argc</span><span class=p>,</span> <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>argv</span><span class=p>[])</span> <span class=p>{</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>argc</span> <span class=o>&lt;</span> <span class=mi>3</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>printf</span><span class=p>(</span><span class=s>&#34;loader and program path are required&#34;</span><span class=p>);</span>
-    <span class=k>return</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
-  <span class=p>}</span>
-  <span class=k>auto</span> <span class=n>loader_path</span> <span class=o>=</span> <span class=n>argv</span><span class=p>[</span><span class=mi>1</span><span class=p>];</span>
-  <span class=k>auto</span> <span class=n>program_path</span> <span class=o>=</span> <span class=n>argv</span><span class=p>[</span><span class=mi>2</span><span class=p>];</span>
-  <span class=k>auto</span> <span class=n>loader_binary</span> <span class=o>=</span> <span class=n>LIEF</span><span class=o>::</span><span class=n>PE</span><span class=o>::</span><span class=n>Parser</span><span class=o>::</span><span class=n>parse</span><span class=p>(</span><span class=n>loader_path</span><span class=p>);</span>
-
-  <span class=c1>// LIEF 帮我们做了偏移计算之类的工作，这里就只用点逻辑，非常得银杏。
-</span><span class=c1></span>  <span class=k>auto</span> <span class=n>program_content</span> <span class=o>=</span> <span class=n>read_file</span><span class=p>(</span><span class=n>program_path</span><span class=p>);</span>
-  <span class=k>auto</span> <span class=n>packed_section</span> <span class=o>=</span> <span class=n>LIEF</span><span class=o>::</span><span class=n>PE</span><span class=o>::</span><span class=n>Section</span><span class=p>(</span><span class=s>&#34;.packed&#34;</span><span class=p>);</span> <span class=c1>// 新建 section
-</span><span class=c1></span>  <span class=n>packed_section</span><span class=p>.</span><span class=n>content</span><span class=p>(</span><span class=n>program_content</span><span class=p>);</span> <span class=c1>// 把被加载程序的内容当成 section 内容
-</span><span class=c1></span>  <span class=n>loader_binary</span><span class=o>-&gt;</span><span class=n>add_section</span><span class=p>(</span><span class=n>packed_section</span><span class=p>,</span> <span class=n>LIEF</span><span class=o>::</span><span class=n>PE</span><span class=o>::</span><span class=n>PE_SECTION_TYPES</span><span class=o>::</span><span class=n>DATA</span><span class=p>);</span> <span class=c1>// 把 section 添加到壳程序里
-</span><span class=c1></span>
-  <span class=c1>// 用 lief 实现把修改后的壳程序写入硬盘
-</span><span class=c1></span>  <span class=k>auto</span> <span class=n>builder</span> <span class=o>=</span> <span class=n>LIEF</span><span class=o>::</span><span class=n>PE</span><span class=o>::</span><span class=n>Builder</span><span class=o>::</span><span class=n>Builder</span><span class=p>(</span><span class=n>loader_binary</span><span class=p>.</span><span class=n>get</span><span class=p>());</span>
-  <span class=n>builder</span><span class=p>.</span><span class=n>build</span><span class=p>();</span>
-  <span class=n>builder</span><span class=p>.</span><span class=n>write</span><span class=p>(</span><span class=s>&#34;packed.exe&#34;</span><span class=p>);</span>
-
-  <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>编译指令（CMAKE）参考 <a class=link href=https://lief-project.github.io//doc/latest/installation.html#cmake-integration target=_blank rel=noopener>LIEF 文档</a>。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;Windows.h&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;LIEF/LIEF.hpp&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp>#include</span> <span class=cpf>&lt;vector&gt;</span><span class=cp>
+</span></span></span><span class=line><span class=cl><span class=cp></span>
+</span></span><span class=line><span class=cl><span class=n>std</span><span class=o>::</span><span class=n>vector</span><span class=o>&lt;</span><span class=kt>uint8_t</span><span class=o>&gt;</span> <span class=n>read_file</span><span class=p>(</span><span class=k>const</span> <span class=n>std</span><span class=o>::</span><span class=n>string</span> <span class=o>&amp;</span><span class=n>path</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>h</span> <span class=o>=</span> <span class=n>CreateFile</span><span class=p>(</span><span class=n>path</span><span class=p>.</span><span class=n>c_str</span><span class=p>(),</span> <span class=n>GENERIC_READ</span><span class=p>,</span> <span class=mi>0</span><span class=p>,</span> <span class=k>nullptr</span><span class=p>,</span> <span class=n>OPEN_EXISTING</span><span class=p>,</span> <span class=n>FILE_ATTRIBUTE_NORMAL</span><span class=p>,</span> <span class=k>nullptr</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=n>DWORD</span> <span class=n>readbyte</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>filesize</span> <span class=o>=</span> <span class=n>GetFileSize</span><span class=p>(</span><span class=n>h</span><span class=p>,</span> <span class=k>nullptr</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>content</span> <span class=o>=</span> <span class=n>std</span><span class=o>::</span><span class=n>vector</span><span class=o>&lt;</span><span class=kt>uint8_t</span><span class=o>&gt;</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=n>content</span><span class=p>.</span><span class=n>resize</span><span class=p>(</span><span class=n>filesize</span><span class=p>,</span> <span class=mi>0</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=o>!</span><span class=n>ReadFile</span><span class=p>(</span><span class=n>h</span><span class=p>,</span> <span class=n>content</span><span class=p>.</span><span class=n>data</span><span class=p>(),</span> <span class=n>filesize</span><span class=p>,</span> <span class=o>&amp;</span><span class=n>readbyte</span><span class=p>,</span> <span class=k>nullptr</span><span class=p>))</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>abort</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>readbyte</span> <span class=o>!=</span> <span class=n>filesize</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>abort</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=n>CloseHandle</span><span class=p>(</span><span class=n>h</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=n>content</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>int</span> <span class=n>argc</span><span class=p>,</span> <span class=k>const</span> <span class=kt>char</span> <span class=o>*</span><span class=n>argv</span><span class=p>[])</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>argc</span> <span class=o>&lt;</span> <span class=mi>3</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>printf</span><span class=p>(</span><span class=s>&#34;loader and program path are required&#34;</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>loader_path</span> <span class=o>=</span> <span class=n>argv</span><span class=p>[</span><span class=mi>1</span><span class=p>];</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>program_path</span> <span class=o>=</span> <span class=n>argv</span><span class=p>[</span><span class=mi>2</span><span class=p>];</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>loader_binary</span> <span class=o>=</span> <span class=n>LIEF</span><span class=o>::</span><span class=n>PE</span><span class=o>::</span><span class=n>Parser</span><span class=o>::</span><span class=n>parse</span><span class=p>(</span><span class=n>loader_path</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=c1>// LIEF 帮我们做了偏移计算之类的工作，这里就只用点逻辑，非常得银杏。
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=k>auto</span> <span class=n>program_content</span> <span class=o>=</span> <span class=n>read_file</span><span class=p>(</span><span class=n>program_path</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>packed_section</span> <span class=o>=</span> <span class=n>LIEF</span><span class=o>::</span><span class=n>PE</span><span class=o>::</span><span class=n>Section</span><span class=p>(</span><span class=s>&#34;.packed&#34;</span><span class=p>);</span> <span class=c1>// 新建 section
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>packed_section</span><span class=p>.</span><span class=n>content</span><span class=p>(</span><span class=n>program_content</span><span class=p>);</span> <span class=c1>// 把被加载程序的内容当成 section 内容
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>loader_binary</span><span class=o>-&gt;</span><span class=n>add_section</span><span class=p>(</span><span class=n>packed_section</span><span class=p>,</span> <span class=n>LIEF</span><span class=o>::</span><span class=n>PE</span><span class=o>::</span><span class=n>PE_SECTION_TYPES</span><span class=o>::</span><span class=n>DATA</span><span class=p>);</span> <span class=c1>// 把 section 添加到壳程序里
+</span></span></span><span class=line><span class=cl><span class=c1></span>
+</span></span><span class=line><span class=cl>  <span class=c1>// 用 lief 实现把修改后的壳程序写入硬盘
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=k>auto</span> <span class=n>builder</span> <span class=o>=</span> <span class=n>LIEF</span><span class=o>::</span><span class=n>PE</span><span class=o>::</span><span class=n>Builder</span><span class=o>::</span><span class=n>Builder</span><span class=p>(</span><span class=n>loader_binary</span><span class=p>.</span><span class=n>get</span><span class=p>());</span>
+</span></span><span class=line><span class=cl>  <span class=n>builder</span><span class=p>.</span><span class=n>build</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=n>builder</span><span class=p>.</span><span class=n>write</span><span class=p>(</span><span class=s>&#34;packed.exe&#34;</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>编译指令（CMAKE）参考 <a class=link href=https://lief-project.github.io//doc/latest/installation.html#cmake-integration target=_blank rel=noopener>LIEF 文档</a>。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -693,200 +533,38 @@
 </span><span class=lnt>20
 </span><span class=lnt>21
 </span><span class=lnt>22
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=c># Custom path to the LIEF install directory
-</span><span class=c></span><span class=nb>set</span><span class=p>(</span><span class=s>LIEF_DIR</span> <span class=s>CACHE</span> <span class=s>PATH</span> <span class=o>${</span><span class=nv>CMAKE_INSTALL_PREFIX</span><span class=o>}</span><span class=p>)</span><span class=err>
-</span><span class=err>
-</span><span class=err></span><span class=c># Directory to &#39;FindLIEF.cmake&#39;
-</span><span class=c></span><span class=nb>list</span><span class=p>(</span><span class=s>APPEND</span> <span class=s>CMAKE_MODULE_PATH</span> <span class=o>${</span><span class=nv>LIEF_DIR</span><span class=o>}</span><span class=s>/share/LIEF/cmake</span><span class=p>)</span><span class=err>
-</span><span class=err>
-</span><span class=err></span><span class=c># include &#39;FindLIEF.cmake&#39;
-</span><span class=c></span><span class=nb>include</span><span class=p>(</span><span class=s>FindLIEF</span><span class=p>)</span><span class=err>
-</span><span class=err>
-</span><span class=err></span><span class=c># Find LIEF
-</span><span class=c></span><span class=nb>find_package</span><span class=p>(</span><span class=s>LIEF</span> <span class=s>REQUIRED</span> <span class=s>COMPONENTS</span> <span class=s>STATIC</span><span class=p>)</span> <span class=c># COMPONENTS: &lt;SHARED | STATIC&gt; - Default: STATIC
-</span><span class=c></span><span class=err>
-</span><span class=err></span><span class=nb>add_executable</span><span class=p>(</span><span class=s>packer</span> <span class=s>packer.cpp</span><span class=p>)</span><span class=err>
-</span><span class=err></span><span class=nb>if</span><span class=p>(</span><span class=s>MSVC</span><span class=p>)</span><span class=err>
-</span><span class=err></span>	<span class=nb>target_compile_options</span><span class=p>(</span><span class=s>packer</span> <span class=s>PRIVATE</span> <span class=s>/FIiso646.h</span> <span class=s>/MT</span><span class=p>)</span><span class=err>
-</span><span class=err></span>	<span class=nb>set_property</span><span class=p>(</span><span class=s>TARGET</span> <span class=s>packer</span> <span class=s>PROPERTY</span> <span class=s>LINK_FLAGS</span> <span class=s>/NODEFAULTLIB:MSVCRT</span><span class=p>)</span><span class=err>
-</span><span class=err></span><span class=nb>endif</span><span class=p>()</span><span class=err>
-</span><span class=err></span><span class=nb>target_include_directories</span><span class=p>(</span><span class=s>packer</span> <span class=s>PRIVATE</span> <span class=o>${</span><span class=nv>LIEF_INCLUDE_DIRS</span><span class=o>}</span><span class=p>)</span><span class=err>
-</span><span class=err></span><span class=nb>set_property</span><span class=p>(</span><span class=s>TARGET</span> <span class=s>packer</span>
-			<span class=s>PROPERTY</span> <span class=s>CXX_STANDARD</span> <span class=s>11</span>
-			<span class=s>PROPERTY</span> <span class=s>CXX_STANDARD_REQUIRED</span> <span class=s>ON</span><span class=p>)</span><span class=err>
-</span><span class=err></span><span class=nb>target_link_libraries</span><span class=p>(</span><span class=s>packer</span> <span class=s>PRIVATE</span> <span class=o>${</span><span class=nv>LIEF_LIBRARIES</span><span class=o>}</span><span class=p>)</span><span class=err>
-</span></code></pre></td></tr></table>
-</div>
-</div><p>我要顺便一提，LIEF有python包，但那玩意儿不知道为啥赋值content一直报 not supported，没解决。就干脆拿 c++ 写了。论简单快捷还是要看 python 版本的。</p>
-<h2 id=结论>结论</h2>
-<p>加壳程序反而平平无奇，正印证了那句台下功夫。</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-cmake data-lang=cmake><span class=line><span class=cl><span class=c># Custom path to the LIEF install directory
+</span></span></span><span class=line><span class=cl><span class=c></span><span class=nb>set</span><span class=p>(</span><span class=s>LIEF_DIR</span> <span class=s>CACHE</span> <span class=s>PATH</span> <span class=o>${</span><span class=nv>CMAKE_INSTALL_PREFIX</span><span class=o>}</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=c># Directory to &#39;FindLIEF.cmake&#39;
+</span></span></span><span class=line><span class=cl><span class=c></span><span class=nb>list</span><span class=p>(</span><span class=s>APPEND</span> <span class=s>CMAKE_MODULE_PATH</span> <span class=o>${</span><span class=nv>LIEF_DIR</span><span class=o>}</span><span class=s>/share/LIEF/cmake</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=c># include &#39;FindLIEF.cmake&#39;
+</span></span></span><span class=line><span class=cl><span class=c></span><span class=nb>include</span><span class=p>(</span><span class=s>FindLIEF</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=c># Find LIEF
+</span></span></span><span class=line><span class=cl><span class=c></span><span class=nb>find_package</span><span class=p>(</span><span class=s>LIEF</span> <span class=s>REQUIRED</span> <span class=s>COMPONENTS</span> <span class=s>STATIC</span><span class=p>)</span> <span class=c># COMPONENTS: &lt;SHARED | STATIC&gt; - Default: STATIC
+</span></span></span><span class=line><span class=cl><span class=c></span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>add_executable</span><span class=p>(</span><span class=s>packer</span> <span class=s>packer.cpp</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>if</span><span class=p>(</span><span class=s>MSVC</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span>	<span class=nb>target_compile_options</span><span class=p>(</span><span class=s>packer</span> <span class=s>PRIVATE</span> <span class=s>/FIiso646.h</span> <span class=s>/MT</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span>	<span class=nb>set_property</span><span class=p>(</span><span class=s>TARGET</span> <span class=s>packer</span> <span class=s>PROPERTY</span> <span class=s>LINK_FLAGS</span> <span class=s>/NODEFAULTLIB:MSVCRT</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>endif</span><span class=p>()</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>target_include_directories</span><span class=p>(</span><span class=s>packer</span> <span class=s>PRIVATE</span> <span class=o>${</span><span class=nv>LIEF_INCLUDE_DIRS</span><span class=o>}</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>set_property</span><span class=p>(</span><span class=s>TARGET</span> <span class=s>packer</span>
+</span></span><span class=line><span class=cl>			<span class=s>PROPERTY</span> <span class=s>CXX_STANDARD</span> <span class=s>11</span>
+</span></span><span class=line><span class=cl>			<span class=s>PROPERTY</span> <span class=s>CXX_STANDARD_REQUIRED</span> <span class=s>ON</span><span class=p>)</span><span class=err>
+</span></span></span><span class=line><span class=cl><span class=err></span><span class=nb>target_link_libraries</span><span class=p>(</span><span class=s>packer</span> <span class=s>PRIVATE</span> <span class=o>${</span><span class=nv>LIEF_LIBRARIES</span><span class=o>}</span><span class=p>)</span><span class=err>
+</span></span></span></code></pre></td></tr></table></div></div><p>我要顺便一提，LIEF有python包，但那玩意儿不知道为啥赋值content一直报 not supported，没解决。就干脆拿 c++ 写了。论简单快捷还是要看 python 版本的。</p><h2 id=结论>结论</h2><p>加壳程序反而平平无奇，正印证了那句台下功夫。</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
 <a href=/blog/tags/%E6%B1%87%E7%BC%96/>汇编</a>
 <a href=/blog/tags/windows/>windows</a>
 <a href=/blog/tags/security/>security</a>
-<a href=/blog/tags/binary-analysis/>binary-analysis</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article class=has-image>
-<a href=/blog/p/learning-packer-08/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理08：混淆技术入门</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-07/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理07 - 花指令入门</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-06/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理06：反调试技术入门</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理04 - zlib压缩壳案例</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-03-support-no-relocations/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-03-support-no-relocations/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序" data-key=learning-packer-03-support-no-relocations data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理03 - 支持没有重定位的程序</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+<a href=/blog/tags/binary-analysis/>binary-analysis</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article class=has-image><a href=/blog/p/learning-packer-08/><div class=article-image><img src=/blog/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理08：混淆技术入门</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-07/><div class=article-image><img src=/blog/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理07 - 花指令入门</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-06/><div class=article-image><img src=/blog/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理06：反调试技术入门</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/><div class=article-image><img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例" data-key=learning-packer-04-zlib-compression-packer-demo data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理04 - zlib压缩壳案例</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-03-support-no-relocations/><div class=article-image><img src=/blog/p/learning-packer-03-support-no-relocations/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序" data-key=learning-packer-03-support-no-relocations data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理03 - 支持没有重定位的程序</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#0x01-壳程序>0x01 壳程序</a>
-<ol>
-<li><a href=#11-思路>1.1 思路</a></li>
-<li><a href=#12--壳实现>1.2 壳实现</a></li>
-</ol>
-</li>
-<li><a href=#0x02-加壳机>0x02 加壳机</a>
-<ol>
-<li><a href=#21-加壳机原理>2.1 加壳机原理</a></li>
-<li><a href=#22-源码>2.2 源码</a></li>
-</ol>
-</li>
-<li><a href=#结论>结论</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#前言>前言</a></li><li><a href=#0x01-壳程序>0x01 壳程序</a><ol><li><a href=#11-思路>1.1 思路</a></li><li><a href=#12--壳实现>1.2 壳实现</a></li></ol></li><li><a href=#0x02-加壳机>0x02 加壳机</a><ol><li><a href=#21-加壳机原理>2.1 加壳机原理</a></li><li><a href=#22-源码>2.2 源码</a></li></ol></li><li><a href=#结论>结论</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

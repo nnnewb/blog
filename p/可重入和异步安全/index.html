@@ -1,142 +1,19 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。 可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具"><title>可重入和异步安全</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。 可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具"><title>可重入和异步安全</title><link rel=canonical href=https://nnnewb.github.io/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="可重入和异步安全">
-<meta property="og:description" content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。 可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="c++"><meta property="article:tag" content="并发"><meta property="article:published_time" content="2018-06-24T22:48:00+08:00"><meta property="article:modified_time" content="2018-06-24T22:48:00+08:00">
-<meta name=twitter:title content="可重入和异步安全">
-<meta name=twitter:description content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。 可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/c++/>
-c++
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/>可重入和异步安全</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2018-06-24T22:48:00+08:00>2018年 6月 24日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 7 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<p>这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。</p>
-<h2 id=可重入性>可重入性</h2>
-<p>在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具体定义可能有所不同。这里聊的是 C++语言中的可重入性。</p>
-<p>所谓可重入性（<code>reetrant</code>），指的是同时具备<strong>并发安全</strong>和<strong>中断安全</strong>的特征，这是目前为止我对可重入性的认识，也是这篇博客在写下时给可重入性下的定义。</p>
-<p>这个认知可能并不准确，因为在<a class=link href=https://zh.wikipedia.org/wiki/%E5%8F%AF%E9%87%8D%E5%85%A5 target=_blank rel=noopener>wiki</a>上的定义是这样的。</p>
-<blockquote>
-<p>若一个程序或子程序可以「在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错」，则称其为可重入（reentrant 或 re-entrant）的。即当该子程序正在运行时，执行线程可以再次进入并执行它，仍然获得符合設計時預期的结果。与多线程并发执行的线程安全不同，可重入强调对单个线程执行时重新进入同一个子程序仍然是安全的。</p>
-</blockquote>
-<p>但是在很多中文博客里，聊到可重入性的时候往往也会把并发安全混为一谈。实际上来说的话&mldr;&mldr;一个可重入的函数，常常也是并发安全的。</p>
-<p>那么先从并发安全讲起吧。</p>
-<h2 id=并发安全性和可重入性>并发安全性和可重入性</h2>
-<p>所谓并发安全已经是老生常谈了。</p>
-<p>以一段非常简单的代码为例，我们打算初始化一个对象，这个对象被两个线程共享。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="可重入和异步安全"><meta property="og:description" content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。 可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具"><meta property="og:url" content="https://nnnewb.github.io/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="c++"><meta property="article:tag" content="并发"><meta property="article:published_time" content="2018-06-24T22:48:00+08:00"><meta property="article:modified_time" content="2018-06-24T22:48:00+08:00"><meta name=twitter:title content="可重入和异步安全"><meta name=twitter:description content="这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。 可重入性 在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/c++/>c++</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/%E5%8F%AF%E9%87%8D%E5%85%A5%E5%92%8C%E5%BC%82%E6%AD%A5%E5%AE%89%E5%85%A8/>可重入和异步安全</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2018-06-24T22:48:00+08:00>2018年 6月 24日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 7 分钟</time></div></footer></div></header><section class=article-content><p>这篇博客主要记录的是关于可重入性的相关定义，以及关于并发安全的思考。</p><h2 id=可重入性>可重入性</h2><p>在不同语言中，由于语言标准以及运行期环境规定的不同，可重入性的具体定义可能有所不同。这里聊的是 C++语言中的可重入性。</p><p>所谓可重入性（<code>reetrant</code>），指的是同时具备<strong>并发安全</strong>和<strong>中断安全</strong>的特征，这是目前为止我对可重入性的认识，也是这篇博客在写下时给可重入性下的定义。</p><p>这个认知可能并不准确，因为在<a class=link href=https://zh.wikipedia.org/wiki/%E5%8F%AF%E9%87%8D%E5%85%A5 target=_blank rel=noopener>wiki</a>上的定义是这样的。</p><blockquote><p>若一个程序或子程序可以「在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错」，则称其为可重入（reentrant 或 re-entrant）的。即当该子程序正在运行时，执行线程可以再次进入并执行它，仍然获得符合設計時預期的结果。与多线程并发执行的线程安全不同，可重入强调对单个线程执行时重新进入同一个子程序仍然是安全的。</p></blockquote><p>但是在很多中文博客里，聊到可重入性的时候往往也会把并发安全混为一谈。实际上来说的话&mldr;&mldr;一个可重入的函数，常常也是并发安全的。</p><p>那么先从并发安全讲起吧。</p><h2 id=并发安全性和可重入性>并发安全性和可重入性</h2><p>所谓并发安全已经是老生常谈了。</p><p>以一段非常简单的代码为例，我们打算初始化一个对象，这个对象被两个线程共享。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
-    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>显而易见，如果线程在执行到特定环节时发生了切换</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=line><span class=cl><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>显而易见，如果线程在执行到特定环节时发生了切换</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -146,31 +23,17 @@ c++
 </span><span class=lnt> 8
 </span><span class=lnt> 9
 </span><span class=lnt>10
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
-    <span class=c1>// &lt;-------- 线程切换
-</span><span class=c1></span>    <span class=c1>// 线程2() {
-</span><span class=c1></span>    <span class=c1>// initialize(something);
-</span><span class=c1></span>    <span class=c1>// }
-</span><span class=c1></span>    <span class=c1>// 线程切换 ---------&gt;
-</span><span class=c1></span>    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>那么 <code>createSomeShit</code>这段代码就会被执行两次。</p>
-<p>显然这和我们预期的行为不符。</p>
-<p>这里要聊的不是并发，而是&mldr;&mldr;可重入性。所以我们再看看这个函数能否被重入。</p>
-<p>按照 wiki 提供的定义，函数可重入指的是</p>
-<blockquote>
-<p>在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错。</p>
-</blockquote>
-<p>符合吗？不。为什么？因为同样在那个线程切换的位置上中断，然后再另一段代码里再次执行这个函数，也会触发同样的问题，导致<code>createSomeShit</code>被执行两次。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=line><span class=cl><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// &lt;-------- 线程切换
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>// 线程2() {
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>// initialize(something);
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>// }
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>// 线程切换 ---------&gt;
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>那么 <code>createSomeShit</code>这段代码就会被执行两次。</p><p>显然这和我们预期的行为不符。</p><p>这里要聊的不是并发，而是&mldr;&mldr;可重入性。所以我们再看看这个函数能否被重入。</p><p>按照 wiki 提供的定义，函数可重入指的是</p><blockquote><p>在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错。</p></blockquote><p>符合吗？不。为什么？因为同样在那个线程切换的位置上中断，然后再另一段代码里再次执行这个函数，也会触发同样的问题，导致<code>createSomeShit</code>被执行两次。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -180,50 +43,29 @@ c++
 </span><span class=lnt> 8
 </span><span class=lnt> 9
 </span><span class=lnt>10
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
-  <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
-    <span class=c1>// &lt;-------- 被中断
-</span><span class=c1></span>    <span class=c1>// 中断处理函数() {
-</span><span class=c1></span>    <span class=c1>//   initialize(something);
-</span><span class=c1></span>    <span class=c1>// }
-</span><span class=c1></span>    <span class=c1>// 中断结束 --------
-</span><span class=c1></span>    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>可以看出，那些线程不安全的代码，都是不可重入的。</p>
-<p>那么，线程安全的代码，就一定是可重入的吗？</p>
-<h2 id=中断安全性或者叫信号安全性>中断安全性，或者叫信号安全性</h2>
-<p>中断这个东西对其他编程语言的用户来说可能会少见一些，在 C/C++语言里，中断并不是什么新鲜话题。</p>
-<p>在 C 标准库中，规定了一系列的信号和信号处理方法。关于信号的定义可以参考<a class=link href=https://zh.cppreference.com/w/c/program/signal target=_blank rel=noopener>这个</a>。</p>
-<p>当进程接收到信号的时候，当前正在执行的代码就会被中断——注意了，这回，锁救不了你。</p>
-<p>在 C/C++中，中断处理是由一个函数进行。在函数里可能会调用到中断时正在执行的函数。那么问题来了——一个线程安全的函数，是中断安全的函数吗？</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=line><span class=cl><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// &lt;-------- 被中断
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>// 中断处理函数() {
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>//   initialize(something);
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>// }
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>// 中断结束 --------
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>可以看出，那些线程不安全的代码，都是不可重入的。</p><p>那么，线程安全的代码，就一定是可重入的吗？</p><h2 id=中断安全性或者叫信号安全性>中断安全性，或者叫信号安全性</h2><p>中断这个东西对其他编程语言的用户来说可能会少见一些，在 C/C++语言里，中断并不是什么新鲜话题。</p><p>在 C 标准库中，规定了一系列的信号和信号处理方法。关于信号的定义可以参考<a class=link href=https://zh.cppreference.com/w/c/program/signal target=_blank rel=noopener>这个</a>。</p><p>当进程接收到信号的时候，当前正在执行的代码就会被中断——注意了，这回，锁救不了你。</p><p>在 C/C++中，中断处理是由一个函数进行。在函数里可能会调用到中断时正在执行的函数。那么问题来了——一个线程安全的函数，是中断安全的函数吗？</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>,</span> <span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&amp;</span> <span class=n>realshit</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
-  <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
-    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>看上去岁月静好~一切线程切换的问题，都被那句<code>std::lock_guard&lt;std::mutex>(realshit)</code>给挡在了墙的另一边。</p>
-<p>但是&mldr;&mldr;</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=line><span class=cl><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>,</span> <span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&amp;</span> <span class=n>realshit</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>看上去岁月静好~一切线程切换的问题，都被那句<code>std::lock_guard&lt;std::mutex>(realshit)</code>给挡在了墙的另一边。</p><p>但是&mldr;&mldr;</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -236,54 +78,26 @@ c++
 </span><span class=lnt>11
 </span><span class=lnt>12
 </span><span class=lnt>13
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>,</span> <span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&amp;</span> <span class=n>realshit</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
-  <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
-    <span class=c1>// &lt;----- 调皮的用户按下了 Ctrl-C
-</span><span class=c1></span>    <span class=c1>// 中断处理函数() {
-</span><span class=c1></span>    <span class=c1>//   initialize(someshit, realshit);
-</span><span class=c1></span>    <span class=c1>//   // inside initialize {
-</span><span class=c1></span>    <span class=c1>//   //   std::lock_guard&lt;std::mutex&gt;(realshit); // DEAD LOCK
-</span><span class=c1></span>    <span class=c1>//   // }
-</span><span class=c1></span>    <span class=c1>// }
-</span><span class=c1></span>    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
-  <span class=p>}</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>看这里~</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=line><span class=cl><span class=kt>void</span> <span class=nf>initialize</span><span class=p>(</span><span class=n>Something</span><span class=o>**</span> <span class=n>someshit</span><span class=p>,</span> <span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&amp;</span> <span class=n>realshit</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span><span class=p>(</span><span class=o>!*</span><span class=n>someshit</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// &lt;----- 调皮的用户按下了 Ctrl-C
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>// 中断处理函数() {
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>//   initialize(someshit, realshit);
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>//   // inside initialize {
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>//   //   std::lock_guard&lt;std::mutex&gt;(realshit); // DEAD LOCK
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>//   // }
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=c1>// }
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=o>*</span><span class=n>someshit</span> <span class=o>=</span> <span class=n>createSomeShit</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>看这里~</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
-<span class=c1>// 进入信号处理
-</span><span class=c1></span><span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>好了，GG。死锁在这个时候发生了。</p>
-<p>经验丰富的大佬可能注意到了，咱还可以用<code>std::recursive_mutex</code>啊！</p>
-<p>这里就要提到一个很遗憾的问题了：C/C++的语言标准给了哪些保证。</p>
-<p>C 对信号处理函数的定义很粗暴，除了<code>abort</code>、<code>_Exit</code>、<code>quick_exit</code>、<code>signal</code>、<code>stdatomic.h的免锁原子函数</code>、<code>atomic_is_lock_free与任何类型的原子参数</code>这些函数以外，任何标准库函数的调用，行为都是未定义的。</p>
-<p>C++对信号处理函数的定义则更加复杂，限制比之 C 更加严格。毕竟标准库要庞大得多&mldr;&mldr;也不是不能理解。</p>
-<p>标准中有个一个地方的描述很微妙：<strong>&mldr;&mldr;免锁的</strong>。</p>
-<p>换言之，谁又保证了信号处理函数必然和你希望的那个线程是同一个线程呢？</p>
-<p><code>std::recursive_mutex</code>的实现依赖于平台提供的系统 API，反正我没有找到语言标准中相关的规定要求信号处理函数必须和<code>main</code>函数在同一个线程，所以我认为这是平台相关的问题：这样的代码是<strong>不可移植的</strong>。</p>
-<p>按照设计模式原则，我们是面向接口——也就是标准文档编程，而不是面对实现——Visual C++、GCC、MinGW 或者哪个中东土豪在未来某天突发奇想送我一台 MIPS 的超算的话。</p>
-<p>到业务层面的话会更灵活一些——反正我只在某环境下跑，等公司什么时候全面换平台了，咱再能改则改，改不了就跑路。</p>
-<h2 id=递归函数和可重入>递归函数和可重入</h2>
-<p>递归和重入有一定的相似性，但又有所不同。</p>
-<p>一个递归函数，直觉上来讲，好像应该是可重入的：因为它要调用自己。</p>
-<p>那么&mldr;&mldr;事实上呢？</p>
-<p>写个比较骚的递归删除链表节点的例子。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=line><span class=cl><span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=c1>// 进入信号处理
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=n>std</span><span class=o>::</span><span class=n>lock_guard</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>mutex</span><span class=o>&gt;</span><span class=p>(</span><span class=n>realshit</span><span class=p>);</span>
+</span></span></code></pre></td></tr></table></div></div><p>好了，GG。死锁在这个时候发生了。</p><p>经验丰富的大佬可能注意到了，咱还可以用<code>std::recursive_mutex</code>啊！</p><p>这里就要提到一个很遗憾的问题了：C/C++的语言标准给了哪些保证。</p><p>C 对信号处理函数的定义很粗暴，除了<code>abort</code>、<code>_Exit</code>、<code>quick_exit</code>、<code>signal</code>、<code>stdatomic.h的免锁原子函数</code>、<code>atomic_is_lock_free与任何类型的原子参数</code>这些函数以外，任何标准库函数的调用，行为都是未定义的。</p><p>C++对信号处理函数的定义则更加复杂，限制比之 C 更加严格。毕竟标准库要庞大得多&mldr;&mldr;也不是不能理解。</p><p>标准中有个一个地方的描述很微妙：<strong>&mldr;&mldr;免锁的</strong>。</p><p>换言之，谁又保证了信号处理函数必然和你希望的那个线程是同一个线程呢？</p><p><code>std::recursive_mutex</code>的实现依赖于平台提供的系统 API，反正我没有找到语言标准中相关的规定要求信号处理函数必须和<code>main</code>函数在同一个线程，所以我认为这是平台相关的问题：这样的代码是<strong>不可移植的</strong>。</p><p>按照设计模式原则，我们是面向接口——也就是标准文档编程，而不是面对实现——Visual C++、GCC、MinGW 或者哪个中东土豪在未来某天突发奇想送我一台 MIPS 的超算的话。</p><p>到业务层面的话会更灵活一些——反正我只在某环境下跑，等公司什么时候全面换平台了，咱再能改则改，改不了就跑路。</p><h2 id=递归函数和可重入>递归函数和可重入</h2><p>递归和重入有一定的相似性，但又有所不同。</p><p>一个递归函数，直觉上来讲，好像应该是可重入的：因为它要调用自己。</p><p>那么&mldr;&mldr;事实上呢？</p><p>写个比较骚的递归删除链表节点的例子。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -293,183 +107,23 @@ c++
 </span><span class=lnt> 8
 </span><span class=lnt> 9
 </span><span class=lnt>10
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=kt>void</span> <span class=nf>removeNode</span><span class=p>(</span><span class=n>Node</span><span class=o>*</span> <span class=n>node</span><span class=p>,</span> <span class=kt>int</span> <span class=n>length</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>Node</span><span class=o>*</span> <span class=n>tmp</span> <span class=o>=</span> <span class=n>node</span><span class=p>.</span><span class=n>prev</span><span class=p>;</span>
-  <span class=n>node</span><span class=p>.</span><span class=n>next</span><span class=p>.</span><span class=n>prev</span> <span class=o>=</span> <span class=n>tmp</span><span class=p>;</span>
-  <span class=c1>// &lt;------ 出现了！中断兽！
-</span><span class=c1></span>  <span class=c1>// 不用看了，Node之间的联结已经被破坏了
-</span><span class=c1></span>  <span class=c1>// 离开了！中断兽！--------&gt;
-</span><span class=c1></span>  <span class=n>tmp</span><span class=p>.</span><span class=n>next</span> <span class=o>=</span> <span class=n>node</span><span class=p>.</span><span class=n>next</span><span class=p>;</span>
-  <span class=n>freeNode</span><span class=p>(</span><span class=n>node</span><span class=p>);</span>
-  <span class=n>removeNode</span><span class=p>(</span><span class=n>tmp</span><span class=p>.</span><span class=n>next</span><span class=p>,</span> <span class=n>length</span><span class=o>-</span><span class=mi>1</span><span class=p>);</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>轻易地否定了递归函数=可重入函数的直觉想法。</p>
-<p>深究下去，又到了线程安全——然后是死锁——然后提出了<code>std::recursive_mutex</code>或者其他类似的操作——最后走到平台相关的 API 和保证——失去可移植性。</p>
-<p>为什么我一直在提可移植性？</p>
-<p>emmmm，大概是装逼如风，常伴吾身吧。</p>
-<h2 id=标准库好烦人啊>标准库好烦人啊</h2>
-<p>C/C++语言的标准库是出了名的——但不是好的方面，而是他们总在修修补补又一年。</p>
-<p>C 标准库还好说——毕竟语言本身没啥特性，全靠各种平台提供 API 撑着。标准库改来改去也只是割个双眼皮的程度。</p>
-<p>C++要更骚气一些，每隔几年就整个容，简直不给人活路。</p>
-<p>就中断安全来说，虽然不知道内部怎么实现的，但是&mldr;&mldr;printf 这样的函数在信号处理函数里调用的话，也算是未定义行为。</p>
-<p>认输吧，你是斗不过标准的。该依赖平台行为的时候，就去依赖平台行为吧。</p>
-<h2 id=文档引用>文档引用</h2>
-<p>懒得找原文，直接看 cppreference 对 signal 的说法就好。有兴趣的话可以找又臭又长的<a class=link href=http://www.open-std.org/JTC1/SC22/WG14/www/docs/n1570.pdf target=_blank rel=noopener>WG14 - N1570 - C11</a>，还有<a class=link href=http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf target=_blank rel=noopener>WG21 - N4659 - C++17</a>这两本标准文档。</p>
-<h2 id=尾声>尾声</h2>
-<p>于是这会儿就到了其他各种语言的用户惯例吐槽的时候：</p>
-<blockquote>
-<p>&mldr;大佬是公司里唯一用 C++写代码的人。他对人说话，总是满口“目标平台”、“标准”、“可移植性”之类的话，叫人半懂不懂的。因为他总是说“C++天下第一！”，别人便从他说的那些半懂不懂的话里，替他取下个绰号，叫 C++大神。</p>
-<p>C++大神一到公司里，程序员们便看着他笑，有的叫道：“C++大神，你的代码又编译出错了！”</p>
-<p>他不回答，对前台说：“倒上特浓的咖啡，今天也要加班到夜里。”便拿出员工卡。程序员们又高声叫嚷道：“你一定又用上新标准了吧？”</p>
-<p>C++大神睁大眼睛说，“你怎么凭空污人清白！”</p>
-<p>“什么清白？我前天亲眼看见你的代码编译报了错，整整十几 MB 的日志！”</p>
-<p>C++大神便涨红了脸，额上的青筋条条绽出，争辩道，“编译器报错怎么能叫错&mldr;&mldr;C++&mldr;&mldr;编译器不支持，那能算错么？”</p>
-<p>接连便是难懂的话，什么“CONCEPT 还不加入标准”、“未定义行为就该是编译错误”、“SFINAE 就是给编译器开洞”、“boost 大法好，天灭 std::experimental”，引得众人都哄笑起来：店内外充满了快活的空气。</p>
-</blockquote>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/c++/>c++</a>
-<a href=/blog/tags/%E5%B9%B6%E5%8F%91/>并发</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>分支预测对执行效率和安全的影响</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/cpu-cache-page-fault-and-false-sharing/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>CPU缓存、缺页和伪共享</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/how-to-compile-lief-on-windows/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>编译LIEF的各种姿势</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>在C++中嵌入Python解释器</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/gamehollywood-%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>GameHollywood 面试笔记</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-C++ data-lang=C++><span class=line><span class=cl><span class=kt>void</span> <span class=nf>removeNode</span><span class=p>(</span><span class=n>Node</span><span class=o>*</span> <span class=n>node</span><span class=p>,</span> <span class=kt>int</span> <span class=n>length</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>Node</span><span class=o>*</span> <span class=n>tmp</span> <span class=o>=</span> <span class=n>node</span><span class=p>.</span><span class=n>prev</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>node</span><span class=p>.</span><span class=n>next</span><span class=p>.</span><span class=n>prev</span> <span class=o>=</span> <span class=n>tmp</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=c1>// &lt;------ 出现了！中断兽！
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=c1>// 不用看了，Node之间的联结已经被破坏了
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=c1>// 离开了！中断兽！--------&gt;
+</span></span></span><span class=line><span class=cl><span class=c1></span>  <span class=n>tmp</span><span class=p>.</span><span class=n>next</span> <span class=o>=</span> <span class=n>node</span><span class=p>.</span><span class=n>next</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>freeNode</span><span class=p>(</span><span class=n>node</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=n>removeNode</span><span class=p>(</span><span class=n>tmp</span><span class=p>.</span><span class=n>next</span><span class=p>,</span> <span class=n>length</span><span class=o>-</span><span class=mi>1</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>轻易地否定了递归函数=可重入函数的直觉想法。</p><p>深究下去，又到了线程安全——然后是死锁——然后提出了<code>std::recursive_mutex</code>或者其他类似的操作——最后走到平台相关的 API 和保证——失去可移植性。</p><p>为什么我一直在提可移植性？</p><p>emmmm，大概是装逼如风，常伴吾身吧。</p><h2 id=标准库好烦人啊>标准库好烦人啊</h2><p>C/C++语言的标准库是出了名的——但不是好的方面，而是他们总在修修补补又一年。</p><p>C 标准库还好说——毕竟语言本身没啥特性，全靠各种平台提供 API 撑着。标准库改来改去也只是割个双眼皮的程度。</p><p>C++要更骚气一些，每隔几年就整个容，简直不给人活路。</p><p>就中断安全来说，虽然不知道内部怎么实现的，但是&mldr;&mldr;printf 这样的函数在信号处理函数里调用的话，也算是未定义行为。</p><p>认输吧，你是斗不过标准的。该依赖平台行为的时候，就去依赖平台行为吧。</p><h2 id=文档引用>文档引用</h2><p>懒得找原文，直接看 cppreference 对 signal 的说法就好。有兴趣的话可以找又臭又长的<a class=link href=http://www.open-std.org/JTC1/SC22/WG14/www/docs/n1570.pdf target=_blank rel=noopener>WG14 - N1570 - C11</a>，还有<a class=link href=http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf target=_blank rel=noopener>WG21 - N4659 - C++17</a>这两本标准文档。</p><h2 id=尾声>尾声</h2><p>于是这会儿就到了其他各种语言的用户惯例吐槽的时候：</p><blockquote><p>&mldr;大佬是公司里唯一用 C++写代码的人。他对人说话，总是满口“目标平台”、“标准”、“可移植性”之类的话，叫人半懂不懂的。因为他总是说“C++天下第一！”，别人便从他说的那些半懂不懂的话里，替他取下个绰号，叫 C++大神。</p><p>C++大神一到公司里，程序员们便看着他笑，有的叫道：“C++大神，你的代码又编译出错了！”</p><p>他不回答，对前台说：“倒上特浓的咖啡，今天也要加班到夜里。”便拿出员工卡。程序员们又高声叫嚷道：“你一定又用上新标准了吧？”</p><p>C++大神睁大眼睛说，“你怎么凭空污人清白！”</p><p>“什么清白？我前天亲眼看见你的代码编译报了错，整整十几 MB 的日志！”</p><p>C++大神便涨红了脸，额上的青筋条条绽出，争辩道，“编译器报错怎么能叫错&mldr;&mldr;C++&mldr;&mldr;编译器不支持，那能算错么？”</p><p>接连便是难懂的话，什么“CONCEPT 还不加入标准”、“未定义行为就该是编译错误”、“SFINAE 就是给编译器开洞”、“boost 大法好，天灭 std::experimental”，引得众人都哄笑起来：店内外充满了快活的空气。</p></blockquote></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/c++/>c++</a>
+<a href=/blog/tags/%E5%B9%B6%E5%8F%91/>并发</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/how-branch-prediction-effects-executoin-performance-and-security/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>分支预测对执行效率和安全的影响</h2></div></a></article><article><a href=/blog/p/cpu-cache-page-fault-and-false-sharing/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>CPU缓存、缺页和伪共享</h2></div></a></article><article><a href=/blog/p/how-to-compile-lief-on-windows/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>编译LIEF的各种姿势</h2></div></a></article><article><a href=/blog/p/%E5%9C%A8c-%E4%B8%AD%E5%B5%8C%E5%85%A5python%E8%A7%A3%E9%87%8A%E5%99%A8/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>在C++中嵌入Python解释器</h2></div></a></article><article><a href=/blog/p/gamehollywood-%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>GameHollywood 面试笔记</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#可重入性>可重入性</a></li>
-<li><a href=#并发安全性和可重入性>并发安全性和可重入性</a></li>
-<li><a href=#中断安全性或者叫信号安全性>中断安全性，或者叫信号安全性</a></li>
-<li><a href=#递归函数和可重入>递归函数和可重入</a></li>
-<li><a href=#标准库好烦人啊>标准库好烦人啊</a></li>
-<li><a href=#文档引用>文档引用</a></li>
-<li><a href=#尾声>尾声</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#可重入性>可重入性</a></li><li><a href=#并发安全性和可重入性>并发安全性和可重入性</a></li><li><a href=#中断安全性或者叫信号安全性>中断安全性，或者叫信号安全性</a></li><li><a href=#递归函数和可重入>递归函数和可重入</a></li><li><a href=#标准库好烦人啊>标准库好烦人啊</a></li><li><a href=#文档引用>文档引用</a></li><li><a href=#尾声>尾声</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

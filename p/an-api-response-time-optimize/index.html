@@ -1,174 +1,23 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析"><title>记一次API响应时间优化</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/an-api-response-time-optimize/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析"><title>记一次API响应时间优化</title><link rel=canonical href=https://nnnewb.github.io/blog/p/an-api-response-time-optimize/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="记一次API响应时间优化">
-<meta property="og:description" content="前言 刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/an-api-response-time-optimize/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="工作杂谈"><meta property="article:tag" content="golang"><meta property="article:tag" content="mysql"><meta property="article:tag" content="kubernetes"><meta property="article:published_time" content="2021-12-31T18:30:00+08:00"><meta property="article:modified_time" content="2021-12-31T18:30:00+08:00">
-<meta name=twitter:title content="记一次API响应时间优化">
-<meta name=twitter:description content="前言 刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/%E6%9D%82%E8%B0%88/>
-杂谈
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/an-api-response-time-optimize/>记一次API响应时间优化</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2021-12-31T18:30:00+08:00>2021年 12月 31日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 6 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=前言>前言</h2>
-<p>刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析优化下性能。</p>
-<h2 id=0x01-性能分析>0x01 性能分析</h2>
-<h3 id=预判>预判</h3>
-<p>下手前预估下可能存在瓶颈的地方。对于这次下手的接口（<code>get_users</code>），整个实现也没几行代码，只有两三个查询，数据量也不大，但是耗时有80ms+。</p>
-<p>其他接口有快有慢，并没有表现出同时增加耗时，而且开发服务器架在内网，排除网络原因，大概还是服务本身的存在的问题。于是考虑瓶颈在数据库或代码中，但具体肯定是要看代码去分析的。既然判断是代码里的问题，那下一步就是测量下耗时情况了。</p>
-<p>对于go，<code>pprof</code>虽然是个不错的主意，但实话说部署在 kubernetes 里，配 <code>pprof</code> 去拉结果有点麻烦，而且还有点点用不惯。正好这个项目里早就配置了 <code>opentracing</code>+<code>jaeger</code>做分布式跟踪，所以就直接抄一下 opentelemetry 的 <a class=link href=https://github.com/seslattery/otelsql/blob/master/otelsql.go target=_blank rel=noopener>otelsql</a> ，把SQL查询的详细耗时情况记录下来，就可以开始分析了。</p>
-<h3 id=opentracing收集数据>opentracing收集数据</h3>
-<p><code>otelsql</code> 原理是用 <a class=link href=https://github.com/ngrok/sqlmw target=_blank rel=noopener>sqlmw</a> 在 sql 驱动层级上进行包装<code>sql ==> sqlmw.Driver{mysql.Driver}</code> 。go的<code>sql</code>调用<code>sqlmw.Driver</code>，<code>sqlmw.Driver</code>调用<code>mysql.Driver</code>，如此而已，具体不解释。</p>
-<p>从<code>otelsql</code>借鉴下思路即可，现在 <code>opentracing</code> 已经和 <code>opencensus</code> 合并成了 <code>opentelemetry</code>，但项目也没法说升级就升级，毕竟项目架构设计稀烂，太多地方和 <code>opentracing</code>、<code>jaeger-client</code> 强耦合了。把<code>otelsql</code>里用<code>sqlmw</code>的部分抄出来，改成<code>opentracing</code>的方式创建<code>span</code>完事。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="记一次API响应时间优化"><meta property="og:description" content="前言 刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析"><meta property="og:url" content="https://nnnewb.github.io/blog/p/an-api-response-time-optimize/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="工作杂谈"><meta property="article:tag" content="golang"><meta property="article:tag" content="mysql"><meta property="article:tag" content="kubernetes"><meta property="article:published_time" content="2021-12-31T18:30:00+08:00"><meta property="article:modified_time" content="2021-12-31T18:30:00+08:00"><meta name=twitter:title content="记一次API响应时间优化"><meta name=twitter:description content="前言 刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/%E6%9D%82%E8%B0%88/>杂谈</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/an-api-response-time-optimize/>记一次API响应时间优化</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2021-12-31T18:30:00+08:00>2021年 12月 31日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 6 分钟</time></div></footer></div></header><section class=article-content><h2 id=前言>前言</h2><p>刚接手管理后台的后端服务，先随便挑个什么东西下手看看。正好注意到一个简单的接口返回时间都蛮长的，于是拿刚从 opentelemetry 的 issue/pr 里抄来的 sqlmw 包装驱动来分析优化下性能。</p><h2 id=0x01-性能分析>0x01 性能分析</h2><h3 id=预判>预判</h3><p>下手前预估下可能存在瓶颈的地方。对于这次下手的接口（<code>get_users</code>），整个实现也没几行代码，只有两三个查询，数据量也不大，但是耗时有80ms+。</p><p>其他接口有快有慢，并没有表现出同时增加耗时，而且开发服务器架在内网，排除网络原因，大概还是服务本身的存在的问题。于是考虑瓶颈在数据库或代码中，但具体肯定是要看代码去分析的。既然判断是代码里的问题，那下一步就是测量下耗时情况了。</p><p>对于go，<code>pprof</code>虽然是个不错的主意，但实话说部署在 kubernetes 里，配 <code>pprof</code> 去拉结果有点麻烦，而且还有点点用不惯。正好这个项目里早就配置了 <code>opentracing</code>+<code>jaeger</code>做分布式跟踪，所以就直接抄一下 opentelemetry 的 <a class=link href=https://github.com/seslattery/otelsql/blob/master/otelsql.go target=_blank rel=noopener>otelsql</a> ，把SQL查询的详细耗时情况记录下来，就可以开始分析了。</p><h3 id=opentracing收集数据>opentracing收集数据</h3><p><code>otelsql</code> 原理是用 <a class=link href=https://github.com/ngrok/sqlmw target=_blank rel=noopener>sqlmw</a> 在 sql 驱动层级上进行包装<code>sql ==> sqlmw.Driver{mysql.Driver}</code> 。go的<code>sql</code>调用<code>sqlmw.Driver</code>，<code>sqlmw.Driver</code>调用<code>mysql.Driver</code>，如此而已，具体不解释。</p><p>从<code>otelsql</code>借鉴下思路即可，现在 <code>opentracing</code> 已经和 <code>opencensus</code> 合并成了 <code>opentelemetry</code>，但项目也没法说升级就升级，毕竟项目架构设计稀烂，太多地方和 <code>opentracing</code>、<code>jaeger-client</code> 强耦合了。把<code>otelsql</code>里用<code>sqlmw</code>的部分抄出来，改成<code>opentracing</code>的方式创建<code>span</code>完事。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
 </span><span class=lnt>6
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=kd>func</span> <span class=p>(</span><span class=nx>in</span> <span class=o>*</span><span class=nx>sqlInterceptor</span><span class=p>)</span> <span class=nf>ConnExecContext</span><span class=p>(</span><span class=nx>ctx</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span> <span class=nx>conn</span> <span class=nx>driver</span><span class=p>.</span><span class=nx>ExecerContext</span><span class=p>,</span> <span class=nx>query</span> <span class=kt>string</span><span class=p>,</span> <span class=nx>args</span> <span class=p>[]</span><span class=nx>driver</span><span class=p>.</span><span class=nx>NamedValue</span><span class=p>)</span> <span class=p>(</span><span class=nx>driver</span><span class=p>.</span><span class=nx>Result</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
-	<span class=nx>span</span><span class=p>,</span> <span class=nx>ctx</span> <span class=o>:=</span> <span class=nx>opentracing</span><span class=p>.</span><span class=nf>StartSpanFromContext</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=s>&#34;ConnExecContext&#34;</span><span class=p>)</span>
-	<span class=k>defer</span> <span class=nx>span</span><span class=p>.</span><span class=nf>Finish</span><span class=p>()</span>
-	<span class=nx>span</span><span class=p>.</span><span class=nf>LogKV</span><span class=p>(</span><span class=s>&#34;sql.query&#34;</span><span class=p>,</span> <span class=nx>query</span><span class=p>)</span>
-	<span class=k>return</span> <span class=nx>conn</span><span class=p>.</span><span class=nf>ExecContext</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=nx>query</span><span class=p>,</span> <span class=nx>args</span><span class=p>)</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>如此一来， 当go的<code>sql</code>库访问数据库的时候，就会在<code>jaeger</code>里记录一个<code>span</code>，可以清晰地看到耗时情况。</p>
-<h3 id=分析>分析</h3>
-<p><img src=/blog/p/an-api-response-time-optimize/image-20211231103911728.png width=1166 height=563 srcset="/blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231103911728 class=gallery-image data-flex-grow=207 data-flex-basis=497px></p>
-<p>收集到耗时情况后开始观察，注意到两个问题：</p>
-<ol>
-<li><code>ConnectorConnect</code> 在每个请求前出现，每次耗时 2ms 左右。但 <code>sql</code> 是有连接池的，这里每次执行查询都产生一次连接显然不对劲。</li>
-<li><code>StmtQueryContext</code> 出现一个耗时极长的查询，占据接近1/2的请求耗时，这条查询就是主要瓶颈。</li>
-</ol>
-<p>慢查询的SQL如下。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-sql data-lang=sql><span class=k>select</span><span class=w> </span><span class=k>count</span><span class=p>(</span><span class=mi>1</span><span class=p>)</span><span class=w> </span><span class=k>from</span><span class=w> </span><span class=k>user</span><span class=w> </span><span class=k>where</span><span class=w> </span><span class=k>role</span><span class=o>=</span><span class=mi>1</span><span class=w> </span><span class=k>and</span><span class=w> </span><span class=n>create_timestamp</span><span class=o>&gt;?</span><span class=w> </span><span class=k>and</span><span class=w> </span><span class=n>create_timestamp</span><span class=o>&lt;?</span><span class=w>
-</span></code></pre></td></tr></table>
-</div>
-</div><p>是一个简单的 <code>select count(1)</code> 查询，初步考虑是 <code>where</code> 里少了索引。</p>
-<h2 id=0x02-优化>0x02 优化</h2>
-<h3 id=索引优化>索引优化</h3>
-<p>既然少索引，那就考虑下加索引。看了下数据库，<code>role</code>和<code>create_timestamp</code>字段都没有索引，于是先分别加上了索引，再 <code>explain</code> ，发现查询类型已经变成了 <code>ref</code> 。再运行查询，发现耗时依然有 20ms+。</p>
-<p>参考 <a class=link href=https://dev.mysql.com/doc/refman/5.7/en/multiple-column-indexes.html target=_blank rel=noopener>multiple-column index</a> 中的话：</p>
-<blockquote>
-<p>MySQL can use multiple-column indexes for queries that test all the columns in the index, or queries that test just the first column, the first two columns, the first three columns, and so on. If you specify the columns in the right order in the index definition, a single composite index can speed up several kinds of queries on the same table.</p>
-</blockquote>
-<p>文档中还说：</p>
-<blockquote>
-<p>If a multiple-column index exists on <code>col1</code> and <code>col2</code>, the appropriate rows can be fetched directly. If separate single-column indexes exist on <code>col1</code> and <code>col2</code>, the optimizer attempts to use the Index Merge optimization (see <a class=link href=https://dev.mysql.com/doc/refman/5.7/en/index-merge-optimization.html target=_blank rel=noopener>Section 8.2.1.3, “Index Merge Optimization”</a>), or attempts to find the most restrictive index by deciding which index excludes more rows and using that index to fetch the rows.</p>
-</blockquote>
-<p>也就是说，如果<code>role</code>和<code>create_timestamp</code>分别有索引，<code>mysql</code>会尝试用 <em>Index Merge Optimization</em> 算法来优化查询。但如果有多列索引的话，就能直接获取（文档里的场景能直接获取，但上文的 <code>count(1)</code> 查询应该不行）。</p>
-<p>于是加上多列索引，再<code>explain</code>，发现查询类型变成了<code>range</code>，实际执行发现查询耗时降低至 5ms 左右。</p>
-<h3 id=连接池优化>连接池优化</h3>
-<p>go的<code>sql</code>包自带连接池应该是比较清楚的。原本怀疑是不是对<code>sql.DB</code>这个结构的用法有问题，但翻了下源码，发现<code>sql.DB.ExecContext</code>之类的接口都会通过连接池取连接，完成后返回连接池。所以理论上来说都应该走连接池的连接，而不是每次查询都创建——除非连接池里没有可用的连接了。另外也谷歌了一圈，<code>sql.DB</code> 似乎也没有什么特别的最佳实践，并没有人提到要手动<code>DB.Conn</code>取连接后自己处理。</p>
-<p>于是初步怀疑下是不是哪里设置了连接池属性出了问题。通过排查源码中设置连接池属性的地方，发现一个自己埋下的坑。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>in</span> <span class=o>*</span><span class=nx>sqlInterceptor</span><span class=p>)</span> <span class=nf>ConnExecContext</span><span class=p>(</span><span class=nx>ctx</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span> <span class=nx>conn</span> <span class=nx>driver</span><span class=p>.</span><span class=nx>ExecerContext</span><span class=p>,</span> <span class=nx>query</span> <span class=kt>string</span><span class=p>,</span> <span class=nx>args</span> <span class=p>[]</span><span class=nx>driver</span><span class=p>.</span><span class=nx>NamedValue</span><span class=p>)</span> <span class=p>(</span><span class=nx>driver</span><span class=p>.</span><span class=nx>Result</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>span</span><span class=p>,</span> <span class=nx>ctx</span> <span class=o>:=</span> <span class=nx>opentracing</span><span class=p>.</span><span class=nf>StartSpanFromContext</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=s>&#34;ConnExecContext&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>defer</span> <span class=nx>span</span><span class=p>.</span><span class=nf>Finish</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=nx>span</span><span class=p>.</span><span class=nf>LogKV</span><span class=p>(</span><span class=s>&#34;sql.query&#34;</span><span class=p>,</span> <span class=nx>query</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>conn</span><span class=p>.</span><span class=nf>ExecContext</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=nx>query</span><span class=p>,</span> <span class=nx>args</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>如此一来， 当go的<code>sql</code>库访问数据库的时候，就会在<code>jaeger</code>里记录一个<code>span</code>，可以清晰地看到耗时情况。</p><h3 id=分析>分析</h3><p><img src=/blog/p/an-api-response-time-optimize/image-20211231103911728.png width=1166 height=563 srcset="/blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231103911728_hu4ca051d63fb418ff00457f384002403d_37132_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231103911728 class=gallery-image data-flex-grow=207 data-flex-basis=497px></p><p>收集到耗时情况后开始观察，注意到两个问题：</p><ol><li><code>ConnectorConnect</code> 在每个请求前出现，每次耗时 2ms 左右。但 <code>sql</code> 是有连接池的，这里每次执行查询都产生一次连接显然不对劲。</li><li><code>StmtQueryContext</code> 出现一个耗时极长的查询，占据接近1/2的请求耗时，这条查询就是主要瓶颈。</li></ol><p>慢查询的SQL如下。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-sql data-lang=sql><span class=line><span class=cl><span class=k>select</span><span class=w> </span><span class=k>count</span><span class=p>(</span><span class=mi>1</span><span class=p>)</span><span class=w> </span><span class=k>from</span><span class=w> </span><span class=k>user</span><span class=w> </span><span class=k>where</span><span class=w> </span><span class=k>role</span><span class=o>=</span><span class=mi>1</span><span class=w> </span><span class=k>and</span><span class=w> </span><span class=n>create_timestamp</span><span class=o>&gt;?</span><span class=w> </span><span class=k>and</span><span class=w> </span><span class=n>create_timestamp</span><span class=o>&lt;?</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p>是一个简单的 <code>select count(1)</code> 查询，初步考虑是 <code>where</code> 里少了索引。</p><h2 id=0x02-优化>0x02 优化</h2><h3 id=索引优化>索引优化</h3><p>既然少索引，那就考虑下加索引。看了下数据库，<code>role</code>和<code>create_timestamp</code>字段都没有索引，于是先分别加上了索引，再 <code>explain</code> ，发现查询类型已经变成了 <code>ref</code> 。再运行查询，发现耗时依然有 20ms+。</p><p>参考 <a class=link href=https://dev.mysql.com/doc/refman/5.7/en/multiple-column-indexes.html target=_blank rel=noopener>multiple-column index</a> 中的话：</p><blockquote><p>MySQL can use multiple-column indexes for queries that test all the columns in the index, or queries that test just the first column, the first two columns, the first three columns, and so on. If you specify the columns in the right order in the index definition, a single composite index can speed up several kinds of queries on the same table.</p></blockquote><p>文档中还说：</p><blockquote><p>If a multiple-column index exists on <code>col1</code> and <code>col2</code>, the appropriate rows can be fetched directly. If separate single-column indexes exist on <code>col1</code> and <code>col2</code>, the optimizer attempts to use the Index Merge optimization (see <a class=link href=https://dev.mysql.com/doc/refman/5.7/en/index-merge-optimization.html target=_blank rel=noopener>Section 8.2.1.3, “Index Merge Optimization”</a>), or attempts to find the most restrictive index by deciding which index excludes more rows and using that index to fetch the rows.</p></blockquote><p>也就是说，如果<code>role</code>和<code>create_timestamp</code>分别有索引，<code>mysql</code>会尝试用 <em>Index Merge Optimization</em> 算法来优化查询。但如果有多列索引的话，就能直接获取（文档里的场景能直接获取，但上文的 <code>count(1)</code> 查询应该不行）。</p><p>于是加上多列索引，再<code>explain</code>，发现查询类型变成了<code>range</code>，实际执行发现查询耗时降低至 5ms 左右。</p><h3 id=连接池优化>连接池优化</h3><p>go的<code>sql</code>包自带连接池应该是比较清楚的。原本怀疑是不是对<code>sql.DB</code>这个结构的用法有问题，但翻了下源码，发现<code>sql.DB.ExecContext</code>之类的接口都会通过连接池取连接，完成后返回连接池。所以理论上来说都应该走连接池的连接，而不是每次查询都创建——除非连接池里没有可用的连接了。另外也谷歌了一圈，<code>sql.DB</code> 似乎也没有什么特别的最佳实践，并没有人提到要手动<code>DB.Conn</code>取连接后自己处理。</p><p>于是初步怀疑下是不是哪里设置了连接池属性出了问题。通过排查源码中设置连接池属性的地方，发现一个自己埋下的坑。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -178,201 +27,25 @@
 </span><span class=lnt> 8
 </span><span class=lnt> 9
 </span><span class=lnt>10
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=k>if</span> <span class=nx>env</span><span class=p>.</span><span class=nx>DEBUG</span> <span class=p>{</span>
-    <span class=nx>mysqldb</span><span class=p>.</span><span class=nf>SetMaxIdleConns</span><span class=p>(</span><span class=mi>0</span><span class=p>)</span>
-
-    <span class=nx>cfg</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>mysql</span><span class=p>.</span><span class=nf>ParseDSN</span><span class=p>(</span><span class=nx>host</span><span class=p>)</span>
-    <span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
-        <span class=nx>cfg</span> <span class=p>=</span> <span class=o>&amp;</span><span class=nx>mysql</span><span class=p>.</span><span class=nx>Config</span><span class=p>{}</span>
-    <span class=p>}</span>
-
-    <span class=nf>StartObverseSQLConnPool</span><span class=p>(</span><span class=nx>cfg</span><span class=p>.</span><span class=nx>DBName</span><span class=p>,</span> <span class=o>*</span><span class=nx>mysqlDB</span><span class=p>,</span> <span class=nx>time</span><span class=p>.</span><span class=nf>Duration</span><span class=p>(</span><span class=mi>5</span><span class=p>)</span><span class=o>*</span><span class=nx>time</span><span class=p>.</span><span class=nx>Second</span><span class=p>)</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>因为我司这个项目没有配置 metrics 收集和分析，自然也没收集服务的连接池情况。所以当初入职后遇到一个奇怪的连接池耗尽，服务假死，调用栈全部卡在连接池上的问题时，为了判断是不是出现连接泄露，写了个goroutine去监测连接池里连接获取和释放的情况&mldr;</p>
-<p>为了调试方便，还把<code>SetMaxIdleConns</code>设置为了0。</p>
-<p>于是初步怀疑就是这个原因导致连接池罢工，将整段调试代码注释掉之后，再次访问接口，响应时间降低至9.8ms。</p>
-<p><img src=/blog/p/an-api-response-time-optimize/image-20211231110219407.png width=212 height=111 srcset="/blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110219407 class=gallery-image data-flex-grow=190 data-flex-basis=458px></p>
-<p>最大头的耗时依然是<code>count(1)</code>查询。</p>
-<p><img src=/blog/p/an-api-response-time-optimize/image-20211231110316414.png width=1559 height=438 srcset="/blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110316414 class=gallery-image data-flex-grow=355 data-flex-basis=854px></p>
-<p>默认情况下 IdleConn 只有 2，超时也比较短。实际参数应该根据业务访问情况来安排。我这也没什么好的计算公式。连接池参数有问题会影响单条SQL的基本耗时，请求里三四条查询，每条加上几个ms，整个请求时间就拖长了十几ms。在微服务系统里影响还可能放大，别的服务要是多次调用，积累的时延可能就要上百ms了。</p>
-<h3 id=缓存优化>缓存优化</h3>
-<p>进一步的优化思路就是做缓存。是为了提高服务响应速度，也是为了提高负载能力、减轻查询压力，保护 MySQL 服务。过去年轻无知犯过错，就是考虑性能的时候只关注到了自己写的代码，认为代码跑得快重要——比如把 C 的执行性能吹上天。但事情从来不是这么简单——辩证法说实事求是，要具体问题具体分析。后端从来不是“我的代码”这么简单，如果不能从整个系统的角度出发发现问题，那就算是 CPU 成精了也没辙。</p>
-<p>对于实时性要求不高的接口，将数据缓存一段时间是绝对没问题的。不过因为做缓存是个系统性的事情——要考虑缓存更新的嘛，也不是每个接口都适合缓存，实时性有要求或者查询太复杂的话宁可考虑换成 ES 一类的分布式系统，把压力分摊到更多机器上。当然也意味着要花更多的钱，更难维护。</p>
-<p>我司项目就是个很沙雕的例子，因为最初就没设计缓存，连SQL都在用手工拼接，现在干脆变成了混用 <code>xorm</code> 和 <code>sql</code>。虽然也可以考虑下用 <code>sqlmw</code> 插个缓存，但毕竟没验证过，做第一个吃螃蟹的也意味着要第一个背锅。</p>
-<p>总之，要做那可简单了，直接调 <code>redis</code> 客户端（已经包装过一个 <code>cachetools</code>）设置下缓存，给个时限就完了。缓存过期的时候加个 <code>redlock</code>，让其他客户端先返回旧数据，更新完解锁，所有客户端都返回新数据。</p>
-<p>更系统化的处理，就要考虑下怎么做一个或多个更通用（对业务场景而言更通用，而不是真的对 <em>所有</em> 场景都通用）的缓存层——在SQL驱动层做缓存？ORM层缓存？在请求/响应中做缓存？业务/数据访问层（如<code>DAO</code>）做缓存？缓存用什么键？怎么覆盖尽可能多的查询场景？整个重构的工程量如何把握？值不值得？</p>
-<h2 id=结论>结论</h2>
-<p>收集性能数据的主要方式：</p>
-<ul>
-<li>metrics</li>
-<li>pprof</li>
-<li>opentracing/opentelemetry</li>
-</ul>
-<p>优化手段：</p>
-<ul>
-<li><code>explain</code> 分析查询、优化和建立索引</li>
-<li>优化连接池参数</li>
-<li>加缓存</li>
-</ul>
-<p>还有最重要的，<strong>具体问题具体分析</strong>。</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/%E5%B7%A5%E4%BD%9C%E6%9D%82%E8%B0%88/>工作杂谈</a>
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=k>if</span> <span class=nx>env</span><span class=p>.</span><span class=nx>DEBUG</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nx>mysqldb</span><span class=p>.</span><span class=nf>SetMaxIdleConns</span><span class=p>(</span><span class=mi>0</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=nx>cfg</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>mysql</span><span class=p>.</span><span class=nf>ParseDSN</span><span class=p>(</span><span class=nx>host</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=nx>cfg</span> <span class=p>=</span> <span class=o>&amp;</span><span class=nx>mysql</span><span class=p>.</span><span class=nx>Config</span><span class=p>{}</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=nf>StartObverseSQLConnPool</span><span class=p>(</span><span class=nx>cfg</span><span class=p>.</span><span class=nx>DBName</span><span class=p>,</span> <span class=o>*</span><span class=nx>mysqlDB</span><span class=p>,</span> <span class=nx>time</span><span class=p>.</span><span class=nf>Duration</span><span class=p>(</span><span class=mi>5</span><span class=p>)</span><span class=o>*</span><span class=nx>time</span><span class=p>.</span><span class=nx>Second</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>因为我司这个项目没有配置 metrics 收集和分析，自然也没收集服务的连接池情况。所以当初入职后遇到一个奇怪的连接池耗尽，服务假死，调用栈全部卡在连接池上的问题时，为了判断是不是出现连接泄露，写了个goroutine去监测连接池里连接获取和释放的情况&mldr;</p><p>为了调试方便，还把<code>SetMaxIdleConns</code>设置为了0。</p><p>于是初步怀疑就是这个原因导致连接池罢工，将整段调试代码注释掉之后，再次访问接口，响应时间降低至9.8ms。</p><p><img src=/blog/p/an-api-response-time-optimize/image-20211231110219407.png width=212 height=111 srcset="/blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231110219407_hu55ac2a3a3dacd3b69ab961805df24cc9_3194_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110219407 class=gallery-image data-flex-grow=190 data-flex-basis=458px></p><p>最大头的耗时依然是<code>count(1)</code>查询。</p><p><img src=/blog/p/an-api-response-time-optimize/image-20211231110316414.png width=1559 height=438 srcset="/blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_480x0_resize_box_3.png 480w, /blog/p/an-api-response-time-optimize/image-20211231110316414_hu2a272a2603430f6072c0c8e118d561d2_28788_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211231110316414 class=gallery-image data-flex-grow=355 data-flex-basis=854px></p><p>默认情况下 IdleConn 只有 2，超时也比较短。实际参数应该根据业务访问情况来安排。我这也没什么好的计算公式。连接池参数有问题会影响单条SQL的基本耗时，请求里三四条查询，每条加上几个ms，整个请求时间就拖长了十几ms。在微服务系统里影响还可能放大，别的服务要是多次调用，积累的时延可能就要上百ms了。</p><h3 id=缓存优化>缓存优化</h3><p>进一步的优化思路就是做缓存。是为了提高服务响应速度，也是为了提高负载能力、减轻查询压力，保护 MySQL 服务。过去年轻无知犯过错，就是考虑性能的时候只关注到了自己写的代码，认为代码跑得快重要——比如把 C 的执行性能吹上天。但事情从来不是这么简单——辩证法说实事求是，要具体问题具体分析。后端从来不是“我的代码”这么简单，如果不能从整个系统的角度出发发现问题，那就算是 CPU 成精了也没辙。</p><p>对于实时性要求不高的接口，将数据缓存一段时间是绝对没问题的。不过因为做缓存是个系统性的事情——要考虑缓存更新的嘛，也不是每个接口都适合缓存，实时性有要求或者查询太复杂的话宁可考虑换成 ES 一类的分布式系统，把压力分摊到更多机器上。当然也意味着要花更多的钱，更难维护。</p><p>我司项目就是个很沙雕的例子，因为最初就没设计缓存，连SQL都在用手工拼接，现在干脆变成了混用 <code>xorm</code> 和 <code>sql</code>。虽然也可以考虑下用 <code>sqlmw</code> 插个缓存，但毕竟没验证过，做第一个吃螃蟹的也意味着要第一个背锅。</p><p>总之，要做那可简单了，直接调 <code>redis</code> 客户端（已经包装过一个 <code>cachetools</code>）设置下缓存，给个时限就完了。缓存过期的时候加个 <code>redlock</code>，让其他客户端先返回旧数据，更新完解锁，所有客户端都返回新数据。</p><p>更系统化的处理，就要考虑下怎么做一个或多个更通用（对业务场景而言更通用，而不是真的对 <em>所有</em> 场景都通用）的缓存层——在SQL驱动层做缓存？ORM层缓存？在请求/响应中做缓存？业务/数据访问层（如<code>DAO</code>）做缓存？缓存用什么键？怎么覆盖尽可能多的查询场景？整个重构的工程量如何把握？值不值得？</p><h2 id=结论>结论</h2><p>收集性能数据的主要方式：</p><ul><li>metrics</li><li>pprof</li><li>opentracing/opentelemetry</li></ul><p>优化手段：</p><ul><li><code>explain</code> 分析查询、优化和建立索引</li><li>优化连接池参数</li><li>加缓存</li></ul><p>还有最重要的，<strong>具体问题具体分析</strong>。</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/%E5%B7%A5%E4%BD%9C%E6%9D%82%E8%B0%88/>工作杂谈</a>
 <a href=/blog/tags/golang/>golang</a>
 <a href=/blog/tags/mysql/>mysql</a>
-<a href=/blog/tags/kubernetes/>kubernetes</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/2022-05-27-interview-note/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>2022年5月27日 面试记录</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/2022%E5%B9%B4%E5%BA%A6%E6%80%BB%E7%BB%93/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>2022年度总结</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/%E5%85%83%E6%97%A6%E5%BF%AB%E4%B9%90/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>元旦快乐</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/%E7%BE%8A%E4%BA%86/>
-<div class=article-image>
-<img src=/blog/p/%E7%BE%8A%E4%BA%86/cover.42c3a73872f2ab599630056ce849f365_hub369136724894891ad018e968112bc7b_73106_250x150_fill_q75_h2_box_smart1_2.webp width=250 height=150 loading=lazy alt="Featured image of post 羊了" data-hash="md5-QsOnOHLyq1mWMAVs6EnzZQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>羊了</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/systemd-%E9%85%8D%E7%BD%AE-ssh-agent-%E7%94%A8%E6%88%B7%E6%9C%8D%E5%8A%A1%E8%87%AA%E5%90%AF/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>systemd 配置 ssh-agent 用户服务自启</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+<a href=/blog/tags/kubernetes/>kubernetes</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/2022-05-27-interview-note/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>2022年5月27日 面试记录</h2></div></a></article><article><a href=/blog/p/2022%E5%B9%B4%E5%BA%A6%E6%80%BB%E7%BB%93/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>2022年度总结</h2></div></a></article><article><a href=/blog/p/%E5%85%83%E6%97%A6%E5%BF%AB%E4%B9%90/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>元旦快乐</h2></div></a></article><article class=has-image><a href=/blog/p/%E7%BE%8A%E4%BA%86/><div class=article-image><img src=/blog/p/%E7%BE%8A%E4%BA%86/cover.42c3a73872f2ab599630056ce849f365_hub369136724894891ad018e968112bc7b_73106_250x150_fill_q75_h2_box_smart1_2.webp width=250 height=150 loading=lazy alt="Featured image of post 羊了" data-hash="md5-QsOnOHLyq1mWMAVs6EnzZQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>羊了</h2></div></a></article><article><a href=/blog/p/systemd-%E9%85%8D%E7%BD%AE-ssh-agent-%E7%94%A8%E6%88%B7%E6%9C%8D%E5%8A%A1%E8%87%AA%E5%90%AF/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>systemd 配置 ssh-agent 用户服务自启</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#0x01-性能分析>0x01 性能分析</a>
-<ol>
-<li><a href=#预判>预判</a></li>
-<li><a href=#opentracing收集数据>opentracing收集数据</a></li>
-<li><a href=#分析>分析</a></li>
-</ol>
-</li>
-<li><a href=#0x02-优化>0x02 优化</a>
-<ol>
-<li><a href=#索引优化>索引优化</a></li>
-<li><a href=#连接池优化>连接池优化</a></li>
-<li><a href=#缓存优化>缓存优化</a></li>
-</ol>
-</li>
-<li><a href=#结论>结论</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#前言>前言</a></li><li><a href=#0x01-性能分析>0x01 性能分析</a><ol><li><a href=#预判>预判</a></li><li><a href=#opentracing收集数据>opentracing收集数据</a></li><li><a href=#分析>分析</a></li></ol></li><li><a href=#0x02-优化>0x02 优化</a><ol><li><a href=#索引优化>索引优化</a></li><li><a href=#连接池优化>连接池优化</a></li><li><a href=#缓存优化>缓存优化</a></li></ol></li><li><a href=#结论>结论</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

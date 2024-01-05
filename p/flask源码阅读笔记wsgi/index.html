@@ -1,143 +1,13 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="0. Intro Flask 是一个基于 WSGI 协议的上层应用框架，据我了解应该是和 Tornado、Django 流行程度相近，当然 Django 老大哥始终占据了最多的份额。Flask"><title>Flask源码阅读笔记：WSGI</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="0. Intro Flask 是一个基于 WSGI 协议的上层应用框架，据我了解应该是和 Tornado、Django 流行程度相近，当然 Django 老大哥始终占据了最多的份额。Flask"><title>Flask源码阅读笔记：WSGI</title><link rel=canonical href=https://nnnewb.github.io/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="Flask源码阅读笔记：WSGI">
-<meta property="og:description" content="0. Intro Flask 是一个基于 WSGI 协议的上层应用框架，据我了解应该是和 Tornado、Django 流行程度相近，当然 Django 老大哥始终占据了最多的份额。Flask">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="python"><meta property="article:tag" content="flask"><meta property="article:published_time" content="2019-03-17T00:00:00+08:00"><meta property="article:modified_time" content="2019-03-17T00:00:00+08:00">
-<meta name=twitter:title content="Flask源码阅读笔记：WSGI">
-<meta name=twitter:description content="0. Intro Flask 是一个基于 WSGI 协议的上层应用框架，据我了解应该是和 Tornado、Django 流行程度相近，当然 Django 老大哥始终占据了最多的份额。Flask">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/python/>
-python
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/>Flask源码阅读笔记：WSGI</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2019-03-17T00:00:00+08:00>2019年 3月 17日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 4 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=0-intro>0. Intro</h2>
-<p>Flask 是一个基于 WSGI 协议的上层应用框架，据我了解应该是和 Tornado、Django 流行程度相近，当然 Django 老大哥始终占据了最多的份额。Flask 是一个轻量级的 Micro Framework，源码值得一读。</p>
-<h2 id=1-回顾-wsgi>1. 回顾 WSGI</h2>
-<p>开始之前，需要先回顾以下 WSGI 协议。</p>
-<p>WSGI 是一个针对 Python 的协议，故说到的 App、Server、函数、参数等描述都是指 Python 对应的概念或实现。</p>
-<h3 id=11-pep-0333-到-pep-3333>1.1 PEP-0333 到 PEP-3333</h3>
-<p>PEP-0333 是初版的 WSGI 协议提案，PEP-3333 是 1.0.1 版本的 WSGI 提案，差别不大，主要是对 py3 和 py2 不兼容的部分作了更新说明（<code>str</code>和<code>unicode</code>方面的问题，python2 的 str 在 python3 是 bytes，故 python3 编写的 wsgi app 必须返回 bytes）。</p>
-<p>WSGI 协议规范了 Python Web 应用的两个层级：服务器层（Server）和应用层（Application），两者通过 WSGI 协议进行通信。</p>
-<p>其中 Server 负责处理请求，将请求转换成符合 WSGI 要求的模式（<code>environ</code>参数）。 Application 完成处理后再通知 Server 返回 Response（<code>start_response</code>参数）。</p>
-<p>WSGI 规定 App 必须是一个可以被调用的对象，接受指定数量的参数，WSGI Server 不关注任何其他 App 实现细节。而 WSGI App 也应当遵守这一要求，对 <code>start_response</code> 参数也遵守不依赖于任何 WSGI Server 的实现细节。</p>
-<p>WSGI App 的接口规范声明如下。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=k>def</span> <span class=nf>app</span><span class=p>(</span><span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>):</span> <span class=o>...</span>
-</code></pre></td></tr></table>
-</div>
-</div><p><code>start_response</code>的声明如下。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=k>def</span> <span class=nf>start_response</span><span class=p>(</span><span class=n>status</span><span class=p>,</span> <span class=n>response_headers</span><span class=p>,</span> <span class=n>exc_info</span><span class=o>=</span><span class=kc>None</span><span class=p>):</span> <span class=o>...</span>
-</code></pre></td></tr></table>
-</div>
-</div><h3 id=12-wsgi-server>1.2 WSGI Server</h3>
-<p>常见的 WSGI Server 有几个。Nginx 和 Apache 都有 WSGI 插件，除此之外还有 gunicorn、gevent.wsgi 等。</p>
-<p>举一个典型的例子来说。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="Flask源码阅读笔记：WSGI"><meta property="og:description" content="0. Intro Flask 是一个基于 WSGI 协议的上层应用框架，据我了解应该是和 Tornado、Django 流行程度相近，当然 Django 老大哥始终占据了最多的份额。Flask"><meta property="og:url" content="https://nnnewb.github.io/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="python"><meta property="article:tag" content="flask"><meta property="article:published_time" content="2019-03-17T00:00:00+08:00"><meta property="article:modified_time" content="2019-03-17T00:00:00+08:00"><meta name=twitter:title content="Flask源码阅读笔记：WSGI"><meta name=twitter:description content="0. Intro Flask 是一个基于 WSGI 协议的上层应用框架，据我了解应该是和 Tornado、Django 流行程度相近，当然 Django 老大哥始终占据了最多的份额。Flask"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/python/>python</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/flask%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0wsgi/>Flask源码阅读笔记：WSGI</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2019-03-17T00:00:00+08:00>2019年 3月 17日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 4 分钟</time></div></footer></div></header><section class=article-content><h2 id=0-intro>0. Intro</h2><p>Flask 是一个基于 WSGI 协议的上层应用框架，据我了解应该是和 Tornado、Django 流行程度相近，当然 Django 老大哥始终占据了最多的份额。Flask 是一个轻量级的 Micro Framework，源码值得一读。</p><h2 id=1-回顾-wsgi>1. 回顾 WSGI</h2><p>开始之前，需要先回顾以下 WSGI 协议。</p><p>WSGI 是一个针对 Python 的协议，故说到的 App、Server、函数、参数等描述都是指 Python 对应的概念或实现。</p><h3 id=11-pep-0333-到-pep-3333>1.1 PEP-0333 到 PEP-3333</h3><p>PEP-0333 是初版的 WSGI 协议提案，PEP-3333 是 1.0.1 版本的 WSGI 提案，差别不大，主要是对 py3 和 py2 不兼容的部分作了更新说明（<code>str</code>和<code>unicode</code>方面的问题，python2 的 str 在 python3 是 bytes，故 python3 编写的 wsgi app 必须返回 bytes）。</p><p>WSGI 协议规范了 Python Web 应用的两个层级：服务器层（Server）和应用层（Application），两者通过 WSGI 协议进行通信。</p><p>其中 Server 负责处理请求，将请求转换成符合 WSGI 要求的模式（<code>environ</code>参数）。 Application 完成处理后再通知 Server 返回 Response（<code>start_response</code>参数）。</p><p>WSGI 规定 App 必须是一个可以被调用的对象，接受指定数量的参数，WSGI Server 不关注任何其他 App 实现细节。而 WSGI App 也应当遵守这一要求，对 <code>start_response</code> 参数也遵守不依赖于任何 WSGI Server 的实现细节。</p><p>WSGI App 的接口规范声明如下。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=k>def</span> <span class=nf>app</span><span class=p>(</span><span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>):</span> <span class=o>...</span>
+</span></span></code></pre></td></tr></table></div></div><p><code>start_response</code>的声明如下。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=k>def</span> <span class=nf>start_response</span><span class=p>(</span><span class=n>status</span><span class=p>,</span> <span class=n>response_headers</span><span class=p>,</span> <span class=n>exc_info</span><span class=o>=</span><span class=kc>None</span><span class=p>):</span> <span class=o>...</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=12-wsgi-server>1.2 WSGI Server</h3><p>常见的 WSGI Server 有几个。Nginx 和 Apache 都有 WSGI 插件，除此之外还有 gunicorn、gevent.wsgi 等。</p><p>举一个典型的例子来说。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
@@ -145,57 +15,24 @@ python
 </span><span class=lnt>6
 </span><span class=lnt>7
 </span><span class=lnt>8
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># app.py</span>
-<span class=kn>import</span> <span class=nn>wsgiserver</span>
-
-<span class=k>def</span> <span class=nf>app</span><span class=p>(</span><span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>):</span>
-    <span class=n>start_response</span><span class=p>(</span><span class=s1>&#39;200 OK&#39;</span><span class=p>,</span> <span class=p>[(</span><span class=s1>&#39;Content-Type&#39;</span><span class=p>,</span><span class=s1>&#39;text-plain&#39;</span><span class=p>)])</span>
-    <span class=k>return</span> <span class=p>[</span><span class=sa>b</span><span class=s2>&#34;Hello world!&#34;</span><span class=p>]</span>
-
-<span class=n>wsgiserver</span><span class=o>.</span><span class=n>WSGIServer</span><span class=p>(</span><span class=n>app</span><span class=p>,</span> <span class=n>host</span><span class=o>=</span><span class=s1>&#39;127.0.0.1&#39;</span><span class=p>,</span> <span class=n>port</span><span class=o>=</span><span class=s1>&#39;5000&#39;</span><span class=p>)</span><span class=o>.</span><span class=n>start</span><span class=p>()</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>在 windows 下使用如下命令安装 wsgiserver</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>pip install wsgiserver
-</code></pre></td></tr></table>
-</div>
-</div><p>最后执行</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>python app.py
-</code></pre></td></tr></table>
-</div>
-</div><h2 id=2-入口点>2. 入口点</h2>
-<p>看完 WSGI ，接下来看 Flask 请求的入口点在哪儿。</p>
-<h3 id=21-wsgi-server-与-run>2.1 WSGI Server 与 <code>.run</code></h3>
-<p><code>Flask</code>这个类定义于<code>flask.app</code>，看这里的代码。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=c1># app.py</span>
+</span></span><span class=line><span class=cl><span class=kn>import</span> <span class=nn>wsgiserver</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>def</span> <span class=nf>app</span><span class=p>(</span><span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=n>start_response</span><span class=p>(</span><span class=s1>&#39;200 OK&#39;</span><span class=p>,</span> <span class=p>[(</span><span class=s1>&#39;Content-Type&#39;</span><span class=p>,</span><span class=s1>&#39;text-plain&#39;</span><span class=p>)])</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=p>[</span><span class=sa>b</span><span class=s2>&#34;Hello world!&#34;</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>wsgiserver</span><span class=o>.</span><span class=n>WSGIServer</span><span class=p>(</span><span class=n>app</span><span class=p>,</span> <span class=n>host</span><span class=o>=</span><span class=s1>&#39;127.0.0.1&#39;</span><span class=p>,</span> <span class=n>port</span><span class=o>=</span><span class=s1>&#39;5000&#39;</span><span class=p>)</span><span class=o>.</span><span class=n>start</span><span class=p>()</span>
+</span></span></code></pre></td></tr></table></div></div><p>在 windows 下使用如下命令安装 wsgiserver</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>pip install wsgiserver
+</span></span></code></pre></td></tr></table></div></div><p>最后执行</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>python app.py
+</span></span></code></pre></td></tr></table></div></div><h2 id=2-入口点>2. 入口点</h2><p>看完 WSGI ，接下来看 Flask 请求的入口点在哪儿。</p><h3 id=21-wsgi-server-与-run>2.1 WSGI Server 与 <code>.run</code></h3><p><code>Flask</code>这个类定义于<code>flask.app</code>，看这里的代码。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=k>class</span> <span class=nc>Flask</span><span class=p>(</span><span class=n>_PackageBoundObject</span><span class=p>):</span>
-    <span class=o>...</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>先不去管 <code>_PackageBoundObject</code> 是啥。我们知道 <code>Flask</code>有一个<code>run</code>方法可以快速启动服务，直接跳转到那儿。</p>
-<blockquote>
-<p><a class=link href=https://github.com/pallets/flask/blob/master/flask/app.py target=_blank rel=noopener>flask/app.py</a>
-COMMIT a74864e , Line 844 ~ 949</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=k>class</span> <span class=nc>Flask</span><span class=p>(</span><span class=n>_PackageBoundObject</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=o>...</span>
+</span></span></code></pre></td></tr></table></div></div><p>先不去管 <code>_PackageBoundObject</code> 是啥。我们知道 <code>Flask</code>有一个<code>run</code>方法可以快速启动服务，直接跳转到那儿。</p><blockquote><p><a class=link href=https://github.com/pallets/flask/blob/master/flask/app.py target=_blank rel=noopener>flask/app.py</a>
+COMMIT a74864e , Line 844 ~ 949</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -244,69 +81,57 @@ COMMIT a74864e , Line 844 ~ 949</p>
 </span><span class=lnt>47
 </span><span class=lnt>48
 </span><span class=lnt>49
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python>    <span class=k>def</span> <span class=nf>run</span><span class=p>(</span><span class=bp>self</span><span class=p>,</span> <span class=n>host</span><span class=o>=</span><span class=kc>None</span><span class=p>,</span> <span class=n>port</span><span class=o>=</span><span class=kc>None</span><span class=p>,</span> <span class=n>debug</span><span class=o>=</span><span class=kc>None</span><span class=p>,</span> <span class=n>load_dotenv</span><span class=o>=</span><span class=kc>True</span><span class=p>,</span> <span class=o>**</span><span class=n>options</span><span class=p>):</span>
-        <span class=s2>&#34;&#34;&#34; 略 &#34;&#34;&#34;</span>
-        <span class=c1># Change this into a no-op if the server is invoked from the</span>
-        <span class=c1># command line. Have a look at cli.py for more information.</span>
-        <span class=k>if</span> <span class=n>os</span><span class=o>.</span><span class=n>environ</span><span class=o>.</span><span class=n>get</span><span class=p>(</span><span class=s1>&#39;FLASK_RUN_FROM_CLI&#39;</span><span class=p>)</span> <span class=o>==</span> <span class=s1>&#39;true&#39;</span><span class=p>:</span>
-            <span class=kn>from</span> <span class=nn>.debughelpers</span> <span class=kn>import</span> <span class=n>explain_ignored_app_run</span>
-            <span class=n>explain_ignored_app_run</span><span class=p>()</span>
-            <span class=k>return</span>
-
-        <span class=k>if</span> <span class=n>get_load_dotenv</span><span class=p>(</span><span class=n>load_dotenv</span><span class=p>):</span>
-            <span class=n>cli</span><span class=o>.</span><span class=n>load_dotenv</span><span class=p>()</span>
-
-            <span class=c1># if set, let env vars override previous values</span>
-            <span class=k>if</span> <span class=s1>&#39;FLASK_ENV&#39;</span> <span class=ow>in</span> <span class=n>os</span><span class=o>.</span><span class=n>environ</span><span class=p>:</span>
-                <span class=bp>self</span><span class=o>.</span><span class=n>env</span> <span class=o>=</span> <span class=n>get_env</span><span class=p>()</span>
-                <span class=bp>self</span><span class=o>.</span><span class=n>debug</span> <span class=o>=</span> <span class=n>get_debug_flag</span><span class=p>()</span>
-            <span class=k>elif</span> <span class=s1>&#39;FLASK_DEBUG&#39;</span> <span class=ow>in</span> <span class=n>os</span><span class=o>.</span><span class=n>environ</span><span class=p>:</span>
-                <span class=bp>self</span><span class=o>.</span><span class=n>debug</span> <span class=o>=</span> <span class=n>get_debug_flag</span><span class=p>()</span>
-
-        <span class=c1># debug passed to method overrides all other sources</span>
-        <span class=k>if</span> <span class=n>debug</span> <span class=ow>is</span> <span class=ow>not</span> <span class=kc>None</span><span class=p>:</span>
-            <span class=bp>self</span><span class=o>.</span><span class=n>debug</span> <span class=o>=</span> <span class=nb>bool</span><span class=p>(</span><span class=n>debug</span><span class=p>)</span>
-
-        <span class=n>_host</span> <span class=o>=</span> <span class=s1>&#39;127.0.0.1&#39;</span>
-        <span class=n>_port</span> <span class=o>=</span> <span class=mi>5000</span>
-        <span class=n>server_name</span> <span class=o>=</span> <span class=bp>self</span><span class=o>.</span><span class=n>config</span><span class=o>.</span><span class=n>get</span><span class=p>(</span><span class=s1>&#39;SERVER_NAME&#39;</span><span class=p>)</span>
-        <span class=n>sn_host</span><span class=p>,</span> <span class=n>sn_port</span> <span class=o>=</span> <span class=kc>None</span><span class=p>,</span> <span class=kc>None</span>
-
-        <span class=k>if</span> <span class=n>server_name</span><span class=p>:</span>
-            <span class=n>sn_host</span><span class=p>,</span> <span class=n>_</span><span class=p>,</span> <span class=n>sn_port</span> <span class=o>=</span> <span class=n>server_name</span><span class=o>.</span><span class=n>partition</span><span class=p>(</span><span class=s1>&#39;:&#39;</span><span class=p>)</span>
-
-        <span class=n>host</span> <span class=o>=</span> <span class=n>host</span> <span class=ow>or</span> <span class=n>sn_host</span> <span class=ow>or</span> <span class=n>_host</span>
-        <span class=n>port</span> <span class=o>=</span> <span class=nb>int</span><span class=p>(</span><span class=n>port</span> <span class=ow>or</span> <span class=n>sn_port</span> <span class=ow>or</span> <span class=n>_port</span><span class=p>)</span>
-
-        <span class=n>options</span><span class=o>.</span><span class=n>setdefault</span><span class=p>(</span><span class=s1>&#39;use_reloader&#39;</span><span class=p>,</span> <span class=bp>self</span><span class=o>.</span><span class=n>debug</span><span class=p>)</span>
-        <span class=n>options</span><span class=o>.</span><span class=n>setdefault</span><span class=p>(</span><span class=s1>&#39;use_debugger&#39;</span><span class=p>,</span> <span class=bp>self</span><span class=o>.</span><span class=n>debug</span><span class=p>)</span>
-        <span class=n>options</span><span class=o>.</span><span class=n>setdefault</span><span class=p>(</span><span class=s1>&#39;threaded&#39;</span><span class=p>,</span> <span class=kc>True</span><span class=p>)</span>
-
-        <span class=n>cli</span><span class=o>.</span><span class=n>show_server_banner</span><span class=p>(</span><span class=bp>self</span><span class=o>.</span><span class=n>env</span><span class=p>,</span> <span class=bp>self</span><span class=o>.</span><span class=n>debug</span><span class=p>,</span> <span class=bp>self</span><span class=o>.</span><span class=n>name</span><span class=p>,</span> <span class=kc>False</span><span class=p>)</span>
-
-        <span class=kn>from</span> <span class=nn>werkzeug.serving</span> <span class=kn>import</span> <span class=n>run_simple</span>
-
-        <span class=k>try</span><span class=p>:</span>
-            <span class=n>run_simple</span><span class=p>(</span><span class=n>host</span><span class=p>,</span> <span class=n>port</span><span class=p>,</span> <span class=bp>self</span><span class=p>,</span> <span class=o>**</span><span class=n>options</span><span class=p>)</span>
-        <span class=k>finally</span><span class=p>:</span>
-            <span class=c1># reset the first request information if the development server</span>
-            <span class=c1># reset normally.  This makes it possible to restart the server</span>
-            <span class=c1># without reloader and that stuff from an interactive shell.</span>
-            <span class=bp>self</span><span class=o>.</span><span class=n>_got_first_request</span> <span class=o>=</span> <span class=kc>False</span>
-</code></pre></td></tr></table>
-</div>
-</div></blockquote>
-<p>首先进入眼帘的是关于 flask/cli 的内容。 点进 <code>explain_ignored_app_run</code> 可以得知这是一个防止用户犯蠢写下 app.run() 后又用 <code>flask run</code>在命令行启动留下的说明性输出。</p>
-<p>其次是 dotenv 相关的玩意儿，没用过 dotenv 推荐去了解下 python-dotenv 这个包。可以很方便地配置好开发环境下的环境变量。</p>
-<p>经过一堆类型转换和检查之后，终于看到了这几行。</p>
-<blockquote>
-<p><a class=link href=https://github.com/pallets/flask/blob/master/flask/app.py target=_blank rel=noopener>flask/app.py</a>
-COMMIT a74864e , Line 941 ~ 949</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl>    <span class=k>def</span> <span class=nf>run</span><span class=p>(</span><span class=bp>self</span><span class=p>,</span> <span class=n>host</span><span class=o>=</span><span class=kc>None</span><span class=p>,</span> <span class=n>port</span><span class=o>=</span><span class=kc>None</span><span class=p>,</span> <span class=n>debug</span><span class=o>=</span><span class=kc>None</span><span class=p>,</span> <span class=n>load_dotenv</span><span class=o>=</span><span class=kc>True</span><span class=p>,</span> <span class=o>**</span><span class=n>options</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>        <span class=s2>&#34;&#34;&#34; 略 &#34;&#34;&#34;</span>
+</span></span><span class=line><span class=cl>        <span class=c1># Change this into a no-op if the server is invoked from the</span>
+</span></span><span class=line><span class=cl>        <span class=c1># command line. Have a look at cli.py for more information.</span>
+</span></span><span class=line><span class=cl>        <span class=k>if</span> <span class=n>os</span><span class=o>.</span><span class=n>environ</span><span class=o>.</span><span class=n>get</span><span class=p>(</span><span class=s1>&#39;FLASK_RUN_FROM_CLI&#39;</span><span class=p>)</span> <span class=o>==</span> <span class=s1>&#39;true&#39;</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=kn>from</span> <span class=nn>.debughelpers</span> <span class=kn>import</span> <span class=n>explain_ignored_app_run</span>
+</span></span><span class=line><span class=cl>            <span class=n>explain_ignored_app_run</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>            <span class=k>return</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=k>if</span> <span class=n>get_load_dotenv</span><span class=p>(</span><span class=n>load_dotenv</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>            <span class=n>cli</span><span class=o>.</span><span class=n>load_dotenv</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>            <span class=c1># if set, let env vars override previous values</span>
+</span></span><span class=line><span class=cl>            <span class=k>if</span> <span class=s1>&#39;FLASK_ENV&#39;</span> <span class=ow>in</span> <span class=n>os</span><span class=o>.</span><span class=n>environ</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>                <span class=bp>self</span><span class=o>.</span><span class=n>env</span> <span class=o>=</span> <span class=n>get_env</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>                <span class=bp>self</span><span class=o>.</span><span class=n>debug</span> <span class=o>=</span> <span class=n>get_debug_flag</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>            <span class=k>elif</span> <span class=s1>&#39;FLASK_DEBUG&#39;</span> <span class=ow>in</span> <span class=n>os</span><span class=o>.</span><span class=n>environ</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>                <span class=bp>self</span><span class=o>.</span><span class=n>debug</span> <span class=o>=</span> <span class=n>get_debug_flag</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=c1># debug passed to method overrides all other sources</span>
+</span></span><span class=line><span class=cl>        <span class=k>if</span> <span class=n>debug</span> <span class=ow>is</span> <span class=ow>not</span> <span class=kc>None</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>debug</span> <span class=o>=</span> <span class=nb>bool</span><span class=p>(</span><span class=n>debug</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=n>_host</span> <span class=o>=</span> <span class=s1>&#39;127.0.0.1&#39;</span>
+</span></span><span class=line><span class=cl>        <span class=n>_port</span> <span class=o>=</span> <span class=mi>5000</span>
+</span></span><span class=line><span class=cl>        <span class=n>server_name</span> <span class=o>=</span> <span class=bp>self</span><span class=o>.</span><span class=n>config</span><span class=o>.</span><span class=n>get</span><span class=p>(</span><span class=s1>&#39;SERVER_NAME&#39;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=n>sn_host</span><span class=p>,</span> <span class=n>sn_port</span> <span class=o>=</span> <span class=kc>None</span><span class=p>,</span> <span class=kc>None</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=k>if</span> <span class=n>server_name</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=n>sn_host</span><span class=p>,</span> <span class=n>_</span><span class=p>,</span> <span class=n>sn_port</span> <span class=o>=</span> <span class=n>server_name</span><span class=o>.</span><span class=n>partition</span><span class=p>(</span><span class=s1>&#39;:&#39;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=n>host</span> <span class=o>=</span> <span class=n>host</span> <span class=ow>or</span> <span class=n>sn_host</span> <span class=ow>or</span> <span class=n>_host</span>
+</span></span><span class=line><span class=cl>        <span class=n>port</span> <span class=o>=</span> <span class=nb>int</span><span class=p>(</span><span class=n>port</span> <span class=ow>or</span> <span class=n>sn_port</span> <span class=ow>or</span> <span class=n>_port</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=n>options</span><span class=o>.</span><span class=n>setdefault</span><span class=p>(</span><span class=s1>&#39;use_reloader&#39;</span><span class=p>,</span> <span class=bp>self</span><span class=o>.</span><span class=n>debug</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=n>options</span><span class=o>.</span><span class=n>setdefault</span><span class=p>(</span><span class=s1>&#39;use_debugger&#39;</span><span class=p>,</span> <span class=bp>self</span><span class=o>.</span><span class=n>debug</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=n>options</span><span class=o>.</span><span class=n>setdefault</span><span class=p>(</span><span class=s1>&#39;threaded&#39;</span><span class=p>,</span> <span class=kc>True</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=n>cli</span><span class=o>.</span><span class=n>show_server_banner</span><span class=p>(</span><span class=bp>self</span><span class=o>.</span><span class=n>env</span><span class=p>,</span> <span class=bp>self</span><span class=o>.</span><span class=n>debug</span><span class=p>,</span> <span class=bp>self</span><span class=o>.</span><span class=n>name</span><span class=p>,</span> <span class=kc>False</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=kn>from</span> <span class=nn>werkzeug.serving</span> <span class=kn>import</span> <span class=n>run_simple</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=k>try</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=n>run_simple</span><span class=p>(</span><span class=n>host</span><span class=p>,</span> <span class=n>port</span><span class=p>,</span> <span class=bp>self</span><span class=p>,</span> <span class=o>**</span><span class=n>options</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=k>finally</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=c1># reset the first request information if the development server</span>
+</span></span><span class=line><span class=cl>            <span class=c1># reset normally.  This makes it possible to restart the server</span>
+</span></span><span class=line><span class=cl>            <span class=c1># without reloader and that stuff from an interactive shell.</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>_got_first_request</span> <span class=o>=</span> <span class=kc>False</span>
+</span></span></code></pre></td></tr></table></div></div></blockquote><p>首先进入眼帘的是关于 flask/cli 的内容。 点进 <code>explain_ignored_app_run</code> 可以得知这是一个防止用户犯蠢写下 app.run() 后又用 <code>flask run</code>在命令行启动留下的说明性输出。</p><p>其次是 dotenv 相关的玩意儿，没用过 dotenv 推荐去了解下 python-dotenv 这个包。可以很方便地配置好开发环境下的环境变量。</p><p>经过一堆类型转换和检查之后，终于看到了这几行。</p><blockquote><p><a class=link href=https://github.com/pallets/flask/blob/master/flask/app.py target=_blank rel=noopener>flask/app.py</a>
+COMMIT a74864e , Line 941 ~ 949</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
@@ -315,29 +140,18 @@ COMMIT a74864e , Line 941 ~ 949</p>
 </span><span class=lnt>7
 </span><span class=lnt>8
 </span><span class=lnt>9
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python>        <span class=kn>from</span> <span class=nn>werkzeug.serving</span> <span class=kn>import</span> <span class=n>run_simple</span>
-
-        <span class=k>try</span><span class=p>:</span>
-            <span class=n>run_simple</span><span class=p>(</span><span class=n>host</span><span class=p>,</span> <span class=n>port</span><span class=p>,</span> <span class=bp>self</span><span class=p>,</span> <span class=o>**</span><span class=n>options</span><span class=p>)</span>
-        <span class=k>finally</span><span class=p>:</span>
-            <span class=c1># reset the first request information if the development server</span>
-            <span class=c1># reset normally.  This makes it possible to restart the server</span>
-            <span class=c1># without reloader and that stuff from an interactive shell.</span>
-            <span class=bp>self</span><span class=o>.</span><span class=n>_got_first_request</span> <span class=o>=</span> <span class=kc>False</span>
-</code></pre></td></tr></table>
-</div>
-</div></blockquote>
-<p><code>run_simple</code>？这就是 WSGI Server 启动的地方了。</p>
-<p><a class=link href=http://werkzeug.pocoo.org/docs/0.14/serving/ target=_blank rel=noopener>看看 werkzeug 文档吧</a>，我这里摘一段。</p>
-<blockquote>
-<p>Serving WSGI Applications
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl>        <span class=kn>from</span> <span class=nn>werkzeug.serving</span> <span class=kn>import</span> <span class=n>run_simple</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=k>try</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=n>run_simple</span><span class=p>(</span><span class=n>host</span><span class=p>,</span> <span class=n>port</span><span class=p>,</span> <span class=bp>self</span><span class=p>,</span> <span class=o>**</span><span class=n>options</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=k>finally</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=c1># reset the first request information if the development server</span>
+</span></span><span class=line><span class=cl>            <span class=c1># reset normally.  This makes it possible to restart the server</span>
+</span></span><span class=line><span class=cl>            <span class=c1># without reloader and that stuff from an interactive shell.</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>_got_first_request</span> <span class=o>=</span> <span class=kc>False</span>
+</span></span></code></pre></td></tr></table></div></div></blockquote><p><code>run_simple</code>？这就是 WSGI Server 启动的地方了。</p><p><a class=link href=http://werkzeug.pocoo.org/docs/0.14/serving/ target=_blank rel=noopener>看看 werkzeug 文档吧</a>，我这里摘一段。</p><blockquote><p>Serving WSGI Applications
 There are many ways to serve a WSGI application. While you’re developing it, you usually don’t want to have a full-blown webserver like Apache up and running, but instead a simple standalone one. Because of that Werkzeug comes with a builtin development server.
-The easiest way is creating a small start-myproject.py file that runs the application using the builtin server:</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+The easiest way is creating a small start-myproject.py file that runs the application using the builtin server:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
@@ -345,46 +159,26 @@ The easiest way is creating a small start-myproject.py file that runs the applic
 </span><span class=lnt>6
 </span><span class=lnt>7
 </span><span class=lnt>8
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=ch>#!/usr/bin/env python</span>
-<span class=c1># -*- coding: utf-8 -*-</span>
-
-<span class=kn>from</span> <span class=nn>werkzeug.serving</span> <span class=kn>import</span> <span class=n>run_simple</span>
-<span class=kn>from</span> <span class=nn>myproject</span> <span class=kn>import</span> <span class=n>make_app</span>
-
-<span class=n>app</span> <span class=o>=</span> <span class=n>make_app</span><span class=p>(</span><span class=o>...</span><span class=p>)</span>
-<span class=n>run_simple</span><span class=p>(</span><span class=s1>&#39;localhost&#39;</span><span class=p>,</span> <span class=mi>8080</span><span class=p>,</span> <span class=n>app</span><span class=p>,</span> <span class=n>use_reloader</span><span class=o>=</span><span class=kc>True</span><span class=p>)</span>
-</code></pre></td></tr></table>
-</div>
-</div></blockquote>
-<p>从函数签名可以看得出，<code>run_simple</code>启动时，flask 将自己作为 wsgi app 参数传给了 werkzeug，不难猜测出，Flask 本身是一个可调用对象，即重写了 <code>__call__</code> 方法。</p>
-<h3 id=22-__call__>2.2 <code>__call__</code></h3>
-<p>来到<code>__call__</code>，发现它调用了<code>self.wsgi_app</code>，本身没做任何事。</p>
-<blockquote>
-<p><a class=link href=https://github.com/pallets/flask/blob/master/flask/app.py target=_blank rel=noopener>flask/app.py</a>
-COMMIT a74864e , Line 2323 ~ 2327</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=ch>#!/usr/bin/env python</span>
+</span></span><span class=line><span class=cl><span class=c1># -*- coding: utf-8 -*-</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kn>from</span> <span class=nn>werkzeug.serving</span> <span class=kn>import</span> <span class=n>run_simple</span>
+</span></span><span class=line><span class=cl><span class=kn>from</span> <span class=nn>myproject</span> <span class=kn>import</span> <span class=n>make_app</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>app</span> <span class=o>=</span> <span class=n>make_app</span><span class=p>(</span><span class=o>...</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=n>run_simple</span><span class=p>(</span><span class=s1>&#39;localhost&#39;</span><span class=p>,</span> <span class=mi>8080</span><span class=p>,</span> <span class=n>app</span><span class=p>,</span> <span class=n>use_reloader</span><span class=o>=</span><span class=kc>True</span><span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div></blockquote><p>从函数签名可以看得出，<code>run_simple</code>启动时，flask 将自己作为 wsgi app 参数传给了 werkzeug，不难猜测出，Flask 本身是一个可调用对象，即重写了 <code>__call__</code> 方法。</p><h3 id=22-__call__>2.2 <code>__call__</code></h3><p>来到<code>__call__</code>，发现它调用了<code>self.wsgi_app</code>，本身没做任何事。</p><blockquote><p><a class=link href=https://github.com/pallets/flask/blob/master/flask/app.py target=_blank rel=noopener>flask/app.py</a>
+COMMIT a74864e , Line 2323 ~ 2327</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
 </span><span class=lnt>5
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python>    <span class=k>def</span> <span class=fm>__call__</span><span class=p>(</span><span class=bp>self</span><span class=p>,</span> <span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>):</span>
-        <span class=s2>&#34;&#34;&#34;The WSGI server calls the Flask application object as the
-</span><span class=s2>        WSGI application. This calls :meth:`wsgi_app` which can be
-</span><span class=s2>        wrapped to applying middleware.&#34;&#34;&#34;</span>
-        <span class=k>return</span> <span class=bp>self</span><span class=o>.</span><span class=n>wsgi_app</span><span class=p>(</span><span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>)</span>
-</code></pre></td></tr></table>
-</div>
-</div></blockquote>
-<p>再来到 <code>wsgi_app</code> 的定义。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl>    <span class=k>def</span> <span class=fm>__call__</span><span class=p>(</span><span class=bp>self</span><span class=p>,</span> <span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>        <span class=s2>&#34;&#34;&#34;The WSGI server calls the Flask application object as the
+</span></span></span><span class=line><span class=cl><span class=s2>        WSGI application. This calls :meth:`wsgi_app` which can be
+</span></span></span><span class=line><span class=cl><span class=s2>        wrapped to applying middleware.&#34;&#34;&#34;</span>
+</span></span><span class=line><span class=cl>        <span class=k>return</span> <span class=bp>self</span><span class=o>.</span><span class=n>wsgi_app</span><span class=p>(</span><span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div></blockquote><p>再来到 <code>wsgi_app</code> 的定义。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -403,177 +197,32 @@ COMMIT a74864e , Line 2323 ~ 2327</p>
 </span><span class=lnt>17
 </span><span class=lnt>18
 </span><span class=lnt>19
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python>    <span class=k>def</span> <span class=nf>wsgi_app</span><span class=p>(</span><span class=bp>self</span><span class=p>,</span> <span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>):</span>
-        <span class=s2>&#34;&#34;&#34; 略 &#34;&#34;&#34;</span>
-        <span class=n>ctx</span> <span class=o>=</span> <span class=bp>self</span><span class=o>.</span><span class=n>request_context</span><span class=p>(</span><span class=n>environ</span><span class=p>)</span>
-        <span class=n>error</span> <span class=o>=</span> <span class=kc>None</span>
-        <span class=k>try</span><span class=p>:</span>
-            <span class=k>try</span><span class=p>:</span>
-                <span class=n>ctx</span><span class=o>.</span><span class=n>push</span><span class=p>()</span>
-                <span class=n>response</span> <span class=o>=</span> <span class=bp>self</span><span class=o>.</span><span class=n>full_dispatch_request</span><span class=p>()</span>
-            <span class=k>except</span> <span class=ne>Exception</span> <span class=k>as</span> <span class=n>e</span><span class=p>:</span>
-                <span class=n>error</span> <span class=o>=</span> <span class=n>e</span>
-                <span class=n>response</span> <span class=o>=</span> <span class=bp>self</span><span class=o>.</span><span class=n>handle_exception</span><span class=p>(</span><span class=n>e</span><span class=p>)</span>
-            <span class=k>except</span><span class=p>:</span>
-                <span class=n>error</span> <span class=o>=</span> <span class=n>sys</span><span class=o>.</span><span class=n>exc_info</span><span class=p>()[</span><span class=mi>1</span><span class=p>]</span>
-                <span class=k>raise</span>
-            <span class=k>return</span> <span class=n>response</span><span class=p>(</span><span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>)</span>
-        <span class=k>finally</span><span class=p>:</span>
-            <span class=k>if</span> <span class=bp>self</span><span class=o>.</span><span class=n>should_ignore_error</span><span class=p>(</span><span class=n>error</span><span class=p>):</span>
-                <span class=n>error</span> <span class=o>=</span> <span class=kc>None</span>
-            <span class=n>ctx</span><span class=o>.</span><span class=n>auto_pop</span><span class=p>(</span><span class=n>error</span><span class=p>)</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>这里，就是整个 Flask 作为 wsgi app，处理 request 的入口点了。</p>
-<p>从这儿我们能鸟瞰整个 flask 框架的核心逻辑。<code>environ</code>被包装成 <code>request</code>，压栈，<code>full_dispatch_request</code>路由至视图，处理异常，一切结束后清栈。</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/python/>python</a>
-<a href=/blog/tags/flask/>flask</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/b-tree/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>B树</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/avl-tree/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>AVL树</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/pattern-match-in-python310/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>pattern-match-in-python310</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/django-%E7%9A%84%E5%90%84%E7%A7%8D%E5%85%B3%E7%B3%BB%E5%AD%97%E6%AE%B5%E8%AF%A6%E8%A7%A3/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>Django 的各种关系字段详解</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/%E8%BD%BB%E9%87%8F%E7%BA%A7-django-%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0%E6%9C%80%E5%B0%8F%E7%9A%84-django-%E5%BA%94%E7%94%A8/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>轻量级 django 阅读笔记：最小的 django 应用</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl>    <span class=k>def</span> <span class=nf>wsgi_app</span><span class=p>(</span><span class=bp>self</span><span class=p>,</span> <span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>        <span class=s2>&#34;&#34;&#34; 略 &#34;&#34;&#34;</span>
+</span></span><span class=line><span class=cl>        <span class=n>ctx</span> <span class=o>=</span> <span class=bp>self</span><span class=o>.</span><span class=n>request_context</span><span class=p>(</span><span class=n>environ</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=n>error</span> <span class=o>=</span> <span class=kc>None</span>
+</span></span><span class=line><span class=cl>        <span class=k>try</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=k>try</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>                <span class=n>ctx</span><span class=o>.</span><span class=n>push</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>                <span class=n>response</span> <span class=o>=</span> <span class=bp>self</span><span class=o>.</span><span class=n>full_dispatch_request</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>            <span class=k>except</span> <span class=ne>Exception</span> <span class=k>as</span> <span class=n>e</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>                <span class=n>error</span> <span class=o>=</span> <span class=n>e</span>
+</span></span><span class=line><span class=cl>                <span class=n>response</span> <span class=o>=</span> <span class=bp>self</span><span class=o>.</span><span class=n>handle_exception</span><span class=p>(</span><span class=n>e</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>            <span class=k>except</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>                <span class=n>error</span> <span class=o>=</span> <span class=n>sys</span><span class=o>.</span><span class=n>exc_info</span><span class=p>()[</span><span class=mi>1</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>                <span class=k>raise</span>
+</span></span><span class=line><span class=cl>            <span class=k>return</span> <span class=n>response</span><span class=p>(</span><span class=n>environ</span><span class=p>,</span> <span class=n>start_response</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=k>finally</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=k>if</span> <span class=bp>self</span><span class=o>.</span><span class=n>should_ignore_error</span><span class=p>(</span><span class=n>error</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>                <span class=n>error</span> <span class=o>=</span> <span class=kc>None</span>
+</span></span><span class=line><span class=cl>            <span class=n>ctx</span><span class=o>.</span><span class=n>auto_pop</span><span class=p>(</span><span class=n>error</span><span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div><p>这里，就是整个 Flask 作为 wsgi app，处理 request 的入口点了。</p><p>从这儿我们能鸟瞰整个 flask 框架的核心逻辑。<code>environ</code>被包装成 <code>request</code>，压栈，<code>full_dispatch_request</code>路由至视图，处理异常，一切结束后清栈。</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/python/>python</a>
+<a href=/blog/tags/flask/>flask</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/b-tree/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>B树</h2></div></a></article><article><a href=/blog/p/avl-tree/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>AVL树</h2></div></a></article><article><a href=/blog/p/pattern-match-in-python310/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>pattern-match-in-python310</h2></div></a></article><article><a href=/blog/p/django-%E7%9A%84%E5%90%84%E7%A7%8D%E5%85%B3%E7%B3%BB%E5%AD%97%E6%AE%B5%E8%AF%A6%E8%A7%A3/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>Django 的各种关系字段详解</h2></div></a></article><article><a href=/blog/p/%E8%BD%BB%E9%87%8F%E7%BA%A7-django-%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0%E6%9C%80%E5%B0%8F%E7%9A%84-django-%E5%BA%94%E7%94%A8/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>轻量级 django 阅读笔记：最小的 django 应用</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#0-intro>0. Intro</a></li>
-<li><a href=#1-回顾-wsgi>1. 回顾 WSGI</a>
-<ol>
-<li><a href=#11-pep-0333-到-pep-3333>1.1 PEP-0333 到 PEP-3333</a></li>
-<li><a href=#12-wsgi-server>1.2 WSGI Server</a></li>
-</ol>
-</li>
-<li><a href=#2-入口点>2. 入口点</a>
-<ol>
-<li><a href=#21-wsgi-server-与-run>2.1 WSGI Server 与 <code>.run</code></a></li>
-<li><a href=#22-__call__>2.2 <code>__call__</code></a></li>
-</ol>
-</li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#0-intro>0. Intro</a></li><li><a href=#1-回顾-wsgi>1. 回顾 WSGI</a><ol><li><a href=#11-pep-0333-到-pep-3333>1.1 PEP-0333 到 PEP-3333</a></li><li><a href=#12-wsgi-server>1.2 WSGI Server</a></li></ol></li><li><a href=#2-入口点>2. 入口点</a><ol><li><a href=#21-wsgi-server-与-run>2.1 WSGI Server 与 <code>.run</code></a></li><li><a href=#22-__call__>2.2 <code>__call__</code></a></li></ol></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

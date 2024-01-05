@@ -1,164 +1,9 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。 0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料： zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib 尝试了 zlib、lzo、"><title>加壳原理04 - zlib压缩壳案例</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。 0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料： zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib 尝试了 zlib、lzo、"><title>加壳原理04 - zlib压缩壳案例</title><link rel=canonical href=https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="加壳原理04 - zlib压缩壳案例">
-<meta property="og:description" content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。 0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料： zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib 尝试了 zlib、lzo、">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="汇编"><meta property="article:tag" content="c++"><meta property="article:tag" content="python"><meta property="article:tag" content="windows"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-10-20T16:07:00+08:00"><meta property="article:modified_time" content="2021-10-20T16:07:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.jpg">
-<meta name=twitter:title content="加壳原理04 - zlib压缩壳案例">
-<meta name=twitter:description content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。 0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料： zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib 尝试了 zlib、lzo、"><meta name=twitter:card content="summary_large_image">
-<meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.jpg">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class="has-image main-article">
-<header class=article-header>
-<div class=article-image>
-<a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/>
-<img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/blog/p/learning-packer-04-zlib-compression-packer-demo/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /blog/p/learning-packer-04-zlib-compression-packer-demo/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例">
-</a>
-</div>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/%E9%80%86%E5%90%91/>
-逆向
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/>加壳原理04 - zlib压缩壳案例</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2021-10-20T16:07:00+08:00>2021年 10月 20日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 3 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=前言>前言</h2>
-<p>本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。</p>
-<h2 id=0x01-zlib-解压>0x01 zlib 解压</h2>
-<h3 id=11-概述>1.1 概述</h3>
-<p>关于 zlib 的用法找了这些参考资料：</p>
-<ul>
-<li><a class=link href=https://zlib.net/zpipe.c target=_blank rel=noopener>zlib.net/zpipe.c</a></li>
-<li><a class=link href=https://zlib.net/zlib_how.html target=_blank rel=noopener>zlib Usage Example</a></li>
-<li><a class=link href=https://gist.github.com/arq5x/5315739 target=_blank rel=noopener>Compress and Decompress a string with zlib</a></li>
-</ul>
-<p>尝试了 zlib、lzo、Windows Compression API，对压缩和解压 API 的基本模式的基本认识大概是这样：</p>
-<ul>
-<li>首先，你得有被压缩数据的大小（要么分块压缩，要么有整个压缩后的大小）</li>
-<li>然后得有解压后的预期大小，这个能通过 <em>尝试解压</em> 的操作来实现。比如 Windows Compression API 和 lzo 都可以在解压 buffer 传 NULL，尝试取得解压后的大小，再分配好内存解压。</li>
-<li>zlib 这样的流式压缩、解压处理文件比较友好，但全程在内存里进行的话，流式解压就会导致大量内存分配 =。= 除非一开始就分配足够的空间，不然一个一个内存块申请和合并会很蛋疼。</li>
-</ul>
-<h3 id=12-内存布局>1.2 内存布局</h3>
-<p>压缩后的 <code>.packed</code> 节在头部留出 8 个字节，分别保存压缩后大小和压缩前大小，以便一次分配好内存完成解压。</p>
-<div class=table-wrapper><table>
-<thead>
-<tr>
-<th>偏移</th>
-<th>大小</th>
-<th>内容</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0</td>
-<td>DWORD</td>
-<td>小端序，压缩后大小</td>
-</tr>
-<tr>
-<td>4</td>
-<td>DWORD</td>
-<td>小端序，压缩前大小</td>
-</tr>
-<tr>
-<td>8</td>
-<td>可变</td>
-<td>压缩后的数据</td>
-</tr>
-</tbody>
-</table></div>
-<h3 id=13-解压代码>1.3 解压代码</h3>
-<p>解压过程在加载 PE 之前，找到 <code>.packed</code> 节后，开始读取头部大小，并调用解压代码。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="加壳原理04 - zlib压缩壳案例"><meta property="og:description" content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。 0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料： zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib 尝试了 zlib、lzo、"><meta property="og:url" content="https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="逆向"><meta property="article:tag" content="汇编"><meta property="article:tag" content="c++"><meta property="article:tag" content="python"><meta property="article:tag" content="windows"><meta property="article:tag" content="security"><meta property="article:tag" content="binary-analysis"><meta property="article:published_time" content="2021-10-20T16:07:00+08:00"><meta property="article:modified_time" content="2021-10-20T16:07:00+08:00"><meta property="og:image" content="https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.jpg"><meta name=twitter:title content="加壳原理04 - zlib压缩壳案例"><meta name=twitter:description content="前言 本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。 0x01 zlib 解压 1.1 概述 关于 zlib 的用法找了这些参考资料： zlib.net/zpipe.c zlib Usage Example Compress and Decompress a string with zlib 尝试了 zlib、lzo、"><meta name=twitter:card content="summary_large_image"><meta name=twitter:image content="https://nnnewb.github.io/blog/p/learning-packer-04-zlib-compression-packer-demo/cover.jpg"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class="has-image main-article"><header class=article-header><div class=article-image><a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/><img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg srcset="/blog/p/learning-packer-04-zlib-compression-packer-demo/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_800x0_resize_q75_box.jpg 800w, /blog/p/learning-packer-04-zlib-compression-packer-demo/cover_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_1600x0_resize_q75_box.jpg 1600w" width=800 height=390 loading=lazy alt="Featured image of post 加壳原理04 - zlib压缩壳案例"></a></div><div class=article-details><header class=article-category><a href=/blog/categories/%E9%80%86%E5%90%91/>逆向</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/learning-packer-04-zlib-compression-packer-demo/>加壳原理04 - zlib压缩壳案例</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2021-10-20T16:07:00+08:00>2021年 10月 20日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 3 分钟</time></div></footer></div></header><section class=article-content><h2 id=前言>前言</h2><p>本文在前一篇基础上，写一个使用 zlib 的压缩壳案例。</p><h2 id=0x01-zlib-解压>0x01 zlib 解压</h2><h3 id=11-概述>1.1 概述</h3><p>关于 zlib 的用法找了这些参考资料：</p><ul><li><a class=link href=https://zlib.net/zpipe.c target=_blank rel=noopener>zlib.net/zpipe.c</a></li><li><a class=link href=https://zlib.net/zlib_how.html target=_blank rel=noopener>zlib Usage Example</a></li><li><a class=link href=https://gist.github.com/arq5x/5315739 target=_blank rel=noopener>Compress and Decompress a string with zlib</a></li></ul><p>尝试了 zlib、lzo、Windows Compression API，对压缩和解压 API 的基本模式的基本认识大概是这样：</p><ul><li>首先，你得有被压缩数据的大小（要么分块压缩，要么有整个压缩后的大小）</li><li>然后得有解压后的预期大小，这个能通过 <em>尝试解压</em> 的操作来实现。比如 Windows Compression API 和 lzo 都可以在解压 buffer 传 NULL，尝试取得解压后的大小，再分配好内存解压。</li><li>zlib 这样的流式压缩、解压处理文件比较友好，但全程在内存里进行的话，流式解压就会导致大量内存分配 =。= 除非一开始就分配足够的空间，不然一个一个内存块申请和合并会很蛋疼。</li></ul><h3 id=12-内存布局>1.2 内存布局</h3><p>压缩后的 <code>.packed</code> 节在头部留出 8 个字节，分别保存压缩后大小和压缩前大小，以便一次分配好内存完成解压。</p><div class=table-wrapper><table><thead><tr><th>偏移</th><th>大小</th><th>内容</th></tr></thead><tbody><tr><td>0</td><td>DWORD</td><td>小端序，压缩后大小</td></tr><tr><td>4</td><td>DWORD</td><td>小端序，压缩前大小</td></tr><tr><td>8</td><td>可变</td><td>压缩后的数据</td></tr></tbody></table></div><h3 id=13-解压代码>1.3 解压代码</h3><p>解压过程在加载 PE 之前，找到 <code>.packed</code> 节后，开始读取头部大小，并调用解压代码。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -175,31 +20,24 @@
 </span><span class=lnt>15
 </span><span class=lnt>16
 </span><span class=lnt>17
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=k>if</span> <span class=p>(</span><span class=n>packed</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>DWORD</span> <span class=n>compressed_size</span> <span class=o>=</span> <span class=o>*</span><span class=p>((</span><span class=n>DWORD</span> <span class=o>*</span><span class=p>)</span><span class=n>packed</span><span class=p>);</span>         <span class=c1>// compressed size little-endian
-</span><span class=c1></span>    <span class=n>DWORD</span> <span class=n>decompressed_size</span> <span class=o>=</span> <span class=o>*</span><span class=p>((</span><span class=n>DWORD</span> <span class=o>*</span><span class=p>)(</span><span class=n>packed</span> <span class=o>+</span> <span class=mi>4</span><span class=p>));</span> <span class=c1>// decompressed size little-endian
-</span><span class=c1></span>    <span class=kt>void</span> <span class=o>*</span><span class=n>compressed</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=p>)(</span><span class=n>packed</span> <span class=o>+</span> <span class=mi>8</span><span class=p>);</span>            <span class=c1>// compressed buffer
-</span><span class=c1></span>    <span class=kt>void</span> <span class=o>*</span><span class=n>decompressed</span> <span class=o>=</span> <span class=n>malloc</span><span class=p>(</span><span class=n>decompressed_size</span><span class=p>);</span>     <span class=c1>// decompressed buffer
-</span><span class=c1></span>    <span class=k>if</span> <span class=p>(</span><span class=n>decompressed</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
-        <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;memory allocate failed&#34;</span><span class=p>,</span> <span class=s>&#34;malloc&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-        <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
-    <span class=p>}</span>
-
-    <span class=n>decompress</span><span class=p>(</span><span class=n>compressed</span><span class=p>,</span> <span class=n>compressed_size</span><span class=p>,</span> <span class=n>decompressed</span><span class=p>,</span> <span class=n>decompressed_size</span><span class=p>);</span>
-
-    <span class=kt>void</span> <span class=p>(</span><span class=o>*</span><span class=n>entrypoint</span><span class=p>)(</span><span class=kt>void</span><span class=p>)</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=p>(</span><span class=o>*</span><span class=p>)(</span><span class=kt>void</span><span class=p>))</span><span class=n>load_PE</span><span class=p>(</span><span class=n>decompressed</span><span class=p>);</span>
-    <span class=n>entrypoint</span><span class=p>();</span>
-
-    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>应该没有太多疑问。接下来的是解压代码。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=k>if</span> <span class=p>(</span><span class=n>packed</span> <span class=o>!=</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>DWORD</span> <span class=n>compressed_size</span> <span class=o>=</span> <span class=o>*</span><span class=p>((</span><span class=n>DWORD</span> <span class=o>*</span><span class=p>)</span><span class=n>packed</span><span class=p>);</span>         <span class=c1>// compressed size little-endian
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=n>DWORD</span> <span class=n>decompressed_size</span> <span class=o>=</span> <span class=o>*</span><span class=p>((</span><span class=n>DWORD</span> <span class=o>*</span><span class=p>)(</span><span class=n>packed</span> <span class=o>+</span> <span class=mi>4</span><span class=p>));</span> <span class=c1>// decompressed size little-endian
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kt>void</span> <span class=o>*</span><span class=n>compressed</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=p>)(</span><span class=n>packed</span> <span class=o>+</span> <span class=mi>8</span><span class=p>);</span>            <span class=c1>// compressed buffer
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kt>void</span> <span class=o>*</span><span class=n>decompressed</span> <span class=o>=</span> <span class=nf>malloc</span><span class=p>(</span><span class=n>decompressed_size</span><span class=p>);</span>     <span class=c1>// decompressed buffer
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=k>if</span> <span class=p>(</span><span class=n>decompressed</span> <span class=o>==</span> <span class=nb>NULL</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;memory allocate failed&#34;</span><span class=p>,</span> <span class=s>&#34;malloc&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>        <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=nf>decompress</span><span class=p>(</span><span class=n>compressed</span><span class=p>,</span> <span class=n>compressed_size</span><span class=p>,</span> <span class=n>decompressed</span><span class=p>,</span> <span class=n>decompressed_size</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=kt>void</span> <span class=p>(</span><span class=o>*</span><span class=n>entrypoint</span><span class=p>)(</span><span class=kt>void</span><span class=p>)</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=p>(</span><span class=o>*</span><span class=p>)(</span><span class=kt>void</span><span class=p>))</span><span class=nf>load_PE</span><span class=p>(</span><span class=n>decompressed</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=nf>entrypoint</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>应该没有太多疑问。接下来的是解压代码。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -219,59 +57,31 @@
 </span><span class=lnt>18
 </span><span class=lnt>19
 </span><span class=lnt>20
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=kt>void</span> <span class=nf>decompress</span><span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=n>compressed</span><span class=p>,</span> <span class=n>size_t</span> <span class=n>length</span><span class=p>,</span> <span class=kt>void</span> <span class=o>*</span><span class=n>decompressed</span><span class=p>,</span> <span class=n>size_t</span> <span class=n>decompressed_length</span><span class=p>)</span> <span class=p>{</span>
-  <span class=n>z_stream</span> <span class=n>inflate_stream</span><span class=p>;</span>
-  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>zalloc</span> <span class=o>=</span> <span class=n>Z_NULL</span><span class=p>;</span>
-  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>zfree</span> <span class=o>=</span> <span class=n>Z_NULL</span><span class=p>;</span>
-  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>opaque</span> <span class=o>=</span> <span class=n>Z_NULL</span><span class=p>;</span>
-  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>avail_in</span> <span class=o>=</span> <span class=p>(</span><span class=n>uInt</span><span class=p>)</span><span class=n>length</span><span class=p>;</span>
-  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>next_in</span> <span class=o>=</span> <span class=p>(</span><span class=n>Bytef</span> <span class=o>*</span><span class=p>)</span><span class=n>compressed</span><span class=p>;</span>
-  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>avail_out</span> <span class=o>=</span> <span class=p>(</span><span class=n>uInt</span><span class=p>)</span><span class=n>decompressed_length</span><span class=p>;</span>
-  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>next_out</span> <span class=o>=</span> <span class=p>(</span><span class=n>Bytef</span> <span class=o>*</span><span class=p>)</span><span class=n>decompressed</span><span class=p>;</span>
-  <span class=n>inflateInit</span><span class=p>(</span><span class=o>&amp;</span><span class=n>inflate_stream</span><span class=p>);</span>
-
-  <span class=kt>int</span> <span class=n>err</span> <span class=o>=</span> <span class=n>inflate</span><span class=p>(</span><span class=o>&amp;</span><span class=n>inflate_stream</span><span class=p>,</span> <span class=n>Z_NO_FLUSH</span><span class=p>);</span>
-  <span class=k>if</span> <span class=p>(</span><span class=n>err</span> <span class=o>!=</span> <span class=n>Z_STREAM_END</span><span class=p>)</span> <span class=p>{</span>
-    <span class=n>inflateEnd</span><span class=p>(</span><span class=o>&amp;</span><span class=n>inflate_stream</span><span class=p>);</span>
-    <span class=n>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;zlib decompression failed&#34;</span><span class=p>,</span> <span class=s>&#34;zlib&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
-    <span class=k>return</span><span class=p>;</span>
-  <span class=p>}</span>
-  <span class=n>inflateEnd</span><span class=p>(</span><span class=o>&amp;</span><span class=n>inflate_stream</span><span class=p>);</span>
-  <span class=k>return</span><span class=p>;</span>
-<span class=p>}</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>定义 inflate 流：</p>
-<ul>
-<li><code>avail_in</code> 是可用的输入 buffer 大小</li>
-<li><code>avail_out</code> 是可用的输出 buffer 大小</li>
-<li><code>next_in</code> 是输入 buffer 的指针</li>
-<li><code>next_out</code> 是输出 buffer 的指针</li>
-<li><code>zalloc</code>、<code>zfree</code>、<code>opaque</code> 初始化成 NULL</li>
-</ul>
-<p>使用 <code>inflateInit()</code> 初始化流，然后调用 <code>inflate()</code> 解压。<code>inflate()</code> 会返回错误码，如果长度正好，会返回 <code>Z_STREAM_END</code>。如果输出 buffer 长度不足，但解压成功，会返回 <code>Z_OK</code>。其他情况会返回错误码。因为这里很清楚给定的压缩前长度，解压必定返回 <code>Z_STREAM_END</code>，其他情况都有问题，所以只做了一个判断。</p>
-<p>对于其他情况，错误码可以用 <code>zError</code> 获取错误描述。</p>
-<p>解压结束后要使用 <code>inflateEnd()</code> 关闭流。</p>
-<h2 id=0x02-zlib压缩>0x02 zlib压缩</h2>
-<p>因为使用 python 写加壳机，就不用这么麻烦了。</p>
-<p>在处理 <code>.packed</code> 节的时候，使用 <code>struct</code> 和 <code>zlib</code> 两个 python 自带的库就能完成压缩和填充头。</p>
-<p>在脚本头部添加两句 <code>import</code></p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=kt>void</span> <span class=nf>decompress</span><span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=n>compressed</span><span class=p>,</span> <span class=kt>size_t</span> <span class=n>length</span><span class=p>,</span> <span class=kt>void</span> <span class=o>*</span><span class=n>decompressed</span><span class=p>,</span> <span class=kt>size_t</span> <span class=n>decompressed_length</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=n>z_stream</span> <span class=n>inflate_stream</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>zalloc</span> <span class=o>=</span> <span class=n>Z_NULL</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>zfree</span> <span class=o>=</span> <span class=n>Z_NULL</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>opaque</span> <span class=o>=</span> <span class=n>Z_NULL</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>avail_in</span> <span class=o>=</span> <span class=p>(</span><span class=n>uInt</span><span class=p>)</span><span class=n>length</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>next_in</span> <span class=o>=</span> <span class=p>(</span><span class=n>Bytef</span> <span class=o>*</span><span class=p>)</span><span class=n>compressed</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>avail_out</span> <span class=o>=</span> <span class=p>(</span><span class=n>uInt</span><span class=p>)</span><span class=n>decompressed_length</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>inflate_stream</span><span class=p>.</span><span class=n>next_out</span> <span class=o>=</span> <span class=p>(</span><span class=n>Bytef</span> <span class=o>*</span><span class=p>)</span><span class=n>decompressed</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=nf>inflateInit</span><span class=p>(</span><span class=o>&amp;</span><span class=n>inflate_stream</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=kt>int</span> <span class=n>err</span> <span class=o>=</span> <span class=nf>inflate</span><span class=p>(</span><span class=o>&amp;</span><span class=n>inflate_stream</span><span class=p>,</span> <span class=n>Z_NO_FLUSH</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>err</span> <span class=o>!=</span> <span class=n>Z_STREAM_END</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>inflateEnd</span><span class=p>(</span><span class=o>&amp;</span><span class=n>inflate_stream</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=nf>MessageBoxA</span><span class=p>(</span><span class=nb>NULL</span><span class=p>,</span> <span class=s>&#34;zlib decompression failed&#34;</span><span class=p>,</span> <span class=s>&#34;zlib&#34;</span><span class=p>,</span> <span class=n>MB_OK</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=nf>inflateEnd</span><span class=p>(</span><span class=o>&amp;</span><span class=n>inflate_stream</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>定义 inflate 流：</p><ul><li><code>avail_in</code> 是可用的输入 buffer 大小</li><li><code>avail_out</code> 是可用的输出 buffer 大小</li><li><code>next_in</code> 是输入 buffer 的指针</li><li><code>next_out</code> 是输出 buffer 的指针</li><li><code>zalloc</code>、<code>zfree</code>、<code>opaque</code> 初始化成 NULL</li></ul><p>使用 <code>inflateInit()</code> 初始化流，然后调用 <code>inflate()</code> 解压。<code>inflate()</code> 会返回错误码，如果长度正好，会返回 <code>Z_STREAM_END</code>。如果输出 buffer 长度不足，但解压成功，会返回 <code>Z_OK</code>。其他情况会返回错误码。因为这里很清楚给定的压缩前长度，解压必定返回 <code>Z_STREAM_END</code>，其他情况都有问题，所以只做了一个判断。</p><p>对于其他情况，错误码可以用 <code>zError</code> 获取错误描述。</p><p>解压结束后要使用 <code>inflateEnd()</code> 关闭流。</p><h2 id=0x02-zlib压缩>0x02 zlib压缩</h2><p>因为使用 python 写加壳机，就不用这么麻烦了。</p><p>在处理 <code>.packed</code> 节的时候，使用 <code>struct</code> 和 <code>zlib</code> 两个 python 自带的库就能完成压缩和填充头。</p><p>在脚本头部添加两句 <code>import</code></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=kn>import</span> <span class=nn>struct</span>
-<span class=kn>import</span> <span class=nn>zlib</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>然后修改加壳代码中，添加 <code>.packed</code> 节的代码。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=kn>import</span> <span class=nn>struct</span>
+</span></span><span class=line><span class=cl><span class=kn>import</span> <span class=nn>zlib</span>
+</span></span></code></pre></td></tr></table></div></div><p>然后修改加壳代码中，添加 <code>.packed</code> 节的代码。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -285,203 +95,32 @@
 </span><span class=lnt>12
 </span><span class=lnt>13
 </span><span class=lnt>14
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=c1># add packed section</span>
-<span class=k>with</span> <span class=nb>open</span><span class=p>(</span><span class=s1>&#39;example.exe&#39;</span><span class=p>,</span> <span class=s1>&#39;rb&#39;</span><span class=p>)</span> <span class=k>as</span> <span class=n>f</span><span class=p>:</span>
-    <span class=n>file_content</span> <span class=o>=</span> <span class=n>f</span><span class=o>.</span><span class=n>read</span><span class=p>()</span>
-    <span class=n>origin_length</span> <span class=o>=</span> <span class=nb>len</span><span class=p>(</span><span class=n>file_content</span><span class=p>)</span>
-    <span class=n>compressed</span> <span class=o>=</span> <span class=n>zlib</span><span class=o>.</span><span class=n>compress</span><span class=p>(</span><span class=n>file_content</span><span class=p>,</span> <span class=mi>9</span><span class=p>)</span>
-    <span class=n>compressed_length</span> <span class=o>=</span> <span class=nb>len</span><span class=p>(</span><span class=n>compressed</span><span class=p>)</span>
-    <span class=n>section_content</span> <span class=o>=</span> <span class=n>struct</span><span class=o>.</span><span class=n>pack</span><span class=p>(</span><span class=s1>&#39;&lt;II&#39;</span><span class=p>,</span> <span class=n>compressed_length</span><span class=p>,</span> <span class=n>origin_length</span><span class=p>)</span>
-    <span class=n>section_content</span> <span class=o>+=</span> <span class=n>compressed</span>
-
-    <span class=n>packed_section</span> <span class=o>=</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>Section</span><span class=p>(</span><span class=s1>&#39;.packed&#39;</span><span class=p>)</span>
-    <span class=n>packed_section</span><span class=o>.</span><span class=n>content</span> <span class=o>=</span> <span class=nb>list</span><span class=p>(</span><span class=n>section_content</span><span class=p>)</span>
-    <span class=n>packed_section</span><span class=o>.</span><span class=n>characteristics</span> <span class=o>=</span> <span class=p>(</span><span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>SECTION_CHARACTERISTICS</span><span class=o>.</span><span class=n>MEM_READ</span> <span class=o>|</span>
-                                      <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>SECTION_CHARACTERISTICS</span><span class=o>.</span><span class=n>CNT_INITIALIZED_DATA</span><span class=p>)</span>
-    <span class=n>output</span><span class=o>.</span><span class=n>add_section</span><span class=p>(</span><span class=n>packed_section</span><span class=p>)</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>可以看到使用 <code>zlib.compress</code> 就完成了压缩，不用原始 zlib 流那么麻烦。</p>
-<p><code>struct.pack</code> 指定了小端序，两个4字节int，分别填写压缩后大小和原始大小，连接压缩后的数据，填充进<code>.packed</code> 节。</p>
-<p>就这样，压缩功能成功完成。</p>
-<h2 id=0x03-成果展示>0x03 成果展示</h2>
-<p><img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/compression-packer.gif width=961 height=548 srcset="/blog/p/learning-packer-04-zlib-compression-packer-demo/compression-packer_hu48b8d61b8280e2749c0709493a3ebc66_545730_480x0_resize_box.gif 480w, /blog/p/learning-packer-04-zlib-compression-packer-demo/compression-packer_hu48b8d61b8280e2749c0709493a3ebc66_545730_1024x0_resize_box.gif 1024w" loading=lazy alt=compression-packer class=gallery-image data-flex-grow=175 data-flex-basis=420px></p>
-<p><img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154513713.png width=612 height=124 srcset="/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154513713_hu9ea9ff8b4b10d51b1ae7242496aa71bc_14861_480x0_resize_box_3.png 480w, /blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154513713_hu9ea9ff8b4b10d51b1ae7242496aa71bc_14861_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211020154513713 class=gallery-image data-flex-grow=493 data-flex-basis=1184px></p>
-<p><img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154539546.png width=512 height=282 srcset="/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154539546_hu04f79f6a0431df840a4406ea20a286f1_11213_480x0_resize_box_3.png 480w, /blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154539546_hu04f79f6a0431df840a4406ea20a286f1_11213_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211020154539546 class=gallery-image data-flex-grow=181 data-flex-basis=435px></p>
-<h2 id=总结>总结</h2>
-<p>偷懒了，用了一些 msvcrt 的函数，比如 malloc，要加个 <code>-lmsvcrt</code> 链接选项。最终成品压缩率还可以，从107KB 压缩到了 49KB，zlib 不负期望。</p>
-<p>写好壳程序之后，不管是加密还是压缩都是很容易的事情（指单纯做个简单实现），但问题依然存在：</p>
-<ul>
-<li>64位程序——我觉得可以以后再说吧？我连64位汇编都还不会（泪）。</li>
-<li>脱壳跟玩一样——现在看 .packed 已经没有 MZ 这个摆明了是原始程序的标志了，但并没有卵用。壳程序也没混淆和反调试，节表也是清晰可见，根本不用分析。</li>
-</ul>
-<p>下一篇还没想好做什么，得先继续学习充实下自己，找个方向。</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=c1># add packed section</span>
+</span></span><span class=line><span class=cl><span class=k>with</span> <span class=nb>open</span><span class=p>(</span><span class=s1>&#39;example.exe&#39;</span><span class=p>,</span> <span class=s1>&#39;rb&#39;</span><span class=p>)</span> <span class=k>as</span> <span class=n>f</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>    <span class=n>file_content</span> <span class=o>=</span> <span class=n>f</span><span class=o>.</span><span class=n>read</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>    <span class=n>origin_length</span> <span class=o>=</span> <span class=nb>len</span><span class=p>(</span><span class=n>file_content</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>compressed</span> <span class=o>=</span> <span class=n>zlib</span><span class=o>.</span><span class=n>compress</span><span class=p>(</span><span class=n>file_content</span><span class=p>,</span> <span class=mi>9</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>compressed_length</span> <span class=o>=</span> <span class=nb>len</span><span class=p>(</span><span class=n>compressed</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>section_content</span> <span class=o>=</span> <span class=n>struct</span><span class=o>.</span><span class=n>pack</span><span class=p>(</span><span class=s1>&#39;&lt;II&#39;</span><span class=p>,</span> <span class=n>compressed_length</span><span class=p>,</span> <span class=n>origin_length</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>section_content</span> <span class=o>+=</span> <span class=n>compressed</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=n>packed_section</span> <span class=o>=</span> <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>Section</span><span class=p>(</span><span class=s1>&#39;.packed&#39;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>packed_section</span><span class=o>.</span><span class=n>content</span> <span class=o>=</span> <span class=nb>list</span><span class=p>(</span><span class=n>section_content</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>packed_section</span><span class=o>.</span><span class=n>characteristics</span> <span class=o>=</span> <span class=p>(</span><span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>SECTION_CHARACTERISTICS</span><span class=o>.</span><span class=n>MEM_READ</span> <span class=o>|</span>
+</span></span><span class=line><span class=cl>                                      <span class=n>lief</span><span class=o>.</span><span class=n>PE</span><span class=o>.</span><span class=n>SECTION_CHARACTERISTICS</span><span class=o>.</span><span class=n>CNT_INITIALIZED_DATA</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>output</span><span class=o>.</span><span class=n>add_section</span><span class=p>(</span><span class=n>packed_section</span><span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div><p>可以看到使用 <code>zlib.compress</code> 就完成了压缩，不用原始 zlib 流那么麻烦。</p><p><code>struct.pack</code> 指定了小端序，两个4字节int，分别填写压缩后大小和原始大小，连接压缩后的数据，填充进<code>.packed</code> 节。</p><p>就这样，压缩功能成功完成。</p><h2 id=0x03-成果展示>0x03 成果展示</h2><p><img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/compression-packer.gif width=961 height=548 srcset="/blog/p/learning-packer-04-zlib-compression-packer-demo/compression-packer_hu48b8d61b8280e2749c0709493a3ebc66_545730_480x0_resize_box_1.gif 480w, /blog/p/learning-packer-04-zlib-compression-packer-demo/compression-packer_hu48b8d61b8280e2749c0709493a3ebc66_545730_1024x0_resize_box_1.gif 1024w" loading=lazy alt=compression-packer class=gallery-image data-flex-grow=175 data-flex-basis=420px></p><p><img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154513713.png width=612 height=124 srcset="/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154513713_hu9ea9ff8b4b10d51b1ae7242496aa71bc_14861_480x0_resize_box_3.png 480w, /blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154513713_hu9ea9ff8b4b10d51b1ae7242496aa71bc_14861_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211020154513713 class=gallery-image data-flex-grow=493 data-flex-basis=1184px></p><p><img src=/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154539546.png width=512 height=282 srcset="/blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154539546_hu04f79f6a0431df840a4406ea20a286f1_11213_480x0_resize_box_3.png 480w, /blog/p/learning-packer-04-zlib-compression-packer-demo/image-20211020154539546_hu04f79f6a0431df840a4406ea20a286f1_11213_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20211020154539546 class=gallery-image data-flex-grow=181 data-flex-basis=435px></p><h2 id=总结>总结</h2><p>偷懒了，用了一些 msvcrt 的函数，比如 malloc，要加个 <code>-lmsvcrt</code> 链接选项。最终成品压缩率还可以，从107KB 压缩到了 49KB，zlib 不负期望。</p><p>写好壳程序之后，不管是加密还是压缩都是很容易的事情（指单纯做个简单实现），但问题依然存在：</p><ul><li>64位程序——我觉得可以以后再说吧？我连64位汇编都还不会（泪）。</li><li>脱壳跟玩一样——现在看 .packed 已经没有 MZ 这个摆明了是原始程序的标志了，但并没有卵用。壳程序也没混淆和反调试，节表也是清晰可见，根本不用分析。</li></ul><p>下一篇还没想好做什么，得先继续学习充实下自己，找个方向。</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/%E9%80%86%E5%90%91/>逆向</a>
 <a href=/blog/tags/%E6%B1%87%E7%BC%96/>汇编</a>
 <a href=/blog/tags/c++/>c++</a>
 <a href=/blog/tags/python/>python</a>
 <a href=/blog/tags/windows/>windows</a>
 <a href=/blog/tags/security/>security</a>
-<a href=/blog/tags/binary-analysis/>binary-analysis</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article class=has-image>
-<a href=/blog/p/learning-packer-03-support-no-relocations/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-03-support-no-relocations/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序" data-key=learning-packer-03-support-no-relocations data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理03 - 支持没有重定位的程序</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-08/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理08：混淆技术入门</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-07/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理07 - 花指令入门</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-06/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理06：反调试技术入门</h2>
-</div>
-</a>
-</article>
-<article class=has-image>
-<a href=/blog/p/learning-packer-05/>
-<div class=article-image>
-<img src=/blog/p/learning-packer-05/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理05：利用图片隐藏" data-key=learning-packer-05 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ==">
-</div>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>加壳原理05：利用图片隐藏</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+<a href=/blog/tags/binary-analysis/>binary-analysis</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article class=has-image><a href=/blog/p/learning-packer-03-support-no-relocations/><div class=article-image><img src=/blog/p/learning-packer-03-support-no-relocations/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理03 - 支持没有重定位的程序" data-key=learning-packer-03-support-no-relocations data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理03 - 支持没有重定位的程序</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-08/><div class=article-image><img src=/blog/p/learning-packer-08/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理08：混淆技术入门" data-key=learning-packer-08 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理08：混淆技术入门</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-07/><div class=article-image><img src=/blog/p/learning-packer-07/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理07 - 花指令入门" data-key=learning-packer-07 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理07 - 花指令入门</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-06/><div class=article-image><img src=/blog/p/learning-packer-06/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理06：反调试技术入门" data-key=learning-packer-06 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理06：反调试技术入门</h2></div></a></article><article class=has-image><a href=/blog/p/learning-packer-05/><div class=article-image><img src=/blog/p/learning-packer-05/cover.303a5ee85ad8275c094df5988adf0791_hu8b7651a2bda3b235d3ed49f67a1e20bd_99156_250x150_fill_q75_box_smart1.jpg width=250 height=150 loading=lazy alt="Featured image of post 加壳原理05：利用图片隐藏" data-key=learning-packer-05 data-hash="md5-MDpe6FrYJ1wJTfWYit8HkQ=="></div><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>加壳原理05：利用图片隐藏</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#0x01-zlib-解压>0x01 zlib 解压</a>
-<ol>
-<li><a href=#11-概述>1.1 概述</a></li>
-<li><a href=#12-内存布局>1.2 内存布局</a></li>
-<li><a href=#13-解压代码>1.3 解压代码</a></li>
-</ol>
-</li>
-<li><a href=#0x02-zlib压缩>0x02 zlib压缩</a></li>
-<li><a href=#0x03-成果展示>0x03 成果展示</a></li>
-<li><a href=#总结>总结</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#前言>前言</a></li><li><a href=#0x01-zlib-解压>0x01 zlib 解压</a><ol><li><a href=#11-概述>1.1 概述</a></li><li><a href=#12-内存布局>1.2 内存布局</a></li><li><a href=#13-解压代码>1.3 解压代码</a></li></ol></li><li><a href=#0x02-zlib压缩>0x02 zlib压缩</a></li><li><a href=#0x03-成果展示>0x03 成果展示</a></li><li><a href=#总结>总结</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

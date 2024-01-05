@@ -1,225 +1,33 @@
-<!doctype html><html lang=zh-cn dir=ltr>
-<head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 这次看下 DVWA 的 CSRF 题。 昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直"><title>DVWA上手记录-CSRF</title>
-<link rel=canonical href=https://nnnewb.github.io/blog/p/get-start-dvwa-03/>
-<link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
+<!doctype html><html lang=zh-cn dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="前言 这次看下 DVWA 的 CSRF 题。 昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直"><title>DVWA上手记录-CSRF</title><link rel=canonical href=https://nnnewb.github.io/blog/p/get-start-dvwa-03/><link rel=stylesheet href=/blog/scss/style.min.709d4f89582c5a09dc94158a722a16093cdffe24d9a8c77dd3f422c786203c41.css><script src=https://unpkg.com/dayjs@1.8.21/dayjs.min.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/plugin/relativeTime.js></script>
 <script src=https://unpkg.com/dayjs@1.8.21/locale/zh-cn.js></script>
-<script>dayjs.locale('zh-cn'),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="DVWA上手记录-CSRF">
-<meta property="og:description" content="前言 这次看下 DVWA 的 CSRF 题。 昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直">
-<meta property="og:url" content="https://nnnewb.github.io/blog/p/get-start-dvwa-03/">
-<meta property="og:site_name" content="weakptr's 笔记">
-<meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="security"><meta property="article:tag" content="DVWA"><meta property="article:published_time" content="2022-04-25T16:33:00+08:00"><meta property="article:modified_time" content="2022-04-25T16:33:00+08:00">
-<meta name=twitter:title content="DVWA上手记录-CSRF">
-<meta name=twitter:description content="前言 这次看下 DVWA 的 CSRF 题。 昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直">
-</head>
-<body class=article-page>
-<script>(function(){const a='StackColorScheme';localStorage.setItem(a,"light")})()</script><script>(function(){const b='StackColorScheme',a=localStorage.getItem(b),c=window.matchMedia('(prefers-color-scheme: dark)').matches===!0;a=='dark'||a==='auto'&&c?document.documentElement.dataset.scheme='dark':document.documentElement.dataset.scheme='light'})()</script>
-<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky">
-<button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
-<span class=hamburger-box>
-<span class=hamburger-inner></span>
-</span>
-</button>
-<header>
-<figure class=site-avatar>
-<a href=/blog/>
-<img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
-</a>
-<span class=emoji>🍑</span>
-</figure>
-<div class=site-meta>
-<h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1>
-<h2 class=site-description>弃船！</h2>
-</div>
-</header><ol class=social-menu>
-<li>
-<a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
-</a>
-</li>
-</ol><ol class=menu id=main-menu>
-<li>
-<a href=/blog/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
-<span>首页</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
-<span>关于我</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-<span>归档</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-<span>分类</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
-<span>标签</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
-<span>友链</span>
-</a>
-</li>
-<li>
-<a href=/blog/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
-<span>搜索</span>
-</a>
-</li>
-<div class=menu-bottom-section>
-</div>
-</ol>
-</aside>
-<main class="main full-width">
-<article class=main-article>
-<header class=article-header>
-<div class=article-details>
-<header class=article-category>
-<a href=/blog/categories/security/>
-security
-</a>
-</header>
-<div class=article-title-wrapper>
-<h2 class=article-title>
-<a href=/blog/p/get-start-dvwa-03/>DVWA上手记录-CSRF</a>
-</h2>
-</div>
-<footer class=article-time>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
-<time class=article-time--published datetime=2022-04-25T16:33:00+08:00>2022年 4月 25日</time>
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
-<time class=article-time--reading>
-阅读时长: 8 分钟
-</time>
-</div>
-</footer>
-</div>
-</header>
-<section class=article-content>
-<h2 id=前言>前言</h2>
-<p>这次看下 DVWA 的 CSRF 题。</p>
-<p>昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直接在 GitHub 网页点点鼠标就能同步上游代码。这样就能用上最新的 DVWA 同时享受 docker 一键启动 DVWA 环境的快乐了。</p>
-<p>用法很简单：</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+<script>dayjs.locale("zh-cn"),dayjs.extend(dayjs_plugin_relativeTime)</script><meta property="og:title" content="DVWA上手记录-CSRF"><meta property="og:description" content="前言 这次看下 DVWA 的 CSRF 题。 昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直"><meta property="og:url" content="https://nnnewb.github.io/blog/p/get-start-dvwa-03/"><meta property="og:site_name" content="weakptr's 笔记"><meta property="og:type" content="article"><meta property="article:section" content="Post"><meta property="article:tag" content="security"><meta property="article:tag" content="DVWA"><meta property="article:published_time" content="2022-04-25T16:33:00+08:00"><meta property="article:modified_time" content="2022-04-25T16:33:00+08:00"><meta name=twitter:title content="DVWA上手记录-CSRF"><meta name=twitter:description content="前言 这次看下 DVWA 的 CSRF 题。 昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直"></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.setItem(e,"light")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/blog/><img src=/blog/img/avatar_hub37949326d1692892aa1e64434c0dda6_382115_300x0_resize_box_3.png width=300 height=300 class=site-logo loading=lazy alt=Avatar></a>
+<span class=emoji>🍑</span></figure><div class=site-meta><h1 class=site-name><a href=/blog>weakptr's 笔记</a></h1><h2 class=site-description>弃船！</h2></div></header><ol class=social-menu><li><a href=https://github.com/nnnewb/ target=_blank title=GitHub><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/blog/><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg><span>首页</span></a></li><li><a href=/blog/about><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg><span>关于我</span></a></li><li><a href=/blog/archive><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>归档</span></a></li><li><a href=/blog/categories><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg><span>分类</span></a></li><li><a href=/blog/tags><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg><span>标签</span></a></li><li><a href=/blog/link><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg><span>友链</span></a></li><li><a href=/blog/search><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg><span>搜索</span></a></li><div class=menu-bottom-section></div></ol></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/blog/categories/security/>security</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/blog/p/get-start-dvwa-03/>DVWA上手记录-CSRF</a></h2></div><footer class=article-time><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg><time class=article-time--published datetime=2022-04-25T16:33:00+08:00>2022年 4月 25日</time></div><div><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg><time class=article-time--reading>阅读时长: 8 分钟</time></div></footer></div></header><section class=article-content><h2 id=前言>前言</h2><p>这次看下 DVWA 的 CSRF 题。</p><p>昨天忙完了工作，闲下来的时间顺便看了下 DVWA 的部署。在我的 fork 分支里添加了 docker 支持。因为是纯新增，不太可能有 breaking change，直接在 GitHub 网页点点鼠标就能同步上游代码。这样就能用上最新的 DVWA 同时享受 docker 一键启动 DVWA 环境的快乐了。</p><p>用法很简单：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-bash data-lang=bash>git clone https://github.com/nnnewb/dvwa
-<span class=nb>cd</span> dvwa
-docker-compose up -d --build
-</code></pre></td></tr></table>
-</div>
-</div><p>就这样！</p>
-<p>当然还有可能遇到一些网络问题，什么<code>deb.debian.org</code>访问慢或者<code>timeout</code>、<code>connection reset</code>之类的，但我觉得想玩这个的多少得有点自己动手解决问题的能力吧，不能跟三岁小孩一样等别人喂嘴里。</p>
-<h2 id=原理>原理</h2>
-<h3 id=利用方式>利用方式</h3>
-<p>CSRF 全名是跨站请求伪造 <em>Cross Site Request Forgery</em> 。</p>
-<p>简单地说，服务器相信收到的请求是用户控制浏览器发起的，是出于用户自身的意图做某些操作。但实际上，是另一个恶意网站的 js 脚本控制了用户的浏览器，在用户不知情的情况下，冒充用户的身份请求服务器做一些并非出自用户本意的操作。</p>
-<p>CSRF 利用中有三个组成部分：</p>
-<ul>
-<li>用户浏览器</li>
-<li>目标服务器</li>
-<li>恶意网站</li>
-</ul>
-<p>用户不访问恶意网站，CSRF 攻击就无从谈起。</p>
-<h3 id=和cors的关系>和CORS的关系</h3>
-<p>说没关系其实也有。CORS全称是 <em>Cross Origin Resource Sharing</em>，跨域资源共享，也是防浏览器被恶意网站控制着，背着用户拿自己的数据。但有所不同的是，CORS 其实是相当宽松的，因为 CORS 只要求浏览器对 “复杂请求” 发送预检，但简单请求（注意哦，包括 POST 请求，但只能包含指定的 Header 和限定的 <code>Content-Type</code>）会直接呈交给服务器。</p>
-<p>而且这个请求是可以带 Cookies 的，也就是说只要接口满足条件（接受限定的 <code>Content-Type</code>，对 Header 没有要求），CORS 策略就没法阻止 CSRF 攻击。</p>
-<p>举一个更实际的例子，哪怕恶意网站只是写了一个简单的表单：</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>git clone https://github.com/nnnewb/dvwa
+</span></span><span class=line><span class=cl><span class=nb>cd</span> dvwa
+</span></span><span class=line><span class=cl>docker-compose up -d --build
+</span></span></code></pre></td></tr></table></div></div><p>就这样！</p><p>当然还有可能遇到一些网络问题，什么<code>deb.debian.org</code>访问慢或者<code>timeout</code>、<code>connection reset</code>之类的，但我觉得想玩这个的多少得有点自己动手解决问题的能力吧，不能跟三岁小孩一样等别人喂嘴里。</p><h2 id=原理>原理</h2><h3 id=利用方式>利用方式</h3><p>CSRF 全名是跨站请求伪造 <em>Cross Site Request Forgery</em> 。</p><p>简单地说，服务器相信收到的请求是用户控制浏览器发起的，是出于用户自身的意图做某些操作。但实际上，是另一个恶意网站的 js 脚本控制了用户的浏览器，在用户不知情的情况下，冒充用户的身份请求服务器做一些并非出自用户本意的操作。</p><p>CSRF 利用中有三个组成部分：</p><ul><li>用户浏览器</li><li>目标服务器</li><li>恶意网站</li></ul><p>用户不访问恶意网站，CSRF 攻击就无从谈起。</p><h3 id=和cors的关系>和CORS的关系</h3><p>说没关系其实也有。CORS全称是 <em>Cross Origin Resource Sharing</em>，跨域资源共享，也是防浏览器被恶意网站控制着，背着用户拿自己的数据。但有所不同的是，CORS 其实是相当宽松的，因为 CORS 只要求浏览器对 “复杂请求” 发送预检，但简单请求（注意哦，包括 POST 请求，但只能包含指定的 Header 和限定的 <code>Content-Type</code>）会直接呈交给服务器。</p><p>而且这个请求是可以带 Cookies 的，也就是说只要接口满足条件（接受限定的 <code>Content-Type</code>，对 Header 没有要求），CORS 策略就没法阻止 CSRF 攻击。</p><p>举一个更实际的例子，哪怕恶意网站只是写了一个简单的表单：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-html data-lang=html><span class=p>&lt;</span><span class=nt>form</span> <span class=na>method</span><span class=o>=</span><span class=s>&#34;POST&#34;</span> <span class=na>action</span><span class=o>=</span><span class=s>&#34;http://good.com/some/action&#34;</span><span class=p>&gt;</span>
-    <span class=p>&lt;</span><span class=nt>input</span> <span class=na>type</span><span class=o>=</span><span class=s>&#34;text&#34;</span> <span class=na>value</span><span class=o>=</span><span class=s>&#34;hello&#34;</span><span class=p>/&gt;</span>
-    <span class=p>&lt;</span><span class=nt>button</span> <span class=na>type</span><span class=o>=</span><span class=s>&#34;submit&#34;</span><span class=p>&gt;</span>submit<span class=p>&lt;/</span><span class=nt>button</span><span class=p>&gt;</span>
-<span class=p>&lt;/</span><span class=nt>form</span><span class=p>&gt;</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>也满足 CORS 对于 <em>简单请求</em> 的定义，浏览器不会阻止或预检。</p>
-<p>因此，即使配置良好的 CORS，也无法杜绝 CSRF 攻击。但 CORS 确实是防御 CSRF 攻击的重要环节。</p>
-<h3 id=防御>防御</h3>
-<p>防御CSRF攻击说难不难，因为<a class=link href=https://portswigger.net/web-security/CSRF target=_blank rel=noopener>发起 CSRF 攻击有几个重要前提</a>：</p>
-<ul>
-<li>基于 Cookies 的会话控制</li>
-<li>没有不可预测的请求参数</li>
-</ul>
-<p>基于上面两点：</p>
-<p>如果会话控制存在于自定义的 HTTP 头或 Cookies 之外的 HTTP 头（比如<code>Authorization</code>），那么 CORS 就会要求先发出一个预检请求，只有在服务器返回 <code>Access-Control-Allow-Origin</code> 包含当前域名的时候才会正式发出请求。这样一来除非先 bypass CORS ，不然就无法发起 CSRF 攻击。</p>
-<p>另一种就是增加一个攻击者不可预测的参数，也就是常说的 CSRF Token。</p>
-<p>CSRF Token 是一个和会话绑定的随机（至少对攻击者来说不可预知的）字符串（或别的数据类型）。CSRF 的作用原理依然是要依靠 CORS，恶意网站如果要伪造请求提交一个表单，那就必须拿到 CSRF Token，想获取 CSRF Token 就必须拿到表单所在的页面，而请求表单页面就必须满足 CORS 策略——即使是简单请求，没有预检，浏览器在收到响应后也会根据 <code>Access-Control-Allow-Origin</code> 的设定拒绝给 XHR 返回数据。网页拿不到 CSRF Token，自然也就没办法伪造出请求。</p>
-<h2 id=解题>解题</h2>
-<h3 id=信息收集>信息收集</h3>
-<p>好的，就是踩点。</p>
-<p><img src=/blog/p/get-start-dvwa-03/image-20220425113359872.png width=694 height=384 srcset="/blog/p/get-start-dvwa-03/image-20220425113359872_hu9f65ffe27ceedc88d5a5d4b939cdbb89_29651_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113359872_hu9f65ffe27ceedc88d5a5d4b939cdbb89_29651_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113359872 class=gallery-image data-flex-grow=180 data-flex-basis=433px></p>
-<p>一个修改密码的页面，只有登陆用户能修改自己的密码（因为不登陆根本看不到这个页面）。另外还提供了一个测试登陆的地方，就是那个 <em>Test Credentials</em> 按钮。</p>
-<p><img src=/blog/p/get-start-dvwa-03/image-20220425113529432.png width=602 height=462 srcset="/blog/p/get-start-dvwa-03/image-20220425113529432_hu6562a17a4cfa6d40103e315209b7dae1_19442_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113529432_hu6562a17a4cfa6d40103e315209b7dae1_19442_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113529432 class=gallery-image data-flex-grow=130 data-flex-basis=312px></p>
-<p>在测试登陆这里输入自己的用户名密码（默认是 <code>admin</code>,<code>password</code>）会提示<code>valid password for 'admin'</code>。</p>
-<p><img src=/blog/p/get-start-dvwa-03/image-20220425113619471.png width=602 height=462 srcset="/blog/p/get-start-dvwa-03/image-20220425113619471_hu7a377251ca067ccef2deefe4b718b765_20140_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113619471_hu7a377251ca067ccef2deefe4b718b765_20140_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113619471 class=gallery-image data-flex-grow=130 data-flex-basis=312px></p>
-<p>修改密码的地方我们也试一试。</p>
-<p><img src=/blog/p/get-start-dvwa-03/image-20220425113707665.png width=681 height=359 srcset="/blog/p/get-start-dvwa-03/image-20220425113707665_hu83b45cf6d41374fdab532da43f4da5fb_27229_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113707665_hu83b45cf6d41374fdab532da43f4da5fb_27229_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113707665 class=gallery-image data-flex-grow=189 data-flex-basis=455px></p>
-<p><img src=/blog/p/get-start-dvwa-03/image-20220425113713949.png width=691 height=361 srcset="/blog/p/get-start-dvwa-03/image-20220425113713949_hub982db786f97e05051e2c58967ba7a51_22558_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113713949_hub982db786f97e05051e2c58967ba7a51_22558_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113713949 class=gallery-image data-flex-grow=191 data-flex-basis=459px></p>
-<p>修改后提示 <code>Password changed</code>，观察下 F12 调试器里的请求和响应头。</p>
-<p><img src=/blog/p/get-start-dvwa-03/image-20220425143614395.png width=1008 height=449 srcset="/blog/p/get-start-dvwa-03/image-20220425143614395_hu218a45c37329024b7d96f4732fad50d1_41557_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425143614395_hu218a45c37329024b7d96f4732fad50d1_41557_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425143614395 class=gallery-image data-flex-grow=224 data-flex-basis=538px></p>
-<p><img src=/blog/p/get-start-dvwa-03/image-20220425143623579.png width=450 height=287 srcset="/blog/p/get-start-dvwa-03/image-20220425143623579_hu33b023caf2ec6ec6032bf544565c0cbf_18590_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425143623579_hu33b023caf2ec6ec6032bf544565c0cbf_18590_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425143623579 class=gallery-image data-flex-grow=156 data-flex-basis=376px></p>
-<p>接着看一眼表单代码。</p>
-<p><img src=/blog/p/get-start-dvwa-03/image-20220425113815152.png width=520 height=218 srcset="/blog/p/get-start-dvwa-03/image-20220425113815152_hu5f2daf098704a2b708824ee309756675_18422_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113815152_hu5f2daf098704a2b708824ee309756675_18422_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113815152 class=gallery-image data-flex-grow=238 data-flex-basis=572px></p>
-<p>只有我觉得<code>form</code>里<code>method=GET</code>是很怪的事情吗？感觉学会写 HTML 以来就没想过在 <code>form</code> 里用 <code>GET</code> 方法&mldr;</p>
-<p>咳，回到正题。</p>
-<p>到这里踩点差不多就结束了，可以发现 Low 难度下表单没有 CSRF Token 保护，因此可以简单直接写一个 XHR 修改掉密码。</p>
-<h3 id=题解>题解</h3>
-<p>必须先提一个我实际下手写的时候才踩到的坑，浏览器发展速度实在太快了。</p>
-<p>在<a class=link href=https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-05#section-5.3.7 target=_blank rel=noopener>RFC6265bis</a>里引入了一个新的 Cookies 属性，<code>SameSite</code>。<a class=link href="https://developers.google.com/search/blog/2020/01/get-ready-for-new-samesitenone-secure?hl=zh-cn" target=_blank rel=noopener>2019年5月份，谷歌宣布推出了一个默认安全的 Cookie 安全模型</a>，由新的 Cookie 分类系统（<a class=link href=https://tools.ietf.org/html/draft-west-cookie-incrementalism-00 target=_blank rel=noopener>规范</a>）提供支持。在规范（PS：同样是谷歌提出的）中将 <code>SameSite</code> 默认设置为 <code>Lax</code>，只允许 Cookies 与顶级导航（包括第三方网站发起的GET请求）一起发送。</p>
-<p>这么说可能有点不好理解，我写了一个简单的 demo，在这项改动之前应该是带上 Cookies 直接发出的请求。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-html data-lang=html><span class=line><span class=cl><span class=p>&lt;</span><span class=nt>form</span> <span class=na>method</span><span class=o>=</span><span class=s>&#34;POST&#34;</span> <span class=na>action</span><span class=o>=</span><span class=s>&#34;http://good.com/some/action&#34;</span><span class=p>&gt;</span>
+</span></span><span class=line><span class=cl>    <span class=p>&lt;</span><span class=nt>input</span> <span class=na>type</span><span class=o>=</span><span class=s>&#34;text&#34;</span> <span class=na>value</span><span class=o>=</span><span class=s>&#34;hello&#34;</span><span class=p>/&gt;</span>
+</span></span><span class=line><span class=cl>    <span class=p>&lt;</span><span class=nt>button</span> <span class=na>type</span><span class=o>=</span><span class=s>&#34;submit&#34;</span><span class=p>&gt;</span>submit<span class=p>&lt;/</span><span class=nt>button</span><span class=p>&gt;</span>
+</span></span><span class=line><span class=cl><span class=p>&lt;/</span><span class=nt>form</span><span class=p>&gt;</span>
+</span></span></code></pre></td></tr></table></div></div><p>也满足 CORS 对于 <em>简单请求</em> 的定义，浏览器不会阻止或预检。</p><p>因此，即使配置良好的 CORS，也无法杜绝 CSRF 攻击。但 CORS 确实是防御 CSRF 攻击的重要环节。</p><h3 id=防御>防御</h3><p>防御CSRF攻击说难不难，因为<a class=link href=https://portswigger.net/web-security/CSRF target=_blank rel=noopener>发起 CSRF 攻击有几个重要前提</a>：</p><ul><li>基于 Cookies 的会话控制</li><li>没有不可预测的请求参数</li></ul><p>基于上面两点：</p><p>如果会话控制存在于自定义的 HTTP 头或 Cookies 之外的 HTTP 头（比如<code>Authorization</code>），那么 CORS 就会要求先发出一个预检请求，只有在服务器返回 <code>Access-Control-Allow-Origin</code> 包含当前域名的时候才会正式发出请求。这样一来除非先 bypass CORS ，不然就无法发起 CSRF 攻击。</p><p>另一种就是增加一个攻击者不可预测的参数，也就是常说的 CSRF Token。</p><p>CSRF Token 是一个和会话绑定的随机（至少对攻击者来说不可预知的）字符串（或别的数据类型）。CSRF 的作用原理依然是要依靠 CORS，恶意网站如果要伪造请求提交一个表单，那就必须拿到 CSRF Token，想获取 CSRF Token 就必须拿到表单所在的页面，而请求表单页面就必须满足 CORS 策略——即使是简单请求，没有预检，浏览器在收到响应后也会根据 <code>Access-Control-Allow-Origin</code> 的设定拒绝给 XHR 返回数据。网页拿不到 CSRF Token，自然也就没办法伪造出请求。</p><h2 id=解题>解题</h2><h3 id=信息收集>信息收集</h3><p>好的，就是踩点。</p><p><img src=/blog/p/get-start-dvwa-03/image-20220425113359872.png width=694 height=384 srcset="/blog/p/get-start-dvwa-03/image-20220425113359872_hu9f65ffe27ceedc88d5a5d4b939cdbb89_29651_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113359872_hu9f65ffe27ceedc88d5a5d4b939cdbb89_29651_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113359872 class=gallery-image data-flex-grow=180 data-flex-basis=433px></p><p>一个修改密码的页面，只有登陆用户能修改自己的密码（因为不登陆根本看不到这个页面）。另外还提供了一个测试登陆的地方，就是那个 <em>Test Credentials</em> 按钮。</p><p><img src=/blog/p/get-start-dvwa-03/image-20220425113529432.png width=602 height=462 srcset="/blog/p/get-start-dvwa-03/image-20220425113529432_hu6562a17a4cfa6d40103e315209b7dae1_19442_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113529432_hu6562a17a4cfa6d40103e315209b7dae1_19442_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113529432 class=gallery-image data-flex-grow=130 data-flex-basis=312px></p><p>在测试登陆这里输入自己的用户名密码（默认是 <code>admin</code>,<code>password</code>）会提示<code>valid password for 'admin'</code>。</p><p><img src=/blog/p/get-start-dvwa-03/image-20220425113619471.png width=602 height=462 srcset="/blog/p/get-start-dvwa-03/image-20220425113619471_hu7a377251ca067ccef2deefe4b718b765_20140_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113619471_hu7a377251ca067ccef2deefe4b718b765_20140_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113619471 class=gallery-image data-flex-grow=130 data-flex-basis=312px></p><p>修改密码的地方我们也试一试。</p><p><img src=/blog/p/get-start-dvwa-03/image-20220425113707665.png width=681 height=359 srcset="/blog/p/get-start-dvwa-03/image-20220425113707665_hu83b45cf6d41374fdab532da43f4da5fb_27229_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113707665_hu83b45cf6d41374fdab532da43f4da5fb_27229_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113707665 class=gallery-image data-flex-grow=189 data-flex-basis=455px></p><p><img src=/blog/p/get-start-dvwa-03/image-20220425113713949.png width=691 height=361 srcset="/blog/p/get-start-dvwa-03/image-20220425113713949_hub982db786f97e05051e2c58967ba7a51_22558_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113713949_hub982db786f97e05051e2c58967ba7a51_22558_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113713949 class=gallery-image data-flex-grow=191 data-flex-basis=459px></p><p>修改后提示 <code>Password changed</code>，观察下 F12 调试器里的请求和响应头。</p><p><img src=/blog/p/get-start-dvwa-03/image-20220425143614395.png width=1008 height=449 srcset="/blog/p/get-start-dvwa-03/image-20220425143614395_hu218a45c37329024b7d96f4732fad50d1_41557_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425143614395_hu218a45c37329024b7d96f4732fad50d1_41557_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425143614395 class=gallery-image data-flex-grow=224 data-flex-basis=538px></p><p><img src=/blog/p/get-start-dvwa-03/image-20220425143623579.png width=450 height=287 srcset="/blog/p/get-start-dvwa-03/image-20220425143623579_hu33b023caf2ec6ec6032bf544565c0cbf_18590_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425143623579_hu33b023caf2ec6ec6032bf544565c0cbf_18590_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425143623579 class=gallery-image data-flex-grow=156 data-flex-basis=376px></p><p>接着看一眼表单代码。</p><p><img src=/blog/p/get-start-dvwa-03/image-20220425113815152.png width=520 height=218 srcset="/blog/p/get-start-dvwa-03/image-20220425113815152_hu5f2daf098704a2b708824ee309756675_18422_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425113815152_hu5f2daf098704a2b708824ee309756675_18422_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425113815152 class=gallery-image data-flex-grow=238 data-flex-basis=572px></p><p>只有我觉得<code>form</code>里<code>method=GET</code>是很怪的事情吗？感觉学会写 HTML 以来就没想过在 <code>form</code> 里用 <code>GET</code> 方法&mldr;</p><p>咳，回到正题。</p><p>到这里踩点差不多就结束了，可以发现 Low 难度下表单没有 CSRF Token 保护，因此可以简单直接写一个 XHR 修改掉密码。</p><h3 id=题解>题解</h3><p>必须先提一个我实际下手写的时候才踩到的坑，浏览器发展速度实在太快了。</p><p>在<a class=link href=https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-05#section-5.3.7 target=_blank rel=noopener>RFC6265bis</a>里引入了一个新的 Cookies 属性，<code>SameSite</code>。<a class=link href="https://developers.google.com/search/blog/2020/01/get-ready-for-new-samesitenone-secure?hl=zh-cn" target=_blank rel=noopener>2019年5月份，谷歌宣布推出了一个默认安全的 Cookie 安全模型</a>，由新的 Cookie 分类系统（<a class=link href=https://tools.ietf.org/html/draft-west-cookie-incrementalism-00 target=_blank rel=noopener>规范</a>）提供支持。在规范（PS：同样是谷歌提出的）中将 <code>SameSite</code> 默认设置为 <code>Lax</code>，只允许 Cookies 与顶级导航（包括第三方网站发起的GET请求）一起发送。</p><p>这么说可能有点不好理解，我写了一个简单的 demo，在这项改动之前应该是带上 Cookies 直接发出的请求。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
 </span><span class=lnt>2
 </span><span class=lnt>3
 </span><span class=lnt>4
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-javascript data-lang=javascript><span class=kd>var</span> <span class=nx>xhr</span> <span class=o>=</span> <span class=k>new</span> <span class=nx>XMLHttpRequest</span><span class=p>();</span>
-<span class=nx>xhr</span><span class=p>.</span><span class=nx>open</span><span class=p>(</span><span class=s2>&#34;get&#34;</span><span class=p>,</span> <span class=s2>&#34;http://localhost:8080/vulnerabilities/csrf/?password_new=admin&amp;password_conf=admin&amp;Change=Change&#34;</span><span class=p>);</span>
-<span class=nx>xhr</span><span class=p>.</span><span class=nx>withCredentials</span> <span class=o>=</span> <span class=kc>true</span><span class=p>;</span>
-<span class=nx>xhr</span><span class=p>.</span><span class=nx>send</span><span class=p>();</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>但在这项改动之后（现在是2022年4月25日，Chrome内核版本 100，Edge 浏览器），虽然这是个简单请求，无需预检就会发送，但因为 Cookies 的 <code>SameSite</code> 属性变更为默认 <code>Lax</code> 的原因，即使设置了 <code>withCredentials=true</code> 请求里也不会带上 Cookies。</p>
-<p><img src=/blog/p/get-start-dvwa-03/image-20220425150932251.png width=951 height=115 srcset="/blog/p/get-start-dvwa-03/image-20220425150932251_huaa8a43c2711e3dfb7b7a9ac3a293cc3a_19838_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425150932251_huaa8a43c2711e3dfb7b7a9ac3a293cc3a_19838_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425150932251 class=gallery-image data-flex-grow=826 data-flex-basis=1984px></p>
-<p>这就有点恼人，不过稍作变通，还是可以直接控制用户的浏览器发起修改密码的请求，只是没 xhr 那么悄无声息。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt>1
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-javascript data-lang=javascript><span class=nb>window</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=o>=</span><span class=s1>&#39;http://localhost:8080/vulnerabilities/csrf/?password_new=123456&amp;password_conf=123456&amp;Change=Change&#39;</span>
-</code></pre></td></tr></table>
-</div>
-</div><p>如此一来，就满足了 <code>SameSite=Lax</code> 的由顶级导航启动的要求。</p>
-<p>这里额外再说一句就是，<code>iframe</code> 似乎也不被视作顶级导航，因此<code>&lt;iframe src="..." width="1" height="1">&lt;/iframe></code>也行不通，不会带上 Cookies。</p>
-<p>简单看了下 MDN 对默认 <code>Lax</code> 策略的支持情况，只有少数几个浏览器还没跟进了。</p>
-<p><img src=/blog/p/get-start-dvwa-03/image-20220425160233505.png width=810 height=701 srcset="/blog/p/get-start-dvwa-03/image-20220425160233505_hu0375771f01931166adb29727ee7ccafb_54993_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425160233505_hu0375771f01931166adb29727ee7ccafb_54993_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425160233505 class=gallery-image data-flex-grow=115 data-flex-basis=277px></p>
-<h3 id=代码审计>代码审计</h3>
-<p>又是很短一段 php 代码。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-javascript data-lang=javascript><span class=line><span class=cl><span class=kd>var</span> <span class=nx>xhr</span> <span class=o>=</span> <span class=k>new</span> <span class=nx>XMLHttpRequest</span><span class=p>();</span>
+</span></span><span class=line><span class=cl><span class=nx>xhr</span><span class=p>.</span><span class=nx>open</span><span class=p>(</span><span class=s2>&#34;get&#34;</span><span class=p>,</span> <span class=s2>&#34;http://localhost:8080/vulnerabilities/csrf/?password_new=admin&amp;password_conf=admin&amp;Change=Change&#34;</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=nx>xhr</span><span class=p>.</span><span class=nx>withCredentials</span> <span class=o>=</span> <span class=kc>true</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=nx>xhr</span><span class=p>.</span><span class=nx>send</span><span class=p>();</span>
+</span></span></code></pre></td></tr></table></div></div><p>但在这项改动之后（现在是2022年4月25日，Chrome内核版本 100，Edge 浏览器），虽然这是个简单请求，无需预检就会发送，但因为 Cookies 的 <code>SameSite</code> 属性变更为默认 <code>Lax</code> 的原因，即使设置了 <code>withCredentials=true</code> 请求里也不会带上 Cookies。</p><p><img src=/blog/p/get-start-dvwa-03/image-20220425150932251.png width=951 height=115 srcset="/blog/p/get-start-dvwa-03/image-20220425150932251_huaa8a43c2711e3dfb7b7a9ac3a293cc3a_19838_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425150932251_huaa8a43c2711e3dfb7b7a9ac3a293cc3a_19838_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425150932251 class=gallery-image data-flex-grow=826 data-flex-basis=1984px></p><p>这就有点恼人，不过稍作变通，还是可以直接控制用户的浏览器发起修改密码的请求，只是没 xhr 那么悄无声息。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-javascript data-lang=javascript><span class=line><span class=cl><span class=nb>window</span><span class=p>.</span><span class=nx>location</span><span class=p>.</span><span class=nx>href</span><span class=o>=</span><span class=s1>&#39;http://localhost:8080/vulnerabilities/csrf/?password_new=123456&amp;password_conf=123456&amp;Change=Change&#39;</span>
+</span></span></code></pre></td></tr></table></div></div><p>如此一来，就满足了 <code>SameSite=Lax</code> 的由顶级导航启动的要求。</p><p>这里额外再说一句就是，<code>iframe</code> 似乎也不被视作顶级导航，因此<code>&lt;iframe src="..." width="1" height="1">&lt;/iframe></code>也行不通，不会带上 Cookies。</p><p>简单看了下 MDN 对默认 <code>Lax</code> 策略的支持情况，只有少数几个浏览器还没跟进了。</p><p><img src=/blog/p/get-start-dvwa-03/image-20220425160233505.png width=810 height=701 srcset="/blog/p/get-start-dvwa-03/image-20220425160233505_hu0375771f01931166adb29727ee7ccafb_54993_480x0_resize_box_3.png 480w, /blog/p/get-start-dvwa-03/image-20220425160233505_hu0375771f01931166adb29727ee7ccafb_54993_1024x0_resize_box_3.png 1024w" loading=lazy alt=image-20220425160233505 class=gallery-image data-flex-grow=115 data-flex-basis=277px></p><h3 id=代码审计>代码审计</h3><p>又是很短一段 php 代码。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -248,52 +56,36 @@ docker-compose up -d --build
 </span><span class=lnt>27
 </span><span class=lnt>28
 </span><span class=lnt>29
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-php data-lang=php><span class=o>&lt;?</span><span class=nx>php</span>
-
-<span class=k>if</span><span class=p>(</span> <span class=nx>isset</span><span class=p>(</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;Change&#39;</span> <span class=p>]</span> <span class=p>)</span> <span class=p>)</span> <span class=p>{</span>
-    <span class=c1>// Get input
-</span><span class=c1></span>    <span class=nv>$pass_new</span>  <span class=o>=</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;password_new&#39;</span> <span class=p>];</span>
-    <span class=nv>$pass_conf</span> <span class=o>=</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;password_conf&#39;</span> <span class=p>];</span>
-
-    <span class=c1>// Do the passwords match?
-</span><span class=c1></span>    <span class=k>if</span><span class=p>(</span> <span class=nv>$pass_new</span> <span class=o>==</span> <span class=nv>$pass_conf</span> <span class=p>)</span> <span class=p>{</span>
-        <span class=c1>// They do!
-</span><span class=c1></span>        <span class=nv>$pass_new</span> <span class=o>=</span> <span class=p>((</span><span class=nx>isset</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])</span> <span class=o>&amp;&amp;</span> <span class=nx>is_object</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>]))</span> <span class=o>?</span> <span class=nx>mysqli_real_escape_string</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>],</span>  <span class=nv>$pass_new</span> <span class=p>)</span> <span class=o>:</span> <span class=p>((</span><span class=nx>trigger_error</span><span class=p>(</span><span class=s2>&#34;[MySQLConverterToo] Fix the mysql_escape_string() call! This code does not work.&#34;</span><span class=p>,</span> <span class=nx>E_USER_ERROR</span><span class=p>))</span> <span class=o>?</span> <span class=s2>&#34;&#34;</span> <span class=o>:</span> <span class=s2>&#34;&#34;</span><span class=p>));</span>
-        <span class=nv>$pass_new</span> <span class=o>=</span> <span class=nx>md5</span><span class=p>(</span> <span class=nv>$pass_new</span> <span class=p>);</span>
-
-        <span class=c1>// Update the database
-</span><span class=c1></span>        <span class=nv>$insert</span> <span class=o>=</span> <span class=s2>&#34;UPDATE `users` SET password = &#39;</span><span class=si>$pass_new</span><span class=s2>&#39; WHERE user = &#39;&#34;</span> <span class=o>.</span> <span class=nx>dvwaCurrentUser</span><span class=p>()</span> <span class=o>.</span> <span class=s2>&#34;&#39;;&#34;</span><span class=p>;</span>
-        <span class=nv>$result</span> <span class=o>=</span> <span class=nx>mysqli_query</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>],</span>  <span class=nv>$insert</span> <span class=p>)</span> <span class=k>or</span> <span class=k>die</span><span class=p>(</span> <span class=s1>&#39;&lt;pre&gt;&#39;</span> <span class=o>.</span> <span class=p>((</span><span class=nx>is_object</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>]))</span> <span class=o>?</span> <span class=nx>mysqli_error</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])</span> <span class=o>:</span> <span class=p>((</span><span class=nv>$___mysqli_res</span> <span class=o>=</span> <span class=nx>mysqli_connect_error</span><span class=p>())</span> <span class=o>?</span> <span class=nv>$___mysqli_res</span> <span class=o>:</span> <span class=k>false</span><span class=p>))</span> <span class=o>.</span> <span class=s1>&#39;&lt;/pre&gt;&#39;</span> <span class=p>);</span>
-
-        <span class=c1>// Feedback for the user
-</span><span class=c1></span>        <span class=k>echo</span> <span class=s2>&#34;&lt;pre&gt;Password Changed.&lt;/pre&gt;&#34;</span><span class=p>;</span>
-    <span class=p>}</span>
-    <span class=k>else</span> <span class=p>{</span>
-        <span class=c1>// Issue with passwords matching
-</span><span class=c1></span>        <span class=k>echo</span> <span class=s2>&#34;&lt;pre&gt;Passwords did not match.&lt;/pre&gt;&#34;</span><span class=p>;</span>
-    <span class=p>}</span>
-
-    <span class=p>((</span><span class=nx>is_null</span><span class=p>(</span><span class=nv>$___mysqli_res</span> <span class=o>=</span> <span class=nx>mysqli_close</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])))</span> <span class=o>?</span> <span class=k>false</span> <span class=o>:</span> <span class=nv>$___mysqli_res</span><span class=p>);</span>
-<span class=p>}</span>
-
-<span class=cp>?&gt;</span><span class=err>
-</span></code></pre></td></tr></table>
-</div>
-</div><p>逻辑很清晰不啰嗦，注意到几个点：</p>
-<ol>
-<li>md5 未加盐哈希作为密码字段保存到数据库，得到了哈希有可能被逆推出密码。</li>
-<li>直接拼了 <code>dvwaCurrentUser()</code>，目前不清楚这个函数里有没有做好转义处理，没处理可能存在 SQL 注入。</li>
-</ol>
-<p>全程这个 <code>$GLOBALS["___mysqli_ston"]</code> 到底是个什么玩意儿让我有点懵，搜索了下好像是 SQL 连接，类似 Go 中的 <code>sql.DB</code> 对象（意会好嘛）。</p>
-<p>别的问题就没看出来了。</p>
-<h3 id=提高难度败北>提高难度（败北）</h3>
-<p>直接使用 Low 难度下的方法，<code>window.location.href</code>，会报错：<code>That request didn't look correct</code>。</p>
-<p>简单看一下 Medium 难度下的代码。</p>
-<div class=highlight><div class=chroma>
-<table class=lntable><tr><td class=lntd>
-<pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-php data-lang=php><span class=line><span class=cl><span class=o>&lt;?</span><span class=nx>php</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>if</span><span class=p>(</span> <span class=nx>isset</span><span class=p>(</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;Change&#39;</span> <span class=p>]</span> <span class=p>)</span> <span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// Get input
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=nv>$pass_new</span>  <span class=o>=</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;password_new&#39;</span> <span class=p>];</span>
+</span></span><span class=line><span class=cl>    <span class=nv>$pass_conf</span> <span class=o>=</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;password_conf&#39;</span> <span class=p>];</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=c1>// Do the passwords match?
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=k>if</span><span class=p>(</span> <span class=nv>$pass_new</span> <span class=o>==</span> <span class=nv>$pass_conf</span> <span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// They do!
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nv>$pass_new</span> <span class=o>=</span> <span class=p>((</span><span class=nx>isset</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])</span> <span class=o>&amp;&amp;</span> <span class=nx>is_object</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>]))</span> <span class=o>?</span> <span class=nx>mysqli_real_escape_string</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>],</span>  <span class=nv>$pass_new</span> <span class=p>)</span> <span class=o>:</span> <span class=p>((</span><span class=nx>trigger_error</span><span class=p>(</span><span class=s2>&#34;[MySQLConverterToo] Fix the mysql_escape_string() call! This code does not work.&#34;</span><span class=p>,</span> <span class=nx>E_USER_ERROR</span><span class=p>))</span> <span class=o>?</span> <span class=s2>&#34;&#34;</span> <span class=o>:</span> <span class=s2>&#34;&#34;</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>        <span class=nv>$pass_new</span> <span class=o>=</span> <span class=nx>md5</span><span class=p>(</span> <span class=nv>$pass_new</span> <span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=c1>// Update the database
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nv>$insert</span> <span class=o>=</span> <span class=s2>&#34;UPDATE `users` SET password = &#39;</span><span class=si>$pass_new</span><span class=s2>&#39; WHERE user = &#39;&#34;</span> <span class=o>.</span> <span class=nx>dvwaCurrentUser</span><span class=p>()</span> <span class=o>.</span> <span class=s2>&#34;&#39;;&#34;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=nv>$result</span> <span class=o>=</span> <span class=nx>mysqli_query</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>],</span>  <span class=nv>$insert</span> <span class=p>)</span> <span class=k>or</span> <span class=k>die</span><span class=p>(</span> <span class=s1>&#39;&lt;pre&gt;&#39;</span> <span class=o>.</span> <span class=p>((</span><span class=nx>is_object</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>]))</span> <span class=o>?</span> <span class=nx>mysqli_error</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])</span> <span class=o>:</span> <span class=p>((</span><span class=nv>$___mysqli_res</span> <span class=o>=</span> <span class=nx>mysqli_connect_error</span><span class=p>())</span> <span class=o>?</span> <span class=nv>$___mysqli_res</span> <span class=o>:</span> <span class=k>false</span><span class=p>))</span> <span class=o>.</span> <span class=s1>&#39;&lt;/pre&gt;&#39;</span> <span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=c1>// Feedback for the user
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=k>echo</span> <span class=s2>&#34;&lt;pre&gt;Password Changed.&lt;/pre&gt;&#34;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Issue with passwords matching
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=k>echo</span> <span class=s2>&#34;&lt;pre&gt;Passwords did not match.&lt;/pre&gt;&#34;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=p>((</span><span class=nx>is_null</span><span class=p>(</span><span class=nv>$___mysqli_res</span> <span class=o>=</span> <span class=nx>mysqli_close</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])))</span> <span class=o>?</span> <span class=k>false</span> <span class=o>:</span> <span class=nv>$___mysqli_res</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=cp>?&gt;</span><span class=err>
+</span></span></span></code></pre></td></tr></table></div></div><p>逻辑很清晰不啰嗦，注意到几个点：</p><ol><li>md5 未加盐哈希作为密码字段保存到数据库，得到了哈希有可能被逆推出密码。</li><li>直接拼了 <code>dvwaCurrentUser()</code>，目前不清楚这个函数里有没有做好转义处理，没处理可能存在 SQL 注入。</li></ol><p>全程这个 <code>$GLOBALS["___mysqli_ston"]</code> 到底是个什么玩意儿让我有点懵，搜索了下好像是 SQL 连接，类似 Go 中的 <code>sql.DB</code> 对象（意会好嘛）。</p><p>别的问题就没看出来了。</p><h3 id=提高难度败北>提高难度（败北）</h3><p>直接使用 Low 难度下的方法，<code>window.location.href</code>，会报错：<code>That request didn't look correct</code>。</p><p>简单看一下 Medium 难度下的代码。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
 </span><span class=lnt> 2
 </span><span class=lnt> 3
 </span><span class=lnt> 4
@@ -329,221 +121,49 @@ docker-compose up -d --build
 </span><span class=lnt>34
 </span><span class=lnt>35
 </span><span class=lnt>36
-</span></code></pre></td>
-<td class=lntd>
-<pre tabindex=0 class=chroma><code class=language-php data-lang=php><span class=o>&lt;?</span><span class=nx>php</span>
-
-<span class=k>if</span><span class=p>(</span> <span class=nx>isset</span><span class=p>(</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;Change&#39;</span> <span class=p>]</span> <span class=p>)</span> <span class=p>)</span> <span class=p>{</span>
-    <span class=c1>// Checks to see where the request came from
-</span><span class=c1></span>    <span class=k>if</span><span class=p>(</span> <span class=nx>stripos</span><span class=p>(</span> <span class=nv>$_SERVER</span><span class=p>[</span> <span class=s1>&#39;HTTP_REFERER&#39;</span> <span class=p>]</span> <span class=p>,</span><span class=nv>$_SERVER</span><span class=p>[</span> <span class=s1>&#39;SERVER_NAME&#39;</span> <span class=p>])</span> <span class=o>!==</span> <span class=k>false</span> <span class=p>)</span> <span class=p>{</span>
-        <span class=c1>// Get input
-</span><span class=c1></span>        <span class=nv>$pass_new</span>  <span class=o>=</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;password_new&#39;</span> <span class=p>];</span>
-        <span class=nv>$pass_conf</span> <span class=o>=</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;password_conf&#39;</span> <span class=p>];</span>
-
-        <span class=c1>// Do the passwords match?
-</span><span class=c1></span>        <span class=k>if</span><span class=p>(</span> <span class=nv>$pass_new</span> <span class=o>==</span> <span class=nv>$pass_conf</span> <span class=p>)</span> <span class=p>{</span>
-            <span class=c1>// They do!
-</span><span class=c1></span>            <span class=nv>$pass_new</span> <span class=o>=</span> <span class=p>((</span><span class=nx>isset</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])</span> <span class=o>&amp;&amp;</span> <span class=nx>is_object</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>]))</span> <span class=o>?</span> <span class=nx>mysqli_real_escape_string</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>],</span>  <span class=nv>$pass_new</span> <span class=p>)</span> <span class=o>:</span> <span class=p>((</span><span class=nx>trigger_error</span><span class=p>(</span><span class=s2>&#34;[MySQLConverterToo] Fix the mysql_escape_string() call! This code does not work.&#34;</span><span class=p>,</span> <span class=nx>E_USER_ERROR</span><span class=p>))</span> <span class=o>?</span> <span class=s2>&#34;&#34;</span> <span class=o>:</span> <span class=s2>&#34;&#34;</span><span class=p>));</span>
-            <span class=nv>$pass_new</span> <span class=o>=</span> <span class=nx>md5</span><span class=p>(</span> <span class=nv>$pass_new</span> <span class=p>);</span>
-
-            <span class=c1>// Update the database
-</span><span class=c1></span>            <span class=nv>$insert</span> <span class=o>=</span> <span class=s2>&#34;UPDATE `users` SET password = &#39;</span><span class=si>$pass_new</span><span class=s2>&#39; WHERE user = &#39;&#34;</span> <span class=o>.</span> <span class=nx>dvwaCurrentUser</span><span class=p>()</span> <span class=o>.</span> <span class=s2>&#34;&#39;;&#34;</span><span class=p>;</span>
-            <span class=nv>$result</span> <span class=o>=</span> <span class=nx>mysqli_query</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>],</span>  <span class=nv>$insert</span> <span class=p>)</span> <span class=k>or</span> <span class=k>die</span><span class=p>(</span> <span class=s1>&#39;&lt;pre&gt;&#39;</span> <span class=o>.</span> <span class=p>((</span><span class=nx>is_object</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>]))</span> <span class=o>?</span> <span class=nx>mysqli_error</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])</span> <span class=o>:</span> <span class=p>((</span><span class=nv>$___mysqli_res</span> <span class=o>=</span> <span class=nx>mysqli_connect_error</span><span class=p>())</span> <span class=o>?</span> <span class=nv>$___mysqli_res</span> <span class=o>:</span> <span class=k>false</span><span class=p>))</span> <span class=o>.</span> <span class=s1>&#39;&lt;/pre&gt;&#39;</span> <span class=p>);</span>
-
-            <span class=c1>// Feedback for the user
-</span><span class=c1></span>            <span class=k>echo</span> <span class=s2>&#34;&lt;pre&gt;Password Changed.&lt;/pre&gt;&#34;</span><span class=p>;</span>
-        <span class=p>}</span>
-        <span class=k>else</span> <span class=p>{</span>
-            <span class=c1>// Issue with passwords matching
-</span><span class=c1></span>            <span class=k>echo</span> <span class=s2>&#34;&lt;pre&gt;Passwords did not match.&lt;/pre&gt;&#34;</span><span class=p>;</span>
-        <span class=p>}</span>
-    <span class=p>}</span>
-    <span class=k>else</span> <span class=p>{</span>
-        <span class=c1>// Didn&#39;t come from a trusted source
-</span><span class=c1></span>        <span class=k>echo</span> <span class=s2>&#34;&lt;pre&gt;That request didn&#39;t look correct.&lt;/pre&gt;&#34;</span><span class=p>;</span>
-    <span class=p>}</span>
-
-    <span class=p>((</span><span class=nx>is_null</span><span class=p>(</span><span class=nv>$___mysqli_res</span> <span class=o>=</span> <span class=nx>mysqli_close</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])))</span> <span class=o>?</span> <span class=k>false</span> <span class=o>:</span> <span class=nv>$___mysqli_res</span><span class=p>);</span>
-<span class=p>}</span>
-
-<span class=cp>?&gt;</span><span class=err>
-</span></code></pre></td></tr></table>
-</div>
-</div><p>注意到主要变化在于进入业务处理前，加上了一条判断：<code>if( stripos( $_SERVER[ 'HTTP_REFERER' ] ,$_SERVER[ 'SERVER_NAME' ]) !== false )</code>。</p>
-<p><code>stripos</code> 函数查找子串出现在字符串里的位置，没找到的情况下返回<code>false</code>，这条判断的意思是在 <code>HTTP_REFERER</code> 里查找 <code>SERVER_NAME</code> 是否出现，如果出现才进一步处理。所以 Medium 难度下问题变成了怎么 bypass 这个判断。</p>
-<p>搜索 <code>SERVER_NAME</code> 的文档可以找到这样的说明：</p>
-<blockquote>
-<p>&lsquo;SERVER_NAME&rsquo;</p>
-<p>The name of the server host under which the current script is executing. If the script is running on a virtual host, this will be the value defined for that virtual host.</p>
-<blockquote>
-<p><strong>Note</strong>: Under Apache 2, you must set <code>UseCanonicalName = On</code> and <code>ServerName</code>. Otherwise, this value reflects the hostname supplied by the client, which can be spoofed. It is not safe to rely on this value in security-dependent contexts.</p>
-</blockquote>
-</blockquote>
-<p>在 Apache2 环境下，如果没有正确配置 <code>UseCanonicalName = On</code>和<code>ServerName</code>的话，<code>$_SERVER['SERVER_NAME']</code>的值就是 HTTP 请求头里的 Hostname。</p>
-<p><code>HTTP_REFERER</code> 的文档这样说：</p>
-<blockquote>
-<p>&lsquo;HTTP_REFERER&rsquo;</p>
-<p>The address of the page (if any) which referred the user agent to the current page. This is set by the user agent. Not all user agents will set this, and some provide the ability to modify HTTP_REFERER as a feature. In short, it cannot really be trusted.</p>
-</blockquote>
-<p>但遗憾的是，不管 <code>Host</code> 还是 <code>Referer</code> 都无法修改（受制于浏览器的约束），所以尽管文档里说可能存在安全隐患，但反正我这会儿想不出利用方法。</p>
-<p>于是看眼帮助文档，提示需要结合 XSS 之类的洞攻破。这么一说就茅塞顿开了，虽然说是个练习靶场但也不是题目说CSRF就非要顶着CSRF死磕，别的洞一个不碰。（大佬说不定能死磕成功，我也想变大佬啊=。=）</p>
-<p>考虑多个漏洞联合利用确实常见也一定要学，但现在暂且还是免了吧=。=累死。后面捅 XSS 的时候再回头顺便把 Medium 难度做了。</p>
-<p>看了眼 High 难度下同样要结合多个漏洞利用，我寻思能突破 CORS 的话即使有 CSRF Token 也好办，直接 xhr 把表单页拿下来就好。</p>
-<h2 id=总结>总结</h2>
-<p>好的，现在 CSRF 感觉有点难利用了。主要还是现代浏览器的同源策略越来越严格，往默认安全靠拢，迭代速度快的一批。流传下来的利用方法如今一试就寄，半点屁用没有，连搭一个能复现漏洞的环境都麻烦的一批（比如具体哪个版本的 Chrome 修了<code>SameSite</code>，去哪儿下载历史版本，搞出一堆浏览器共存巴拉巴拉）</p>
-<p>然后就很难不想起互联网上不停重复的观点了。为什么不要做伸手党？抛开对大环境的影响，伸手党一直有个通病，就是没有学习的能力。这里的学习说的是 <em>收集、整理、归纳、总结、利用</em> 信息的能力。在一个领域独立探索未知，这是真正独立的标志。</p>
-<p>讲真，太怀念上学的日子了，脑子空空无忧无虑。真正出来工作卖力之后才会渐渐意识到什么叫不进则退。我觉得与其说什么社会在惩罚不努力的人，不如说这个社会在惩罚所有人。也不该说是社会，而是人的天性，让人生来就要受尽苦难。</p>
-<p>扯远了。就这样吧。</p>
-</section>
-<footer class=article-footer>
-<section class=article-tags>
-<a href=/blog/tags/security/>security</a>
-<a href=/blog/tags/dvwa/>DVWA</a>
-</section>
-<section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
-<span>Licensed under CC BY-NC-SA 4.0</span>
-</section>
-</footer>
-<link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script>
-</article>
-<aside class=related-contents--wrapper>
-<h2 class=section-title>相关文章</h2>
-<div class=related-contents>
-<div class="flex article-list--tile">
-<article>
-<a href=/blog/p/get-start-dvwa-05/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>DVWA上手记录-文件上传</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/get-start-dvwa-04/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>DVWA上手记录-文件包含</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/get-start-dvwa-02/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>DVWA上手记录-简单尝试</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/get-start-dvwa-01/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>DVWA上手记录-初体验</h2>
-</div>
-</a>
-</article>
-<article>
-<a href=/blog/p/%E5%87%A0%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84-pwn-%E7%BB%83%E4%B9%A0/>
-<div class=light>
-<div class=lamp></div>
-</div>
-<div class=article-details>
-<h2 class=article-title>几个简单的 pwn 练习</h2>
-</div>
-</a>
-</article>
-</div>
-</div>
-</aside>
-<footer class=site-footer>
-<section class=copyright>
-&copy;
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-php data-lang=php><span class=line><span class=cl><span class=o>&lt;?</span><span class=nx>php</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>if</span><span class=p>(</span> <span class=nx>isset</span><span class=p>(</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;Change&#39;</span> <span class=p>]</span> <span class=p>)</span> <span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// Checks to see where the request came from
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=k>if</span><span class=p>(</span> <span class=nx>stripos</span><span class=p>(</span> <span class=nv>$_SERVER</span><span class=p>[</span> <span class=s1>&#39;HTTP_REFERER&#39;</span> <span class=p>]</span> <span class=p>,</span><span class=nv>$_SERVER</span><span class=p>[</span> <span class=s1>&#39;SERVER_NAME&#39;</span> <span class=p>])</span> <span class=o>!==</span> <span class=k>false</span> <span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Get input
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nv>$pass_new</span>  <span class=o>=</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;password_new&#39;</span> <span class=p>];</span>
+</span></span><span class=line><span class=cl>        <span class=nv>$pass_conf</span> <span class=o>=</span> <span class=nv>$_GET</span><span class=p>[</span> <span class=s1>&#39;password_conf&#39;</span> <span class=p>];</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=c1>// Do the passwords match?
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=k>if</span><span class=p>(</span> <span class=nv>$pass_new</span> <span class=o>==</span> <span class=nv>$pass_conf</span> <span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=c1>// They do!
+</span></span></span><span class=line><span class=cl><span class=c1></span>            <span class=nv>$pass_new</span> <span class=o>=</span> <span class=p>((</span><span class=nx>isset</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])</span> <span class=o>&amp;&amp;</span> <span class=nx>is_object</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>]))</span> <span class=o>?</span> <span class=nx>mysqli_real_escape_string</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>],</span>  <span class=nv>$pass_new</span> <span class=p>)</span> <span class=o>:</span> <span class=p>((</span><span class=nx>trigger_error</span><span class=p>(</span><span class=s2>&#34;[MySQLConverterToo] Fix the mysql_escape_string() call! This code does not work.&#34;</span><span class=p>,</span> <span class=nx>E_USER_ERROR</span><span class=p>))</span> <span class=o>?</span> <span class=s2>&#34;&#34;</span> <span class=o>:</span> <span class=s2>&#34;&#34;</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>            <span class=nv>$pass_new</span> <span class=o>=</span> <span class=nx>md5</span><span class=p>(</span> <span class=nv>$pass_new</span> <span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>            <span class=c1>// Update the database
+</span></span></span><span class=line><span class=cl><span class=c1></span>            <span class=nv>$insert</span> <span class=o>=</span> <span class=s2>&#34;UPDATE `users` SET password = &#39;</span><span class=si>$pass_new</span><span class=s2>&#39; WHERE user = &#39;&#34;</span> <span class=o>.</span> <span class=nx>dvwaCurrentUser</span><span class=p>()</span> <span class=o>.</span> <span class=s2>&#34;&#39;;&#34;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>            <span class=nv>$result</span> <span class=o>=</span> <span class=nx>mysqli_query</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>],</span>  <span class=nv>$insert</span> <span class=p>)</span> <span class=k>or</span> <span class=k>die</span><span class=p>(</span> <span class=s1>&#39;&lt;pre&gt;&#39;</span> <span class=o>.</span> <span class=p>((</span><span class=nx>is_object</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>]))</span> <span class=o>?</span> <span class=nx>mysqli_error</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])</span> <span class=o>:</span> <span class=p>((</span><span class=nv>$___mysqli_res</span> <span class=o>=</span> <span class=nx>mysqli_connect_error</span><span class=p>())</span> <span class=o>?</span> <span class=nv>$___mysqli_res</span> <span class=o>:</span> <span class=k>false</span><span class=p>))</span> <span class=o>.</span> <span class=s1>&#39;&lt;/pre&gt;&#39;</span> <span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>            <span class=c1>// Feedback for the user
+</span></span></span><span class=line><span class=cl><span class=c1></span>            <span class=k>echo</span> <span class=s2>&#34;&lt;pre&gt;Password Changed.&lt;/pre&gt;&#34;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span>
+</span></span><span class=line><span class=cl>        <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=c1>// Issue with passwords matching
+</span></span></span><span class=line><span class=cl><span class=c1></span>            <span class=k>echo</span> <span class=s2>&#34;&lt;pre&gt;Passwords did not match.&lt;/pre&gt;&#34;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Didn&#39;t come from a trusted source
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=k>echo</span> <span class=s2>&#34;&lt;pre&gt;That request didn&#39;t look correct.&lt;/pre&gt;&#34;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=p>((</span><span class=nx>is_null</span><span class=p>(</span><span class=nv>$___mysqli_res</span> <span class=o>=</span> <span class=nx>mysqli_close</span><span class=p>(</span><span class=nv>$GLOBALS</span><span class=p>[</span><span class=s2>&#34;___mysqli_ston&#34;</span><span class=p>])))</span> <span class=o>?</span> <span class=k>false</span> <span class=o>:</span> <span class=nv>$___mysqli_res</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=cp>?&gt;</span><span class=err>
+</span></span></span></code></pre></td></tr></table></div></div><p>注意到主要变化在于进入业务处理前，加上了一条判断：<code>if( stripos( $_SERVER[ 'HTTP_REFERER' ] ,$_SERVER[ 'SERVER_NAME' ]) !== false )</code>。</p><p><code>stripos</code> 函数查找子串出现在字符串里的位置，没找到的情况下返回<code>false</code>，这条判断的意思是在 <code>HTTP_REFERER</code> 里查找 <code>SERVER_NAME</code> 是否出现，如果出现才进一步处理。所以 Medium 难度下问题变成了怎么 bypass 这个判断。</p><p>搜索 <code>SERVER_NAME</code> 的文档可以找到这样的说明：</p><blockquote><p>&lsquo;SERVER_NAME&rsquo;</p><p>The name of the server host under which the current script is executing. If the script is running on a virtual host, this will be the value defined for that virtual host.</p><blockquote><p><strong>Note</strong>: Under Apache 2, you must set <code>UseCanonicalName = On</code> and <code>ServerName</code>. Otherwise, this value reflects the hostname supplied by the client, which can be spoofed. It is not safe to rely on this value in security-dependent contexts.</p></blockquote></blockquote><p>在 Apache2 环境下，如果没有正确配置 <code>UseCanonicalName = On</code>和<code>ServerName</code>的话，<code>$_SERVER['SERVER_NAME']</code>的值就是 HTTP 请求头里的 Hostname。</p><p><code>HTTP_REFERER</code> 的文档这样说：</p><blockquote><p>&lsquo;HTTP_REFERER&rsquo;</p><p>The address of the page (if any) which referred the user agent to the current page. This is set by the user agent. Not all user agents will set this, and some provide the ability to modify HTTP_REFERER as a feature. In short, it cannot really be trusted.</p></blockquote><p>但遗憾的是，不管 <code>Host</code> 还是 <code>Referer</code> 都无法修改（受制于浏览器的约束），所以尽管文档里说可能存在安全隐患，但反正我这会儿想不出利用方法。</p><p>于是看眼帮助文档，提示需要结合 XSS 之类的洞攻破。这么一说就茅塞顿开了，虽然说是个练习靶场但也不是题目说CSRF就非要顶着CSRF死磕，别的洞一个不碰。（大佬说不定能死磕成功，我也想变大佬啊=。=）</p><p>考虑多个漏洞联合利用确实常见也一定要学，但现在暂且还是免了吧=。=累死。后面捅 XSS 的时候再回头顺便把 Medium 难度做了。</p><p>看了眼 High 难度下同样要结合多个漏洞利用，我寻思能突破 CORS 的话即使有 CSRF Token 也好办，直接 xhr 把表单页拿下来就好。</p><h2 id=总结>总结</h2><p>好的，现在 CSRF 感觉有点难利用了。主要还是现代浏览器的同源策略越来越严格，往默认安全靠拢，迭代速度快的一批。流传下来的利用方法如今一试就寄，半点屁用没有，连搭一个能复现漏洞的环境都麻烦的一批（比如具体哪个版本的 Chrome 修了<code>SameSite</code>，去哪儿下载历史版本，搞出一堆浏览器共存巴拉巴拉）</p><p>然后就很难不想起互联网上不停重复的观点了。为什么不要做伸手党？抛开对大环境的影响，伸手党一直有个通病，就是没有学习的能力。这里的学习说的是 <em>收集、整理、归纳、总结、利用</em> 信息的能力。在一个领域独立探索未知，这是真正独立的标志。</p><p>讲真，太怀念上学的日子了，脑子空空无忧无虑。真正出来工作卖力之后才会渐渐意识到什么叫不进则退。我觉得与其说什么社会在惩罚不努力的人，不如说这个社会在惩罚所有人。也不该说是社会，而是人的天性，让人生来就要受尽苦难。</p><p>扯远了。就这样吧。</p></section><footer class=article-footer><section class=article-tags><a href=/blog/tags/security/>security</a>
+<a href=/blog/tags/dvwa/>DVWA</a></section><section class=article-copyright><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg><span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css integrity=sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js integrity=sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js integrity=sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{renderMathInElement(document.querySelector(`.article-content`),{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}]})})</script></article><aside class=related-contents--wrapper><h2 class=section-title>相关文章</h2><div class=related-contents><div class="flex article-list--tile"><article><a href=/blog/p/get-start-dvwa-05/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>DVWA上手记录-文件上传</h2></div></a></article><article><a href=/blog/p/get-start-dvwa-04/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>DVWA上手记录-文件包含</h2></div></a></article><article><a href=/blog/p/get-start-dvwa-02/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>DVWA上手记录-简单尝试</h2></div></a></article><article><a href=/blog/p/get-start-dvwa-01/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>DVWA上手记录-初体验</h2></div></a></article><article><a href=/blog/p/%E5%87%A0%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84-pwn-%E7%BB%83%E4%B9%A0/><div class=light><div class=lamp></div></div><div class=article-details><h2 class=article-title>几个简单的 pwn 练习</h2></div></a></article></div></div></aside><footer class=site-footer><section class=copyright>&copy;
 2021 -
-2024 weakptr's 笔记
-</section>
-<section class=powerby>
-Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> <br>
-主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
-，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改
-</section>
-</footer>
-<div class=pswp tabindex=-1 role=dialog aria-hidden=true>
-<div class=pswp__bg></div>
-<div class=pswp__scroll-wrap>
-<div class=pswp__container>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-<div class=pswp__item></div>
-</div>
-<div class="pswp__ui pswp__ui--hidden">
-<div class=pswp__top-bar>
-<div class=pswp__counter></div>
-<button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+2024 weakptr's 笔记</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.11.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计
+，由 <a href=https://nnnewb.github.io/blog/>nnnewb</a> 修改</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
 <button class="pswp__button pswp__button--share" title=Share></button>
 <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
-<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
-<div class=pswp__preloader>
-<div class=pswp__preloader__icn>
-<div class=pswp__preloader__cut>
-<div class=pswp__preloader__donut></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
-<div class=pswp__share-tooltip></div>
-</div>
-<button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
-</button>
-<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
-</button>
-<div class=pswp__caption>
-<div class=pswp__caption__center></div>
-</div>
-</div>
-</div>
-</div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous>
-</main>
-<aside class="sidebar right-sidebar sticky">
-<section class="widget archives">
-<div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg>
-</div>
-<h2 class="widget-title section-title">目录</h2>
-<div class=widget--toc>
-<nav id=TableOfContents>
-<ol>
-<li><a href=#前言>前言</a></li>
-<li><a href=#原理>原理</a>
-<ol>
-<li><a href=#利用方式>利用方式</a></li>
-<li><a href=#和cors的关系>和CORS的关系</a></li>
-<li><a href=#防御>防御</a></li>
-</ol>
-</li>
-<li><a href=#解题>解题</a>
-<ol>
-<li><a href=#信息收集>信息收集</a></li>
-<li><a href=#题解>题解</a></li>
-<li><a href=#代码审计>代码审计</a></li>
-<li><a href=#提高难度败北>提高难度（败北）</a></li>
-</ol>
-</li>
-<li><a href=#总结>总结</a></li>
-</ol>
-</nav>
-</div>
-</section>
-</aside>
-</div>
-<script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
-<script>(function(){const a=document.createElement('link');a.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",a.type="text/css",a.rel="stylesheet",document.head.appendChild(a)})()</script>
-</body>
-</html>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)"></button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css integrity="sha256-c0uckgykQ9v5k+IqViZOZKc47Jn7KQil4/MP3ySA3F8=" crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.css integrity="sha256-SBLU4vv6CA6lHsZ1XyTdhyjJxCjPif/TRkjnsyGAGnE=" crossorigin=anonymous></main><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#前言>前言</a></li><li><a href=#原理>原理</a><ol><li><a href=#利用方式>利用方式</a></li><li><a href=#和cors的关系>和CORS的关系</a></li><li><a href=#防御>防御</a></li></ol></li><li><a href=#解题>解题</a><ol><li><a href=#信息收集>信息收集</a></li><li><a href=#题解>题解</a></li><li><a href=#代码审计>代码审计</a></li><li><a href=#提高难度败北>提高难度（败北）</a></li></ol></li><li><a href=#总结>总结</a></li></ol></nav></div></section></aside></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.5/dist/vibrant.min.js integrity="sha256-5NovOZc4iwiAWTYIFiIM7DxKUXKWvpVEuMEPLzcm5/g=" crossorigin=anonymous></script><script type=text/javascript src=/blog/ts/main.js defer></script>
+<script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>
