@@ -199,7 +199,7 @@ plt.show()
 
 而异或门本身可以由或门、与非门和与门组成。
 
-![perceptron](./img/perceptron-fig3.png)
+![perceptron](img/perceptron-fig3.png)
 
 这里用 python 构建出多层感知机。
 
