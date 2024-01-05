@@ -39,6 +39,24 @@ steps:
       - "sed -i 's|image:[[:space:]]gitea.weakptr.site/weakptr/blog:.*|image: gitea.weakptr.site/weakptr/blog:ci_${DRONE_BUILD_NUMBER}_${DRONE_COMMIT_SHA:0:8}|' /home/ubuntu/repos/my-server/docker-compose.yaml"
       - "cd /home/ubuntu/repos/my-server; docker-compose up -d blog"
 
+- name: push commits
+  image: gitea.weakptr.site/weakptr/bitnami/git:latest
+  when:
+    event: 
+      - push
+  environment:
+    PRIVATE_KEY:
+      from_secret: ssh_private_key
+  commands:
+    - mkdir -p ~/.ssh
+    - chmod 750 ~/.ssh
+    - echo "$PRIVATE_KEY" | tee -a ~/.ssh/id_ed25519
+    - ssh-keyscan -H github.com | tee -a ~/.ssh/known_hosts
+    - chmod 600 ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/known_hosts
+    - git remote set-url origin git@github.com:nnnewb/blog.git
+    - git push origin $DRONE_BRANCH
+
 volumes:
   - name: dockersock
     host:
@@ -51,29 +69,3 @@ trigger:
   branch: 
     - main
     - dev/*
-
----
-kind: pipeline
-type: docker
-name: synchronize repository
-
-steps:
-  - name: push commits
-    image: gitea.weakptr.site/weakptr/bitnami/git:latest
-    when:
-      event: 
-        - push
-    environment:
-      PRIVATE_KEY:
-        from_secret: ssh_private_key
-      KNOWN_HOSTS:
-        from_secret: ssh_known_hosts
-    commands:
-      - mkdir -p ~/.ssh
-      - chmod 750 ~/.ssh
-      - echo "$PRIVATE_KEY" | tee -a ~/.ssh/id_ed25519
-      - ssh-keyscan -H github.com | tee -a ~/.ssh/known_hosts
-      - chmod 600 ~/.ssh/id_ed25519
-      - chmod 600 ~/.ssh/known_hosts
-      - git remote set-url origin git@github.com:nnnewb/blog.git
-      - git push origin $DRONE_BRANCH
